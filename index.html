@@ -391,6 +391,15 @@
         /* شارة القفل على عناصر القائمة المعطّلة قبل اكتمال إعدادات المنشأة */
         .sb-item.locked { opacity: .4; cursor: not-allowed; pointer-events: none; }
 
+        /* محرر قوالب التنسيق */
+        .te-style-btn { border-color: rgb(226 232 240); color: rgb(71 85 105); background: #fff; }
+        .te-style-btn.active { border-color: rgb(24 24 22); background: rgb(24 24 22); color: rgb(245 199 0); }
+        .te-draggable { transition: box-shadow .15s ease; }
+        .te-draggable:hover { box-shadow: 0 0 0 3px rgb(0 0 0 / .08); }
+        .te-draggable.dragging { box-shadow: 0 6px 18px -4px rgb(0 0 0 / .35); z-index: 20; opacity: .9; }
+        .te-saved-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .75rem; border-radius: 999px; font-size: .68rem; font-weight: 800; border: 1px solid rgb(226 232 240); background: #fff; cursor: pointer; }
+        .te-saved-chip.active { border-color: rgb(24 24 22); background: rgb(24 24 22); color: rgb(245 199 0); }
+
         /* ============================================================
            ثيم "Crextio" — مُقيَّد بقسم الرواتب فقط (#view-salary)
            يعيد تعريف نفس متغيرات الألوان محلياً دون التأثير على أي
@@ -1200,11 +1209,14 @@
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
                                     <label class="block text-xs font-bold text-slate-700 mb-2">اسم المنشأة (عربي)</label>
-                                    <input type="text" id="comp-name-ar" class="w-full border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-black font-bold" required>
+                                    <input type="text" id="comp-name-ar" oninput="window.suggestEnglishCompanyName(this.value)" class="w-full border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-black font-bold" required>
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-bold text-slate-700 mb-2">اسم المنشأة (إنجليزي)</label>
-                                    <input type="text" id="comp-name-en" class="w-full border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-black font-bold" required>
+                                    <label class="block text-xs font-bold text-slate-700 mb-2">
+                                        اسم المنشأة (إنجليزي)
+                                        <span id="comp-name-en-status" class="text-[10px] font-bold text-slate-400 mr-1"></span>
+                                    </label>
+                                    <input type="text" id="comp-name-en" dir="ltr" oninput="window.markEnglishNameEdited()" class="w-full border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-black font-bold text-left" required>
                                 </div>
                                 <div>
                                     <label class="block text-xs font-bold text-slate-700 mb-2">رقم السجل التجاري</label>
@@ -1375,7 +1387,12 @@
                                     </div>
                                 </div>
 
-                                <label class="block text-xs font-bold text-slate-700 mb-2">قالب التنسيق</label>
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="block text-xs font-bold text-slate-700">قالب التنسيق</label>
+                                    <button type="button" onclick="window.openTemplateEditor()" class="text-[11px] font-black text-blue-700 hover:text-blue-900 flex items-center gap-1">
+                                        <i class="fas fa-wand-magic-sparkles"></i> توليد قالب مخصّص
+                                    </button>
+                                </div>
                                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="template-picker"></div>
 
                                 <div class="mt-4 flex flex-wrap gap-2">
@@ -1777,6 +1794,80 @@
     </div>
 
     <!-- نافذة إضافة زيادة/علاوة/إضافة شهرية — قسم الرواتب (ثيم Crextio) -->
+    <!-- محرر قوالب التنسيق البصري: رأس/تذييل + مواضع حرة للشعار والختم والتوقيع -->
+    <div id="template-editor-modal" class="hidden fixed inset-0 z-[75] flex items-center justify-center modal-overlay p-2 sm:p-4">
+        <div class="modal-panel sheet-on-mobile bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden border border-slate-200 flex flex-col">
+            <div class="flex justify-between items-center px-6 py-4 border-b border-slate-100 flex-shrink-0">
+                <div>
+                    <h3 class="text-base font-black text-slate-900">محرر قوالب التنسيق</h3>
+                    <p class="text-[11px] font-bold text-slate-400">اسحب الشعار والختم والتوقيع لتغيير مواضعها، وعدّل نص الرأس والتذييل</p>
+                </div>
+                <button onclick="window.closeTemplateEditor()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 font-bold flex-shrink-0">&times;</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-0">
+                <!-- عمود التحكم -->
+                <div class="p-5 space-y-5 border-l border-slate-100 bg-slate-50/50 overflow-y-auto">
+                    <div>
+                        <label class="block text-xs font-black text-slate-700 mb-2">اسم القالب</label>
+                        <input type="text" id="te-name" placeholder="مثال: قالب الفروع الرئيسية" class="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-black">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-black text-slate-700 mb-2">الطراز الأساسي</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button type="button" onclick="window.setTeBaseStyle('simple')" data-te-style="simple" class="te-style-btn px-2 py-2 rounded-xl border-2 text-[10px] font-black transition">مبسّط</button>
+                            <button type="button" onclick="window.setTeBaseStyle('modern')" data-te-style="modern" class="te-style-btn px-2 py-2 rounded-xl border-2 text-[10px] font-black transition">عصري</button>
+                            <button type="button" onclick="window.setTeBaseStyle('classic')" data-te-style="classic" class="te-style-btn px-2 py-2 rounded-xl border-2 text-[10px] font-black transition">كلاسيكي</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-black text-slate-700 mb-2">نص الرأس</label>
+                        <textarea id="te-header" rows="2" oninput="window.renderTePreview()" placeholder="مثال: اسم المنشأة — الإدارة العامة" class="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-black resize-none"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-black text-slate-700 mb-2">نص التذييل</label>
+                        <textarea id="te-footer" rows="2" oninput="window.renderTePreview()" placeholder="مثال: هذا المستند صادر إلكترونياً ولا يحتاج ختماً إضافياً" class="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-black resize-none"></textarea>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-200">
+                        <p class="text-[11px] font-bold text-slate-500 mb-2"><i class="fas fa-arrows-up-down-left-right ml-1"></i> اسحب أي عنصر بالمعاينة لتغيير موضعه</p>
+                        <div class="flex flex-wrap gap-1.5">
+                            <span class="text-[10px] font-bold px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">الشعار</span>
+                            <span class="text-[10px] font-bold px-2 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">الختم</span>
+                            <span class="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">التوقيع</span>
+                        </div>
+                        <button type="button" onclick="window.resetTePositions()" class="mt-3 text-[10px] font-bold text-slate-500 hover:text-slate-800 underline">إعادة ضبط المواضع الافتراضية</button>
+                    </div>
+                </div>
+
+                <!-- المعاينة -->
+                <div class="p-5 md:p-8 flex items-center justify-center bg-slate-100 overflow-auto">
+                    <div id="te-canvas" class="relative bg-white shadow-lg" style="width:420px;height:594px;flex-shrink:0;">
+                        <div id="te-header-preview" class="absolute top-0 right-0 left-0 p-4 text-xs font-black text-center border-b-2 border-slate-200"></div>
+                        <div id="te-footer-preview" class="absolute bottom-0 right-0 left-0 p-3 text-[10px] font-bold text-center text-slate-400 border-t border-slate-200"></div>
+
+                        <div id="te-logo" class="te-draggable absolute flex items-center justify-center rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/70 text-blue-600 text-[10px] font-black cursor-move select-none" style="touch-action:none;">شعار</div>
+                        <div id="te-stamp" class="te-draggable absolute flex items-center justify-center rounded-lg border-2 border-dashed border-purple-400 bg-purple-50/70 text-purple-600 text-[10px] font-black cursor-move select-none" style="touch-action:none;">ختم</div>
+                        <div id="te-signature" class="te-draggable absolute flex items-center justify-center rounded-lg border-2 border-dashed border-amber-400 bg-amber-50/70 text-amber-600 text-[10px] font-black cursor-move select-none" style="touch-action:none;">توقيع</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 flex-shrink-0">
+                <div id="te-saved-list" class="flex flex-wrap gap-2 flex-1"></div>
+                <div class="flex gap-2 flex-shrink-0">
+                    <button type="button" onclick="window.closeTemplateEditor()" class="px-4 py-2 rounded-full border text-xs font-bold">إلغاء</button>
+                    <button type="button" onclick="window.saveTemplateFromEditor()" class="px-6 py-2 rounded-full bg-brand text-brand-ink font-extrabold text-xs shadow hover:opacity-90">
+                        <i class="fas fa-check ml-1"></i> حفظ واعتماد كقالب مفضّل
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="salary-adj-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center modal-overlay p-4">
         <div class="modal-panel sheet-on-mobile bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 border border-slate-200">
             <div class="flex justify-between items-center mb-4 pb-3 border-b">
@@ -2800,7 +2891,7 @@
         }
         window.transliterateArabicKeys = transliterateArabicKeys;
 
-        const EN_TEXT_FIELDS = ['comp-name-en', 'emp-iban', 'emp-email', 'auth-email'];
+        const EN_TEXT_FIELDS = ['emp-iban', 'emp-email', 'auth-email'];
         // الحقول التي تقبل أرقاماً لاتينية فقط
         const EN_NUMERIC_FIELDS = ['comp-cr', 'emp-nid', 'emp-phone', 'emp-number'];
 
@@ -2976,8 +3067,10 @@
             const r = el.getBoundingClientRect();
             const w = box.offsetWidth;
             let left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
-            let top = r.top - box.offsetHeight - 6;
-            if (top < 8) top = r.bottom + 6;
+            // الافتراضي: أسفل الحقل (حتى يبقى عنوان الحقل نفسه ظاهراً وواضحاً فوقه أثناء الكتابة)
+            let top = r.bottom + 6;
+            // احتياطي: لو ما فيه مساحة كافية أسفل الشاشة، أظهره فوق الحقل بدلاً من قصّه
+            if (top + box.offsetHeight > window.innerHeight - 8) top = r.top - box.offsetHeight - 6;
             box.style.left = left + 'px';
             box.style.top = top + 'px';
         }
@@ -3713,6 +3806,51 @@
                 loadCompanySettingsToUI();
                 window.showToast('تم حذف الورقة الرسمية');
             });
+        };
+
+        // ====================================================================
+        // اقتراح تلقائي لاسم المنشأة بالإنجليزي عبر ترجمة الاسم العربي
+        // (MyMemory API — مجاني وبدون حاجة لمفتاح). يتوقف الاقتراح التلقائي
+        // فور أن يعدّل المستخدم الحقل الإنجليزي يدوياً، حتى لا يُستبدل ما كتبه.
+        // ====================================================================
+        let enNameManuallyEdited = false;
+        let translateDebounceTimer = null;
+
+        window.markEnglishNameEdited = function () {
+            enNameManuallyEdited = true;
+            const status = document.getElementById('comp-name-en-status');
+            if (status) status.innerText = '';
+        };
+
+        window.suggestEnglishCompanyName = function (arabicValue) {
+            // إعادة الضبط: لو المستخدم مسح الحقل العربي بالكامل، اسمح بالاقتراح التلقائي من جديد
+            if (!arabicValue || !arabicValue.trim()) { enNameManuallyEdited = false; return; }
+            if (enNameManuallyEdited) return; // المستخدم عدّل يدوياً؛ لا نستبدل اختياره
+
+            clearTimeout(translateDebounceTimer);
+            const status = document.getElementById('comp-name-en-status');
+            if (status) status.innerText = 'جارٍ الاقتراح...';
+
+            // تأخير بسيط (debounce) لتفادي إرسال طلب مع كل ضغطة حرف أثناء الكتابة السريعة
+            translateDebounceTimer = setTimeout(async () => {
+                try {
+                    const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(arabicValue.trim()) + '&langpair=ar|en';
+                    const res = await fetch(url);
+                    const json = await res.json();
+                    const translated = json?.responseData?.translatedText;
+
+                    // المستخدم ربما عدّل يدوياً أو تابع الكتابة أثناء انتظار الرد؛ تحقق مرة أخرى قبل التطبيق
+                    if (enNameManuallyEdited) return;
+                    const enInput = document.getElementById('comp-name-en');
+                    if (enInput && translated) {
+                        // تهيئة أحرف أولى كبيرة لكل كلمة، شكل مناسب لاسم منشأة تجارية
+                        enInput.value = translated.replace(/\b\w/g, c => c.toUpperCase());
+                    }
+                    if (status) status.innerText = 'اقتراح — يمكن تعديله';
+                } catch (err) {
+                    if (status) status.innerText = '';
+                }
+            }, 600);
         };
 
         window.saveCompanySettings = async function() {
@@ -5025,6 +5163,33 @@
             const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "قالب_الموظفين"); XLSX.writeFile(wb, "HR_Template.xlsx"); window.showToast('تم تصدير القالب الفارغ بنجاح');
         };
 
+        // Excel قد يُرجع خلايا التاريخ بثلاث صور مختلفة حسب تنسيق الخلية الأصلي:
+        // رقم تسلسلي (مثل 45508 = عدد الأيام منذ 1900/1/1)، كائن Date فعلي، أو نص جاهز.
+        // بدون هذا التحويل، الرقم التسلسلي يُرسَل كما هو لقاعدة بيانات Postgres فترفضه
+        // بخطأ "invalid input syntax for type date" لأنه ليس بصيغة تاريخ صالحة.
+        function excelCellToDateString(value) {
+            if (value === null || value === undefined || value === '') return null;
+            // رقم تسلسلي من Excel (Serial Date)
+            if (typeof value === 'number') {
+                // نظام Excel: اليوم 0 هو 1899-12-30 (لتوافقه مع خطأ السنة الكبيسة التاريخي في Excel)
+                const utcMs = Math.round((value - 25569) * 86400 * 1000);
+                const d = new Date(utcMs);
+                if (isNaN(d.getTime())) return null;
+                return d.toISOString().split('T')[0];
+            }
+            // كائن Date فعلي (يحصل أحياناً حسب إعداد XLSX.read بخيار cellDates)
+            if (value instanceof Date) {
+                if (isNaN(value.getTime())) return null;
+                return value.toISOString().split('T')[0];
+            }
+            // نص: حاول تفسيره مباشرة كتاريخ (يغطي صيغ مثل 2024-08-15 أو 15/08/2024)
+            const str = String(value).trim();
+            if (!str) return null;
+            const parsed = new Date(str);
+            if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
+            return null; // تعذّر التفسير: أفضل من إرسال نص غير صالح يرفضه Postgres
+        }
+
         window.importExcelFile = function(e) {
             const file = e.target.files[0]; if (!file) return; const reader = new FileReader();
             reader.onload = async function(evt) {
@@ -5040,10 +5205,10 @@
                             dbRows.push({
                                 company_id: activeCompanyId, owner_id: currentUser.id, nid: nid, name: name, nationality: nat,
                                 job_title: row['المسمى الوظيفي'] || 'موظف', specialty: row['التخصص'] || '',
-                                start_date: row['تاريخ المباشرة'] || new Date().toISOString().split('T')[0],
+                                start_date: excelCellToDateString(row['تاريخ المباشرة']) || new Date().toISOString().split('T')[0],
                                 contract_duration: row['مدة العقد'] || 'سنة واحدة',
-                                emp_number: String(row['الرقم الوظيفي'] || ''), dob: row['تاريخ الميلاد'] || null,
-                                id_type: row['نوع الهوية'] || 'هوية وطنية', id_expiry: row['تاريخ انتهاء الهوية'] || null,
+                                emp_number: String(row['الرقم الوظيفي'] || ''), dob: excelCellToDateString(row['تاريخ الميلاد']),
+                                id_type: row['نوع الهوية'] || 'هوية وطنية', id_expiry: excelCellToDateString(row['تاريخ انتهاء الهوية']),
                                 gender: row['الجنس'] || 'ذكر', religion: row['الديانة'] || 'مسلم',
                                 marital_status: row['الحالة الاجتماعية'] || 'أعزب', education: row['المؤهل العلمي'] || '',
                                 iban: row['رقم الآيبان'] || '', bank: row['اسم البنك'] || '',
@@ -5144,6 +5309,218 @@
             const v = value.startsWith('#') ? value : '#' + value;
             if (isValidHex(v)) window.saveBrandColor(v.toLowerCase());
         };
+
+        // ====================================================================
+        // محرر قوالب التنسيق البصري — رأس/تذييل + مواضع حرة لشعار/ختم/توقيع
+        // القوالب تُحفظ في جدول document_templates (يتطلب migration_document_templates.sql)
+        // ====================================================================
+        let documentTemplates = [];      // كل القوالب المحفوظة للمنشأة النشطة
+        let teDraftPositions = {};       // مواضع العناصر أثناء التحرير (قبل الحفظ)
+        let teDraftBaseStyle = 'modern';
+        let templatesTableSupported = true;
+
+        const TE_DEFAULT_POSITIONS = {
+            logo:      { x: 5,  y: 5,  width: 15, height: 15 },
+            stamp:     { x: 75, y: 78, width: 15, height: 15 },
+            signature: { x: 38, y: 80, width: 24, height: 10 }
+        };
+
+        async function loadDocumentTemplates() {
+            const comp = getActiveCompany(); if (!comp) { documentTemplates = []; return; }
+            const { data, error } = await supabaseClient.from('document_templates').select('*').eq('company_id', comp.id).order('created_at', { ascending: false });
+            if (error) { templatesTableSupported = false; documentTemplates = []; return; }
+            templatesTableSupported = true;
+            documentTemplates = (data || []).map(r => ({
+                id: r.id, name: r.name, baseStyle: r.base_style, isActive: r.is_active === true,
+                headerText: r.header_text || '', footerText: r.footer_text || '',
+                logoPosition: r.logo_position || TE_DEFAULT_POSITIONS.logo,
+                stampPosition: r.stamp_position || TE_DEFAULT_POSITIONS.stamp,
+                signaturePosition: r.signature_position || TE_DEFAULT_POSITIONS.signature
+            }));
+        }
+
+        window.openTemplateEditor = async function () {
+            await loadDocumentTemplates();
+            if (!templatesTableSupported) {
+                window.showToast('هذه الميزة تحتاج تحديث قاعدة البيانات — نفّذ ملف migration_document_templates.sql في Supabase', 'error');
+                return;
+            }
+            const active = documentTemplates.find(t => t.isActive);
+            teDraftPositions = active
+                ? { logo: active.logoPosition, stamp: active.stampPosition, signature: active.signaturePosition }
+                : JSON.parse(JSON.stringify(TE_DEFAULT_POSITIONS));
+            teDraftBaseStyle = active?.baseStyle || getActiveCompany()?.docTemplate || 'modern';
+
+            document.getElementById('te-name').value = active ? active.name : '';
+            document.getElementById('te-header').value = active?.headerText || '';
+            document.getElementById('te-footer').value = active?.footerText || '';
+
+            renderTeSavedList();
+            setTeBaseStyleUI(teDraftBaseStyle);
+            document.getElementById('template-editor-modal').classList.remove('hidden');
+            requestAnimationFrame(() => { renderTePreview(); initTeDragHandlers(); });
+        };
+
+        window.closeTemplateEditor = function () {
+            document.getElementById('template-editor-modal').classList.add('hidden');
+        };
+
+        window.setTeBaseStyle = function (style) {
+            teDraftBaseStyle = style;
+            setTeBaseStyleUI(style);
+            renderTePreview();
+        };
+        function setTeBaseStyleUI(style) {
+            document.querySelectorAll('.te-style-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.teStyle === style);
+            });
+        }
+
+        window.resetTePositions = function () {
+            teDraftPositions = JSON.parse(JSON.stringify(TE_DEFAULT_POSITIONS));
+            renderTePreview();
+        };
+
+        function renderTePreview() {
+            const canvas = document.getElementById('te-canvas'); if (!canvas) return;
+            const comp = getActiveCompany();
+            const color = isValidHex(comp?.brandColor) ? comp.brandColor : '#3b82f6';
+
+            const header = document.getElementById('te-header-preview');
+            const footer = document.getElementById('te-footer-preview');
+            header.innerText = document.getElementById('te-header').value || (comp?.nameAr || 'اسم المنشأة');
+            footer.innerText = document.getElementById('te-footer').value || 'مستند صادر إلكترونياً';
+
+            if (teDraftBaseStyle === 'classic') { header.style.background = color; header.style.color = readableInk(color); }
+            else if (teDraftBaseStyle === 'modern') { header.style.background = tintOf(color); header.style.color = color; }
+            else { header.style.background = '#fff'; header.style.color = '#0f172a'; }
+
+            ['logo', 'stamp', 'signature'].forEach(key => {
+                const el = document.getElementById('te-' + key);
+                const pos = teDraftPositions[key];
+                if (!el || !pos) return;
+                el.style.left = pos.x + '%';
+                el.style.top = pos.y + '%';
+                el.style.width = pos.width + '%';
+                el.style.height = pos.height + '%';
+            });
+        }
+        window.renderTePreview = renderTePreview;
+
+        // منطق السحب: يعمل بالماوس واللمس معاً، ويحوّل الإزاحة بالبكسل إلى نسبة مئوية من أبعاد اللوحة
+        function initTeDragHandlers() {
+            const canvas = document.getElementById('te-canvas');
+            ['logo', 'stamp', 'signature'].forEach(key => {
+                const el = document.getElementById('te-' + key);
+                if (!el || el.dataset.dragReady) return;
+                el.dataset.dragReady = '1';
+
+                const onStart = (clientX, clientY) => {
+                    el.classList.add('dragging');
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const startPos = { ...teDraftPositions[key] };
+
+                    const onMove = (mx, my) => {
+                        const dxPct = ((mx - clientX) / canvasRect.width) * 100;
+                        const dyPct = ((my - clientY) / canvasRect.height) * 100;
+                        let x = Math.max(0, Math.min(100 - startPos.width, startPos.x + dxPct));
+                        let y = Math.max(0, Math.min(100 - startPos.height, startPos.y + dyPct));
+                        teDraftPositions[key] = { ...startPos, x, y };
+                        renderTePreview();
+                    };
+                    const onMouseMove = e => onMove(e.clientX, e.clientY);
+                    const onTouchMove = e => { if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); };
+                    const onEnd = () => {
+                        el.classList.remove('dragging');
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onEnd);
+                        document.removeEventListener('touchmove', onTouchMove);
+                        document.removeEventListener('touchend', onEnd);
+                    };
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onEnd);
+                    document.addEventListener('touchmove', onTouchMove, { passive: false });
+                    document.addEventListener('touchend', onEnd);
+                };
+
+                el.addEventListener('mousedown', e => { e.preventDefault(); onStart(e.clientX, e.clientY); });
+                el.addEventListener('touchstart', e => { if (e.touches[0]) onStart(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+            });
+        }
+
+        function renderTeSavedList() {
+            const box = document.getElementById('te-saved-list'); if (!box) return;
+            if (documentTemplates.length === 0) {
+                box.innerHTML = '<p class="text-[10px] font-bold text-slate-400">لا توجد قوالب مخصّصة محفوظة بعد — احفظ أول قالب لك أدناه</p>';
+                return;
+            }
+            box.innerHTML = documentTemplates.map(t => `
+                <button type="button" onclick="window.loadSavedTemplate('${t.id}')" class="te-saved-chip ${t.isActive ? 'active' : ''}">
+                    <i class="fas ${t.isActive ? 'fa-star' : 'fa-file-lines'}"></i> ${escapeHtml(t.name)}
+                    <span onclick="event.stopPropagation(); window.deleteSavedTemplate('${t.id}')" class="hover:text-red-500"><i class="fas fa-times"></i></span>
+                </button>`).join('');
+        }
+
+        window.loadSavedTemplate = function (id) {
+            const t = documentTemplates.find(x => x.id === id); if (!t) return;
+            teDraftPositions = { logo: t.logoPosition, stamp: t.stampPosition, signature: t.signaturePosition };
+            teDraftBaseStyle = t.baseStyle;
+            document.getElementById('te-name').value = t.name;
+            document.getElementById('te-header').value = t.headerText;
+            document.getElementById('te-footer').value = t.footerText;
+            setTeBaseStyleUI(t.baseStyle);
+            renderTePreview();
+        };
+
+        window.deleteSavedTemplate = async function (id) {
+            window.showConfirmModal('حذف القالب', 'هل تريد حذف هذا القالب المخصّص نهائياً؟', async () => {
+                const { error } = await supabaseClient.from('document_templates').delete().eq('id', id);
+                if (error) { window.showToast('تعذر حذف القالب: ' + error.message, 'error'); return; }
+                documentTemplates = documentTemplates.filter(t => t.id !== id);
+                renderTeSavedList();
+                window.showToast('تم حذف القالب');
+            });
+        };
+
+        window.saveTemplateFromEditor = async function () {
+            const comp = getActiveCompany(); if (!comp) return;
+            const name = document.getElementById('te-name').value.trim() || ('قالب ' + new Date().toLocaleDateString('ar-SA'));
+            const headerText = document.getElementById('te-header').value.trim();
+            const footerText = document.getElementById('te-footer').value.trim();
+
+            // إلغاء تفعيل أي قالب سابق (قالب واحد مفعّل فقط لكل منشأة، يضمنه فهرس فريد جزئي بقاعدة البيانات)
+            const prevActive = documentTemplates.find(t => t.isActive);
+            if (prevActive) {
+                await supabaseClient.from('document_templates').update({ is_active: false }).eq('id', prevActive.id);
+            }
+
+            const payload = {
+                company_id: comp.id, owner_id: currentUser.id, name,
+                base_style: teDraftBaseStyle, is_active: true,
+                header_text: headerText, footer_text: footerText,
+                logo_position: teDraftPositions.logo, stamp_position: teDraftPositions.stamp, signature_position: teDraftPositions.signature
+            };
+
+            const { data, error } = await supabaseClient.from('document_templates').insert(payload).select().single();
+            if (error) { window.showToast('تعذر حفظ القالب: ' + error.message, 'error'); return; }
+
+            // اعتماد الطراز الأساسي أيضاً على منتقي القوالب الحالي حتى يبقى متسقاً في كل مكان
+            await persistDocSetting(comp, 'docTemplate', 'doc_template', teDraftBaseStyle);
+            applyDocIdentity(comp);
+            renderTemplatePicker();
+
+            await loadDocumentTemplates();
+            renderTeSavedList();
+            window.showToast('تم حفظ القالب واعتماده كمفضّل');
+            window.closeTemplateEditor();
+        };
+
+        // يُستدعى عند بناء أي PDF فعلي (عرض وظيفي/مخالصة) لتطبيق الرأس/التذييل ومواضع
+        // الشعار/الختم/التوقيع من القالب المفعّل حالياً، إن وُجد
+        function getActiveDocumentTemplate() {
+            return documentTemplates.find(t => t.isActive) || null;
+        }
+        window.getActiveDocumentTemplate = getActiveDocumentTemplate;
 
         // بنود العرض الوظيفي — تُحفظ محلياً وفي قاعدة البيانات متى أمكن
         window.saveOfferPolicy = async function () {
@@ -5468,7 +5845,39 @@
                     ${conditions}
                     ${signatures}
                     ${acceptance}
-                </div>`;
+                </div>
+                ${renderTemplateOverlayHtml(comp)}`;
+        }
+
+        // يبني طبقة إضافية اختيارية فوق أي مستند PDF بناءً على القالب المخصّص المفعّل
+        // (رأس/تذييل نصي إضافي + عناصر الشعار/الختم/التوقيع بمواضعها الحرة المحفوظة)
+        function renderTemplateOverlayHtml(comp) {
+            const tpl = getActiveDocumentTemplate ? getActiveDocumentTemplate() : null;
+            if (!tpl) return '';
+
+            const posStyle = p => `position:absolute;left:${p.x}%;top:${p.y}%;width:${p.width}%;height:${p.height}%;z-index:2;`;
+            let html = '';
+
+            if (tpl.headerText) {
+                html += `<div style="position:absolute;top:0;right:0;left:0;z-index:3;padding:6mm 14mm;
+                    text-align:center;font-size:10.5px;font-weight:800;">${escapeHtml(tpl.headerText)}</div>`;
+            }
+            if (tpl.footerText) {
+                html += `<div style="position:absolute;bottom:0;right:0;left:0;z-index:3;padding:4mm 14mm;
+                    text-align:center;font-size:8.5px;font-weight:700;color:#64748b;">${escapeHtml(tpl.footerText)}</div>`;
+            }
+            if (comp?.logoBase64 && tpl.logoPosition) {
+                html += `<img src="${escapeHtml(comp.logoBase64)}" style="${posStyle(tpl.logoPosition)}object-fit:contain;">`;
+            }
+            if (comp?.stampBase64 && tpl.stampPosition) {
+                html += `<img src="${escapeHtml(comp.stampBase64)}" style="${posStyle(tpl.stampPosition)}object-fit:contain;">`;
+            }
+            // يعتمد أول توقيع متاح (المسؤول عن الموارد البشرية أولاً، ثم المشرف العام)
+            const signatureSrc = comp?.hrSignBase64 || comp?.mgrSignBase64;
+            if (signatureSrc && tpl.signaturePosition) {
+                html += `<img src="${escapeHtml(signatureSrc)}" style="${posStyle(tpl.signaturePosition)}object-fit:contain;">`;
+            }
+            return html;
         }
 
         window.generateOfferPDF = async function() {
