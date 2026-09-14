@@ -1414,6 +1414,36 @@
                             </div>
                         </form>
                     </div>
+
+                    <!-- إدارة الأقسام/الإدارات — الأساس البنيوي للهيكل التنظيمي والرقم الوظيفي التلقائي -->
+                    <div class="bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm">
+                        <div class="flex justify-between items-center mb-6 border-b pb-4">
+                            <h3 class="text-xl font-black text-slate-900 flex items-center gap-3">
+                                <span class="w-10 h-10 bg-brand text-brand-ink rounded-2xl flex items-center justify-center text-lg"><i class="fas fa-sitemap"></i></span>
+                                الأقسام والإدارات
+                            </h3>
+                            <button type="button" onclick="window.seedDefaultDepartmentsForActiveCompany()" class="px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-extrabold text-slate-700">
+                                <i class="fas fa-wand-magic-sparkles ml-1"></i> إضافة الأقسام الجاهزة
+                            </button>
+                        </div>
+                        <p class="text-xs font-bold text-slate-400 mb-5">كل قسم له اختصار خاص يُستخدم لتوليد الرقم الوظيفي تلقائياً لكل موظف ينضم إليه (مثال: IT-001, IT-002...)</p>
+
+                        <div id="departments-list" class="space-y-2 mb-5"></div>
+
+                        <form id="add-department-form" onsubmit="window.createDepartment(event)" class="flex flex-wrap items-end gap-3 pt-4 border-t border-slate-100">
+                            <div class="flex-1 min-w-[160px]">
+                                <label class="block text-[11px] font-bold text-slate-600 mb-1">اسم القسم</label>
+                                <input type="text" id="dept-name" required placeholder="مثال: تقنية المعلومات" class="w-full border rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-black">
+                            </div>
+                            <div class="w-32">
+                                <label class="block text-[11px] font-bold text-slate-600 mb-1">اختصار الرقم الوظيفي</label>
+                                <input type="text" id="dept-prefix" required maxlength="6" placeholder="مثال: IT" dir="ltr" class="w-full border rounded-xl p-2.5 text-xs font-bold text-center uppercase focus:outline-none focus:ring-2 focus:ring-black">
+                            </div>
+                            <button type="submit" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-full text-xs shadow flex-shrink-0">
+                                <i class="fas fa-plus ml-1"></i> إضافة قسم
+                            </button>
+                        </form>
+                    </div>
                 </div>
 
             </div>
@@ -1444,8 +1474,23 @@
                             <input type="text" id="emp-job" required oninput="window.updateSpecialties()" class="w-full border rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-black">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">الرقم الوظيفي</label>
-                            <input type="text" id="emp-number" class="w-full border rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-black" placeholder="مثال: 11">
+                            <label class="block text-xs font-bold text-slate-700 mb-1">القسم / الإدارة</label>
+                            <select id="emp-department" onchange="window.onEmployeeDepartmentChange()" class="w-full border rounded-xl p-2.5 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-black">
+                                <option value="">— بدون قسم —</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">
+                                الرقم الوظيفي
+                                <span class="text-[10px] font-bold text-slate-400">(تلقائي حسب القسم)</span>
+                            </label>
+                            <input type="text" id="emp-number" readonly placeholder="اختر قسماً أولاً" class="w-full border rounded-xl p-2.5 font-bold bg-slate-50 text-slate-500 cursor-not-allowed" dir="ltr">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">المدير المباشر</label>
+                            <select id="emp-manager" class="w-full border rounded-xl p-2.5 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-black">
+                                <option value="">— بدون مدير مباشر —</option>
+                            </select>
                         </div>
                         
                         <div>
@@ -1743,6 +1788,30 @@
                                         <input type="number" step="0.01" id="cls-ded-compensation" value="0" class="w-full border border-red-200 rounded-lg p-2 font-bold text-xs bg-white focus:ring-1 focus:ring-red-500" oninput="window.saveClearanceProgress()">
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80">
+                        <div class="flex items-center justify-between mb-4 border-b pb-2">
+                            <h4 class="font-black text-slate-800 text-sm">الهيكلية الإدارية</h4>
+                            <span class="text-[10px] font-bold text-slate-400">يُحفظ تلقائياً</span>
+                        </div>
+                        <div class="space-y-3 text-xs font-semibold">
+                            <div>
+                                <label class="block text-slate-500 mb-1">القسم / الإدارة</label>
+                                <select id="d-department" onchange="window.saveEmployeeField('department_id', this.value || null)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-black">
+                                    <option value="">— بدون قسم —</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-slate-500 mb-1">المدير المباشر</label>
+                                <select id="d-manager" onchange="window.saveEmployeeField('manager_id', this.value || null)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-black">
+                                    <option value="">— بدون مدير مباشر —</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 border-t pt-2 mt-2">
+                                <span class="text-slate-500 flex-shrink-0">الرقم الوظيفي:</span>
+                                <span class="font-black text-slate-900 font-mono" id="d-emp-number" dir="ltr">-</span>
                             </div>
                         </div>
                     </div>
@@ -2161,13 +2230,25 @@
         }
 
         const specialtiesMap = {
-            "محاسب": ["محاسبة مالية", "مراجعة حسابات", "تكاليف وموازنات"],
-            "معلم": ["لغة عربية", "رياضيات", "لغة إنجليزية", "علوم", "تربية إسلامية", "حاسب آلي"],
-            "مهندس": ["هندسة مدنية", "هندسة معمارية", "هندسة حاسب"],
-            "إداري": ["إدارة أعمال", "سکرتارية تنفيذية", "موارد بشرية"],
-            "طبيب": ["طب عام", "جراحة", "أطفال"],
-            "ممرض": ["تمريض عام", "تمريض طوارئ"],
-            "مبرمج": ["تطوير ويب", "تطوير تطبيقات", "أمن سيبراني"]
+            "محاسب": ["محاسبة مالية", "مراجعة حسابات", "تكاليف وموازنات", "محاسبة ضريبية", "محاسبة إدارية"],
+            "معلم": ["لغة عربية", "رياضيات", "لغة إنجليزية", "علوم", "تربية إسلامية", "حاسب آلي", "اجتماعيات", "تربية فنية", "تربية بدنية", "فيزياء", "كيمياء", "أحياء"],
+            "معلمة": ["لغة عربية", "رياضيات", "لغة إنجليزية", "علوم", "تربية إسلامية", "حاسب آلي", "اجتماعيات", "تربية فنية", "تربية بدنية", "رياض أطفال"],
+            "مهندس": ["هندسة مدنية", "هندسة معمارية", "هندسة حاسب", "هندسة كهربائية", "هندسة ميكانيكية", "هندسة صناعية", "هندسة كيميائية"],
+            "إداري": ["إدارة أعمال", "سکرتارية تنفيذية", "موارد بشرية", "إدارة مكتبية", "علاقات عامة", "شؤون موظفين"],
+            "طبيب": ["طب عام", "جراحة", "أطفال", "باطنية", "نساء وولادة", "عظام", "جلدية", "أسنان", "عيون", "أنف وأذن وحنجرة"],
+            "ممرض": ["تمريض عام", "تمريض طوارئ", "تمريض عناية مركزة", "تمريض أطفال", "تمريض عمليات"],
+            "مبرمج": ["تطوير ويب", "تطوير تطبيقات", "أمن سيبراني", "تطوير واجهات", "ذكاء اصطناعي", "قواعد بيانات"],
+            "مدير": ["إدارة عامة", "إدارة تشغيلية", "إدارة مشاريع", "إدارة مبيعات", "إدارة تسويق"],
+            "مشرف": ["إشراف تربوي", "إشراف إداري", "إشراف فني", "إشراف على الجودة"],
+            "سائق": ["نقل عام", "نقل ثقيل", "نقل مدرسي", "توصيل طلبات"],
+            "فني": ["فني صيانة", "فني كهرباء", "فني تكييف", "فني شبكات", "فني حاسب آلي"],
+            "مسوق": ["تسويق رقمي", "تسويق تقليدي", "إدارة وسائل التواصل", "تحليل بيانات تسويقية"],
+            "مندوب": ["مندوب مبيعات", "مندوب توزيع", "مندوب تحصيل"],
+            "أخصائي": ["أخصائي موارد بشرية", "أخصائي تسويق", "أخصائي جودة", "أخصائي تدريب", "أخصائي نفسي"],
+            "محامي": ["قانون تجاري", "قانون عمالي", "قانون جنائي", "قانون مدني"],
+            "مترجم": ["ترجمة فورية", "ترجمة تحريرية", "ترجمة قانونية"],
+            "مصمم": ["تصميم جرافيك", "تصميم داخلي", "تصميم مواقع", "تصميم أزياء"],
+            "صيدلي": ["صيدلة إكلينيكية", "صيدلة مجتمعية", "صيدلة صناعية"]
         };
 
         const standardTags = ["بدون عقد", "مسير", "حوالات خاصة", "مسير البنين", "ليس على الكفالة", "عقد مؤقت", "عدم تجديد", "تاريخ مباشرة"];
@@ -2407,12 +2488,15 @@
 
             activeCompanyId = companies[0].id;
             await loadEmployeesFromDb();
+            await loadDepartments();
 
             renderCompanySelector();
             loadCompanySettingsToUI();
             renderTable();
             renderTerminatedTable();
             renderStats();
+            renderDepartmentsList();
+            populateDepartmentDropdowns();
 
             const layout = document.getElementById('hr-layout');
             if (layout) { layout.classList.remove('hidden'); layout.classList.add('flex'); }
@@ -2443,6 +2527,7 @@
             }
             if (ins.error) { window.showToast('تعذر إكمال إنشاء المنشأة: ' + ins.error.message, 'error'); return; }
             companies = [mapCompanyFromDb(ins.data)];
+            await seedDefaultDepartments(ins.data.id);
         }
 
         async function createDefaultCompanyForNewUser() {
@@ -2455,6 +2540,30 @@
             }).select().single();
             if (error) { window.showToast('تعذر إنشاء منشأة افتراضية: ' + error.message, 'error'); return; }
             companies = [mapCompanyFromDb(data)];
+            await seedDefaultDepartments(data.id);
+        }
+
+        // قائمة أقسام إدارية وتعليمية جاهزة تُضاف تلقائياً عند إنشاء أي منشأة جديدة،
+        // توفيراً لوقت الإدخال اليدوي. المستخدم يستطيع تعديلها أو حذفها لاحقاً بحرية.
+        const DEFAULT_DEPARTMENTS = [
+            { name: 'الإدارة العامة',        codePrefix: 'GEN' },
+            { name: 'الموارد البشرية',        codePrefix: 'HR'  },
+            { name: 'الشؤون المالية',         codePrefix: 'FIN' },
+            { name: 'تقنية المعلومات',        codePrefix: 'IT'  },
+            { name: 'التسويق والمبيعات',      codePrefix: 'MKT' },
+            { name: 'خدمة العملاء',           codePrefix: 'CS'  },
+            { name: 'الشؤون التعليمية',       codePrefix: 'EDU' },
+            { name: 'الإشراف التربوي',        codePrefix: 'SUP' },
+            { name: 'شؤون الطلاب',            codePrefix: 'STD' },
+            { name: 'الأنشطة والفعاليات',     codePrefix: 'ACT' }
+        ];
+
+        async function seedDefaultDepartments(companyId) {
+            const rows = DEFAULT_DEPARTMENTS.map(d => ({
+                company_id: companyId, owner_id: currentUser.id, name: d.name, code_prefix: d.codePrefix
+            }));
+            // نتجاهل أي خطأ هنا بهدوء (مثلاً لو الجدول غير موجود بعد) حتى لا يتعطل تسجيل حساب جديد بسببه
+            await supabaseClient.from('departments').insert(rows);
         }
 
         // --------------------------------------------------------------
@@ -2924,7 +3033,7 @@
 
         const EN_TEXT_FIELDS = ['emp-iban', 'emp-email', 'auth-email'];
         // الحقول التي تقبل أرقاماً لاتينية فقط
-        const EN_NUMERIC_FIELDS = ['comp-cr', 'emp-nid', 'emp-phone', 'emp-number'];
+        const EN_NUMERIC_FIELDS = ['comp-cr', 'emp-nid', 'emp-phone'];
 
         // تحويل الأرقام العربية والفارسية إلى لاتينية + توحيد الفاصلة العشرية
         function toLatinDigits(str) {
@@ -3236,6 +3345,7 @@
             set('emp-religion', emp.religion); set('emp-marital', emp.maritalStatus); set('emp-education', emp.education);
             set('emp-iban', emp.iban); set('emp-bank', emp.bank); set('emp-email', emp.email); set('emp-phone', emp.phone);
             set('emp-date', emp.startDate); set('emp-contract-duration', emp.contractDuration);
+            populateDepartmentDropdowns(); set('emp-department', emp.departmentId); set('emp-manager', emp.managerId);
             window.updateSpecialties(); set('emp-specialty', emp.specialty);
             set('emp-total-salary', emp.financials?.total || 0);
             const gosiCb = document.getElementById('gosi-new-system');
@@ -3661,6 +3771,148 @@
         }
 
         // ====================================================================
+        // الأقسام/الإدارات + الرقم الوظيفي التلقائي + المدير المباشر
+        // يتطلب تنفيذ migration_departments_hierarchy.sql في Supabase
+        // ====================================================================
+        let departments = [];
+        let departmentsTableSupported = true;
+
+        async function loadDepartments() {
+            if (!activeCompanyId) { departments = []; return; }
+            const { data, error } = await supabaseClient.from('departments').select('*').eq('company_id', activeCompanyId).order('created_at', { ascending: true });
+            if (error) {
+                departmentsTableSupported = false;
+                departments = [];
+                return;
+            }
+            departmentsTableSupported = true;
+            departments = (data || []).map(r => ({ id: r.id, name: r.name, codePrefix: r.code_prefix, nextSeq: r.next_seq }));
+        }
+
+        function renderDepartmentsList() {
+            const box = document.getElementById('departments-list'); if (!box) return;
+            if (!departmentsTableSupported) {
+                box.innerHTML = `<p class="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">
+                    هذه الميزة تحتاج تحديث قاعدة البيانات — نفّذ ملف migration_departments_hierarchy.sql في Supabase</p>`;
+                return;
+            }
+            if (departments.length === 0) {
+                box.innerHTML = '<p class="text-xs font-bold text-slate-400 text-center py-4">لا توجد أقسام بعد — أضف أول قسم أدناه</p>';
+                return;
+            }
+            box.innerHTML = departments.map(d => `
+                <div class="flex items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                    <div class="flex items-center gap-2.5">
+                        <span class="px-2.5 py-1 rounded-lg bg-slate-900 text-accent text-[10px] font-black font-mono">${escapeHtml(d.codePrefix)}</span>
+                        <span class="text-sm font-bold text-slate-800">${escapeHtml(d.name)}</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[10px] font-bold text-slate-400">التالي: ${escapeHtml(d.codePrefix)}-${String(d.nextSeq).padStart(3, '0')}</span>
+                        <button onclick="window.deleteDepartment('${d.id}')" class="w-7 h-7 rounded-full hover:bg-red-100 text-red-500 flex items-center justify-center"><i class="fas fa-trash text-[11px]"></i></button>
+                    </div>
+                </div>`).join('');
+        }
+
+        window.seedDefaultDepartmentsForActiveCompany = async function () {
+            if (!departmentsTableSupported) {
+                window.showToast('نفّذ ملف migration_departments_hierarchy.sql في Supabase أولاً', 'error');
+                return;
+            }
+            // تجاهل أي قسم اختصاره موجود بالفعل، لتفادي رفض قاعدة البيانات لتكرار الاختصار
+            const existingPrefixes = new Set(departments.map(d => d.codePrefix.toUpperCase()));
+            const toInsert = DEFAULT_DEPARTMENTS
+                .filter(d => !existingPrefixes.has(d.codePrefix.toUpperCase()))
+                .map(d => ({ company_id: activeCompanyId, owner_id: currentUser.id, name: d.name, code_prefix: d.codePrefix }));
+
+            if (toInsert.length === 0) {
+                window.showToast('كل الأقسام الجاهزة مضافة بالفعل');
+                return;
+            }
+
+            const { data, error } = await supabaseClient.from('departments').insert(toInsert).select();
+            if (error) { window.showToast('تعذر إضافة الأقسام: ' + error.message, 'error'); return; }
+
+            data.forEach(r => departments.push({ id: r.id, name: r.name, codePrefix: r.code_prefix, nextSeq: r.next_seq }));
+            renderDepartmentsList();
+            populateDepartmentDropdowns();
+            window.showToast(`تم إضافة ${data.length} قسم جديد`);
+        };
+
+        window.createDepartment = async function (e) {
+            e.preventDefault();
+            if (!departmentsTableSupported) {
+                window.showToast('نفّذ ملف migration_departments_hierarchy.sql في Supabase أولاً', 'error');
+                return;
+            }
+            const name = document.getElementById('dept-name').value.trim();
+            const prefix = document.getElementById('dept-prefix').value.trim().toUpperCase();
+            if (!name || !prefix) return;
+
+            const { data, error } = await supabaseClient.from('departments').insert({
+                company_id: activeCompanyId, owner_id: currentUser.id, name, code_prefix: prefix
+            }).select().single();
+
+            if (error) {
+                const msg = /duplicate key|unique/i.test(error.message)
+                    ? 'هذا الاختصار مستخدم بالفعل لقسم آخر — اختر اختصاراً مختلفاً'
+                    : 'تعذر إضافة القسم: ' + error.message;
+                window.showToast(msg, 'error');
+                return;
+            }
+
+            departments.push({ id: data.id, name: data.name, codePrefix: data.code_prefix, nextSeq: data.next_seq });
+            document.getElementById('add-department-form').reset();
+            renderDepartmentsList();
+            populateDepartmentDropdowns();
+            window.showToast('تم إضافة القسم بنجاح');
+        };
+
+        window.deleteDepartment = async function (id) {
+            window.showConfirmModal('حذف القسم', 'سيبقى الموظفون الحاليون بهذا القسم دون تغيير، لكن لن يعود بالإمكان اختياره للموظفين الجدد. هل تريد المتابعة؟', async () => {
+                const { error } = await supabaseClient.from('departments').delete().eq('id', id);
+                if (error) { window.showToast('تعذر حذف القسم: ' + error.message, 'error'); return; }
+                departments = departments.filter(d => d.id !== id);
+                renderDepartmentsList();
+                populateDepartmentDropdowns();
+                window.showToast('تم حذف القسم');
+            });
+        };
+
+        // يملأ كل القوائم المنسدلة ذات الصلة بالأقسام والمديرين المحتملين في الصفحة
+        // (نموذج الإضافة ونافذة "إدارة" معاً) من نفس المصدر الموحّد
+        function populateDepartmentDropdowns() {
+            const deptSelects = [document.getElementById('emp-department'), document.getElementById('d-department')];
+            deptSelects.forEach(sel => {
+                if (!sel) return;
+                const current = sel.value;
+                sel.innerHTML = '<option value="">— بدون قسم —</option>' +
+                    departments.map(d => `<option value="${d.id}">${escapeHtml(d.name)} (${escapeHtml(d.codePrefix)})</option>`).join('');
+                if (current && departments.some(d => d.id === current)) sel.value = current;
+            });
+
+            const mgrSelects = [document.getElementById('emp-manager'), document.getElementById('d-manager')];
+            mgrSelects.forEach(sel => {
+                if (!sel) return;
+                const current = sel.value;
+                // الموظف لا يمكن أن يكون مديراً لنفسه: نستثنيه عند التعديل
+                const candidates = employees.filter(e => e.id !== selectedEmployeeId && !e.isArchived && !e.isTerminated);
+                sel.innerHTML = '<option value="">— بدون مدير مباشر —</option>' +
+                    candidates.map(e => `<option value="${e.id}">${escapeHtml(e.name)} — ${escapeHtml(e.jobTitle || '')}</option>`).join('');
+                if (current && candidates.some(e => e.id === current)) sel.value = current;
+            });
+        }
+
+        // عند اختيار قسم بنموذج "إضافة موظف جديد"، نعرض معاينة للرقم القادم (التوليد الفعلي والمضمون يحصل عند الحفظ)
+        window.onEmployeeDepartmentChange = function () {
+            const deptId = document.getElementById('emp-department')?.value;
+            const numberField = document.getElementById('emp-number');
+            if (!numberField) return;
+            const dept = departments.find(d => d.id === deptId);
+            numberField.value = dept ? (dept.codePrefix + '-' + String(dept.nextSeq).padStart(3, '0') + ' (تقريبي)') : '';
+            numberField.placeholder = dept ? '' : 'اختر قسماً أولاً';
+        };
+
+        // ====================================================================
         // إعدادات المستندات (الأوراق الرسمية والألوان والقالب)
         // تُحفظ محلياً دائماً، وتُحفظ في قاعدة البيانات أيضاً متى كانت الأعمدة موجودة.
         // بهذا لا يتوقف رفع المرفقات على حالة قاعدة البيانات إطلاقاً.
@@ -4037,6 +4289,7 @@
             window.isAddingTerminated = isTerminated;
             editingEmployeeId = null;                 // نافذة جديدة = إضافة وليس تعديل
             hideDupTooltip();
+            populateDepartmentDropdowns();             // تحديث قوائم القسم والمدير بآخر البيانات المتاحة
             Object.keys(DUP_FIELDS).forEach(fid => {
                 const f = document.getElementById(fid);
                 if (f) { f.classList.remove('field-dup'); f.dataset.dupOwner = ''; }
@@ -4044,7 +4297,7 @@
             document.getElementById('add-form')?.reset();
             
             // تفريغ الحقول الجديدة
-            const extraFields = ['emp-number', 'emp-dob', 'emp-id-expiry', 'emp-education', 'emp-iban', 'emp-bank', 'emp-email', 'emp-phone'];
+            const extraFields = ['emp-number', 'emp-dob', 'emp-id-expiry', 'emp-education', 'emp-iban', 'emp-bank', 'emp-email', 'emp-phone', 'emp-department', 'emp-manager'];
             extraFields.forEach(id => {
                 const el = document.getElementById(id);
                 if(el) el.value = '';
@@ -4098,6 +4351,15 @@
                 return;
             }
 
+            // الرقم الوظيفي يُولَّد تلقائياً فقط عند إضافة موظف جديد مرتبط بقسم؛
+            // في وضع التعديل نُبقي الرقم الحالي كما هو حتى لا يتغيّر رقم موظف قائم فعلياً
+            const departmentId = document.getElementById('emp-department')?.value || null;
+            let empNumber = document.getElementById('emp-number')?.value || '';
+            if (!editingEmployeeId && departmentId && !empNumber) {
+                const { data: generated, error: genErr } = await supabaseClient.rpc('next_employee_number', { p_department_id: departmentId });
+                if (!genErr && generated) empNumber = generated;
+            }
+
             const dbRow = {
                 company_id: activeCompanyId, owner_id: currentUser.id, nid: nid,
                 name: document.getElementById('emp-name')?.value || '',
@@ -4106,7 +4368,9 @@
                 start_date: document.getElementById('emp-date')?.value || new Date().toISOString().split('T')[0],
                 contract_duration: document.getElementById('emp-contract-duration')?.value || 'سنة واحدة',
 
-                emp_number: document.getElementById('emp-number')?.value || '',
+                emp_number: empNumber,
+                department_id: departmentId,
+                manager_id: document.getElementById('emp-manager')?.value || null,
                 dob: document.getElementById('emp-dob')?.value || null,
                 id_type: document.getElementById('emp-id-type')?.value || 'هوية وطنية',
                 id_expiry: document.getElementById('emp-id-expiry')?.value || null,
@@ -4171,6 +4435,7 @@
                 empNumber: row.emp_number, dob: row.dob, idType: row.id_type, idExpiry: row.id_expiry, gender: row.gender,
                 religion: row.religion, maritalStatus: row.marital_status, education: row.education, iban: row.iban,
                 bank: row.bank, email: row.email, phone: row.phone,
+                departmentId: row.department_id || null, managerId: row.manager_id || null,
                 financials: {
                     total: Number(row.total_salary) || 0, basic: Number(row.basic_salary) || 0, housing: Number(row.housing_allowance) || 0,
                     transport: Number(row.transport_allowance) || 0, gosi: Number(row.gosi_deduction) || 0, isNewGosi: row.is_new_gosi
@@ -4665,6 +4930,11 @@
             document.getElementById('d-start-date').value = emp.startDate || '';
             document.getElementById('d-phone').value = emp.phone || '';
 
+            populateDepartmentDropdowns();
+            document.getElementById('d-department').value = emp.departmentId || '';
+            document.getElementById('d-manager').value = emp.managerId || '';
+            document.getElementById('d-emp-number').innerText = emp.empNumber || '—';
+
             document.getElementById('details-modal')?.classList.remove('hidden');
         };
 
@@ -4882,7 +5152,7 @@
             persistEmployeeFinancials(emp.id, emp.financials);
         };
 
-        const EMP_FIELD_TO_COLUMN = { nid: 'nid', nationality: 'nationality', start_date: 'start_date', phone: 'phone' };
+        const EMP_FIELD_TO_COLUMN = { nid: 'nid', nationality: 'nationality', start_date: 'start_date', phone: 'phone', department_id: 'department_id', manager_id: 'manager_id' };
         const persistEmployeeField = debounce(async (empId, column, value) => {
             const { error } = await supabaseClient.from('employees').update({ [column]: value }).eq('id', empId);
             if (error) window.showToast('تعذر حفظ التعديل: ' + error.message, 'error');
@@ -4893,8 +5163,8 @@
             const emp = employees.find(e => e.id === selectedEmployeeId); if (!emp) return;
             const column = EMP_FIELD_TO_COLUMN[uiKey]; if (!column) return;
 
-            // تحديث الحالة المحلية فوراً بنفس اسم الخاصية المستخدم في باقي الواجهة
-            const camelKey = uiKey === 'start_date' ? 'startDate' : uiKey;
+            // تحديث الحالة المحلية فوراً بنفس اسم الخاصية المستخدم في باقي الواجهة (camelCase)
+            const camelKey = uiKey.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
             emp[camelKey] = value;
 
             persistEmployeeField(emp.id, column, value);
@@ -5244,7 +5514,8 @@
                 'رقم الهوية': '1010101010', 'الاسم الرباعي': 'اسم الموظف للتجربة', 'الجنسية': 'سعودي', 
                 'المسمى الوظيفي': 'محاسب', 'التخصص': 'مالية', 'تاريخ المباشرة': '2025-01-01', 
                 'مدة العقد': 'سنة واحدة', 'إجمالي الراتب': '5000',
-                'الرقم الوظيفي': '11', 'تاريخ الميلاد': '1990-01-01', 'نوع الهوية': 'هوية وطنية',
+                'الرقم الوظيفي': '11', 'المدير المباشر': 'اسم المدير الرباعي كما هو مكتوب بصف آخر بنفس الملف (اختياري)',
+                'تاريخ الميلاد': '1990-01-01', 'نوع الهوية': 'هوية وطنية',
                 'تاريخ انتهاء الهوية': '2030-01-01', 'الجنس': 'ذكر', 'الديانة': 'مسلم',
                 'الحالة الاجتماعية': 'متزوج', 'المؤهل العلمي': 'بكالوريوس', 'رقم الآيبان': 'SA0000000000000000000000',
                 'اسم البنك': 'مصرف الراجحي', 'البريد الإلكتروني': 'email@example.com', 'رقم الجوال': '0512345678'
@@ -5286,11 +5557,18 @@
                     const data = new Uint8Array(evt.target.result); const workbook = XLSX.read(data, { type: 'array' });
                     const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
                     const dbRows = [];
+                    // نحتفظ باسم المدير المباشر المذكور بالملف لكل موظف (برقم هويته كمفتاح)
+                    // لنستخدمه في خطوة ربط لاحقة بعد أن تصبح كل الأسماء موجودة فعلياً بقاعدة البيانات
+                    const managerNameByNid = {};
+
                     rows.slice(0, 500).forEach(row => {
                         const name = row['الاسم الرباعي'] || row['الاسم']; const nid = String(row['رقم الهوية'] || '').trim();
                         if (name && nid) {
                             const total = parseFloat(row['إجمالي الراتب'] || 5000); const nat = row['الجنسية'] || 'سعودي';
                             const s = window.calculateSalaryStructure(total, false, nat);
+                            const managerName = String(row['المدير المباشر'] || '').trim();
+                            if (managerName) managerNameByNid[nid] = managerName;
+
                             dbRows.push({
                                 company_id: activeCompanyId, owner_id: currentUser.id, nid: nid, name: name, nationality: nat,
                                 job_title: row['المسمى الوظيفي'] || 'موظف', specialty: row['التخصص'] || '',
@@ -5317,13 +5595,56 @@
                         .upsert(dbRows, { onConflict: 'company_id,nid' }).select();
                     if (error) throw error;
 
+                    // ربط المدير المباشر تلقائياً: نطابق اسم المدير المذكور بالملف مع أسماء
+                    // الموظفين المستوردين فعلياً بقاعدة البيانات (تطابق تام للاسم، غير حساس للمسافات الزائدة)
+                    const managerLinks = await linkImportedManagers(upserted, managerNameByNid);
+
                     await loadEmployeesFromDb();
                     renderTable(); renderTerminatedTable(); renderStats();
-                    window.showToast(`تم استيراد ${upserted.length} موظف بنجاح!`);
+                    await loadDepartments(); populateDepartmentDropdowns();
+
+                    let msg = `تم استيراد ${upserted.length} موظف بنجاح!`;
+                    if (managerLinks.linked > 0) msg += ` تم ربط ${managerLinks.linked} موظف بمديرهم المباشر تلقائياً.`;
+                    if (managerLinks.unmatched.length > 0) {
+                        msg += ` تعذّر إيجاد ${managerLinks.unmatched.length} اسم مدير مذكور بالملف ضمن الموظفين المستوردين.`;
+                    }
+                    window.showToast(msg);
                 } catch(err) { window.showToast('تأكد من استخدام القالب الصحيح: ' + (err.message || ''), 'error'); }
                 e.target.value = '';
             }; reader.readAsArrayBuffer(file);
         };
+
+        // يربط كل موظف مستورد بمديره المباشر عبر مطابقة الاسم مع بقية الموظفين المستوردين
+        // بنفس الدفعة. يُرجع عدد الروابط الناجحة وقائمة أسماء المديرين التي تعذّر إيجادها.
+        async function linkImportedManagers(upsertedRows, managerNameByNid) {
+            const result = { linked: 0, unmatched: [] };
+            const nidsNeedingManager = Object.keys(managerNameByNid);
+            if (nidsNeedingManager.length === 0) return result;
+
+            // فهرس الاسم (بعد تطبيع المسافات) إلى معرّف الموظف، من بين كل الصفوف التي رجعت من upsert
+            const nameToId = {};
+            upsertedRows.forEach(r => { nameToId[String(r.name || '').trim().replace(/\s+/g, ' ')] = r.id; });
+            const nidToId = {}; upsertedRows.forEach(r => { nidToId[r.nid] = r.id; });
+
+            const updates = [];
+            nidsNeedingManager.forEach(nid => {
+                const managerName = managerNameByNid[nid].replace(/\s+/g, ' ');
+                const employeeId = nidToId[nid];
+                const managerId = nameToId[managerName];
+                if (employeeId && managerId && managerId !== employeeId) {
+                    updates.push({ id: employeeId, manager_id: managerId });
+                } else if (!managerId) {
+                    result.unmatched.push(managerNameByNid[nid]);
+                }
+            });
+
+            // تُنفَّذ التحديثات بالتوازي؛ عدد الموظفين المستوردين محدود أصلاً بـ 500 صف كحد أقصى
+            await Promise.all(updates.map(u =>
+                supabaseClient.from('employees').update({ manager_id: u.manager_id }).eq('id', u.id)
+            ));
+            result.linked = updates.length;
+            return result;
+        }
 
         // ====================================================================
         // هوية المستندات: الألوان والقوالب
