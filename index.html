@@ -2170,6 +2170,22 @@
             </button>
             <p id="portal-wa-hint" class="text-[11px] font-bold text-slate-400 text-center mt-2"></p>
 
+            <!-- نص الرسالة الجاهز: يظهر ويُنسخ مباشرة إذا احتجت إرساله يدوياً (واتساب لا يوفّر إرسالاً تلقائياً بدون فتح التطبيق) -->
+            <div class="mt-4 pt-4 border-t border-slate-100">
+                <div class="flex items-center justify-between mb-2">
+                    <button onclick="window.togglePortalMessagePreview()" id="portal-msg-toggle" class="text-[11px] font-extrabold text-slate-600 hover:text-slate-900 flex items-center gap-1.5">
+                        <i class="fas fa-chevron-down text-[9px] transition-transform" id="portal-msg-chevron"></i>
+                        عرض نص الرسالة (قابل للتعديل والنسخ)
+                    </button>
+                </div>
+                <div id="portal-msg-box" class="hidden space-y-2">
+                    <textarea id="portal-msg-text" rows="5" class="w-full border border-slate-200 bg-slate-50 rounded-xl p-3 text-[11px] font-bold leading-relaxed focus:outline-none focus:ring-2 focus:ring-black resize-none"></textarea>
+                    <button onclick="window.copyPortalMessage()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold py-2.5 rounded-full text-xs flex items-center justify-center gap-2">
+                        <i class="fas fa-copy"></i> نسخ نص الرسالة
+                    </button>
+                </div>
+            </div>
+
             <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
                 <span class="text-[11px] font-bold text-slate-500">إلغاء تفعيل الرابط يمنع أي رفع جديد</span>
                 <button onclick="window.disablePortalLink()" class="text-[11px] font-extrabold text-red-600 hover:text-red-700 underline">إلغاء التفعيل</button>
@@ -4962,6 +4978,11 @@
             }
 
             document.getElementById('portal-link-modal')?.classList.remove('hidden');
+            // إعادة ضبط حقل نص الرسالة لحالته المطوية والفارغة، حتى لا يظهر نص موظف سابق
+            document.getElementById('portal-msg-box')?.classList.add('hidden');
+            document.getElementById('portal-msg-chevron').style.transform = '';
+            const msgTextarea = document.getElementById('portal-msg-text');
+            if (msgTextarea) msgTextarea.value = '';
         };
 
         window.closePortalLink = function() {
@@ -4978,18 +4999,53 @@
             window.showToast('تم نسخ الرابط');
         };
 
+        // نص الرسالة الجاهزة لمشاركة رابط بوابة الموظف — دالة واحدة يستخدمها زر واتساب
+        // وحقل المعاينة/النسخ معاً، حتى يبقى النص متطابقاً دائماً بين الاثنين
+        function buildPortalShareMessage(emp, comp, url) {
+            return `مرحباً ${emp.name || ''}\n\n` +
+                `من ${comp?.nameAr || 'إدارة الموارد البشرية'} — نرجو رفع مستنداتك الرسمية عبر الرابط التالي:\n` +
+                `${url}\n\n` +
+                `سيُطلب منك آخر أربعة أرقام من رقم هويتك للتحقق.\nشكراً لتعاونك.`;
+        }
+
         window.sharePortalWhatsApp = function() {
             const emp = employees.find(e => e.id === selectedEmployeeId); if (!emp) return;
             if (!isValidSaudiMobileStrict(emp.phone)) return;
             const comp = getActiveCompany();
             const url = document.getElementById('portal-link-input')?.value || '';
-            const msg =
-                `مرحباً ${emp.name || ''}\n\n` +
-                `من ${comp?.nameAr || 'إدارة الموارد البشرية'} — نرجو رفع مستنداتك الرسمية عبر الرابط التالي:\n` +
-                `${url}\n\n` +
-                `سيُطلب منك آخر أربعة أرقام من رقم هويتك للتحقق.\nشكراً لتعاونك.`;
+            const msg = buildPortalShareMessage(emp, comp, url);
             const intl = toIntlSaudiPhone(emp.phone).replace('+', '');
             window.open(`https://wa.me/${intl}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+        };
+
+        // يُظهر/يُخفي حقل نص الرسالة، ويملؤه عند أول فتح فقط بحيث لا يُستبدل أي تعديل يدوي سواه المستخدم
+        window.togglePortalMessagePreview = function() {
+            const box = document.getElementById('portal-msg-box');
+            const chevron = document.getElementById('portal-msg-chevron');
+            const willShow = box.classList.contains('hidden');
+            box.classList.toggle('hidden');
+            chevron.style.transform = willShow ? 'rotate(-90deg)' : '';
+
+            if (willShow) {
+                const textarea = document.getElementById('portal-msg-text');
+                // نملأ النص فقط إذا كان فارغاً، حتى لا نمحو أي تعديل سابق للمستخدم عند إعادة الفتح
+                if (!textarea.value.trim()) {
+                    const emp = employees.find(e => e.id === selectedEmployeeId);
+                    const comp = getActiveCompany();
+                    const url = document.getElementById('portal-link-input')?.value || '';
+                    if (emp) textarea.value = buildPortalShareMessage(emp, comp, url);
+                }
+            }
+        };
+
+        window.copyPortalMessage = async function() {
+            const textarea = document.getElementById('portal-msg-text'); if (!textarea) return;
+            try {
+                await navigator.clipboard.writeText(textarea.value);
+            } catch (_) {
+                textarea.select(); try { document.execCommand('copy'); } catch (e) {}
+            }
+            window.showToast('تم نسخ نص الرسالة — يمكنك لصقه بأي محادثة واتساب أو بريد أو رسالة نصية');
         };
 
         window.disablePortalLink = async function() {
