@@ -1513,23 +1513,6 @@
             </div>
             
             <form id="add-form" class="p-6 space-y-6">
-                <div class="bg-purple-50 border border-purple-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
-                    <div class="flex items-center gap-2 min-w-0">
-                        <i class="fas fa-file-pdf text-purple-600 text-lg flex-shrink-0"></i>
-                        <div class="min-w-0">
-                            <p class="text-xs font-black text-purple-900">جلب البيانات من ملف عقد PDF</p>
-                            <p class="text-[10px] font-bold text-purple-500">اضغط "جلب البيانات" لإرفاق ملف عقد رسمي وتعبئة الحقول تلقائياً — أو تجاهل واملأ الحقول يدوياً</p>
-                        </div>
-                    </div>
-                    <div class="flex-shrink-0">
-                        <input type="file" id="contract-pdf-input" accept="application/pdf" class="hidden" onchange="window.extractContractPdf(event)">
-                        <button type="button" onclick="document.getElementById('contract-pdf-input').click()" id="contract-pdf-btn"
-                                class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-full font-extrabold text-xs shadow flex items-center gap-2">
-                            <i class="fas fa-download"></i> جلب البيانات
-                        </button>
-                    </div>
-                </div>
-
                 <div class="bg-slate-50 p-6 rounded-2xl border border-slate-200/60">
                     <h4 class="font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">البيانات الشخصية والوظيفية (حسب العقد)</h4>
                     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -2019,22 +2002,6 @@
     </div>
 
     <!-- المخطط التنظيمي — يعرض التسلسل الهرمي الكامل بناءً على المدير المباشر لكل موظف -->
-    <!-- نافذة تشخيص مؤقتة: تعرض النص الخام المستخرج من PDF لتسهيل النسخ والمراجعة -->
-    <div id="pdf-debug-modal" class="hidden fixed inset-0 z-[80] flex items-center justify-center modal-overlay p-2 sm:p-4">
-        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden border border-slate-200 flex flex-col">
-            <div class="flex justify-between items-center px-6 py-4 border-b border-slate-100 flex-shrink-0">
-                <h3 class="text-sm font-black text-slate-900">النص الخام المستخرج (تشخيص مؤقت)</h3>
-                <button onclick="document.getElementById('pdf-debug-modal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 font-bold">&times;</button>
-            </div>
-            <div class="p-4 flex-1 overflow-hidden flex flex-col">
-                <textarea id="pdf-debug-text" readonly dir="rtl" class="flex-1 w-full border border-slate-200 rounded-xl p-3 text-xs font-mono resize-none focus:outline-none" style="min-height: 300px;"></textarea>
-                <button onclick="window.copyPdfDebugText()" class="mt-3 bg-slate-800 hover:bg-slate-900 text-white font-extrabold py-2.5 rounded-full text-xs flex items-center justify-center gap-2 flex-shrink-0">
-                    <i class="fas fa-copy"></i> نسخ النص كاملاً
-                </button>
-            </div>
-        </div>
-    </div>
-
     <div id="org-chart-modal" class="hidden fixed inset-0 z-[75] flex items-center justify-center modal-overlay p-2 sm:p-4">
         <div class="modal-panel sheet-on-mobile bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden border border-slate-200 flex flex-col">
             <div class="flex justify-between items-center px-6 py-4 border-b border-slate-100 flex-shrink-0">
@@ -4614,117 +4581,6 @@
             if (total) window.distributeSalary(total);
         };
 
-        // ====================================================================
-        // إرفاق ملف PDF لجلب بيانات موظف تلقائياً من عقد رسمي
-        // يتطلب نشر دالة extract-contract-pdf
-        // ====================================================================
-        // خارطة قيم الحقول العربية الحرة (بعد الاستخراج) إلى القيم القياسية
-        // المستخدمة فعلياً بقوائم <select> النموذج، لأن النص المستخرج من
-        // العقد نادراً ما يطابق نص الخيار بالضبط (فروق تباعد أحرف بسيطة)
-        function mapToSelectOption(selectId, extractedValue) {
-            const select = document.getElementById(selectId);
-            if (!select || !extractedValue) return false;
-            const normalized = extractedValue.replace(/\s+/g, '');
-            for (const opt of select.options) {
-                if (opt.value.replace(/\s+/g, '') === normalized || opt.text.replace(/\s+/g, '') === normalized) {
-                    select.value = opt.value;
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        window.copyPdfDebugText = async function () {
-            const textarea = document.getElementById('pdf-debug-text');
-            try {
-                await navigator.clipboard.writeText(textarea.value);
-            } catch (_) {
-                textarea.select(); try { document.execCommand('copy'); } catch (e) {}
-            }
-            window.showToast('تم نسخ النص — الصقه الآن بالمحادثة');
-        };
-
-        window.extractContractPdf = async function (e) {
-            const file = e.target.files[0]; if (!file) return;
-            const btn = document.getElementById('contract-pdf-btn');
-            const originalHtml = btn.innerHTML;
-            btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جارٍ القراءة...';
-
-            try {
-                // تحويل الملف إلى Base64 لإرساله للدالة (Edge Functions لا تستقبل multipart مباشرة بسهولة)
-                const buffer = await file.arrayBuffer();
-                let binary = '';
-                const bytes = new Uint8Array(buffer);
-                for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-                const fileBase64 = btoa(binary);
-
-                const { data, error } = await supabaseClient.functions.invoke('extract-contract-pdf', {
-                    body: { fileBase64, debug: true } // debug:true مؤقت لتشخيص دقة الاستخراج — يُزال لاحقاً
-                });
-                if (error || data?.error) throw new Error(data?.error || error?.message || 'تعذر قراءة الملف');
-
-                // تشخيص مؤقت: يعرض النص الخام الحقيقي بنافذة بالصفحة (أسهل من Console)
-                if (data.rawText) {
-                    document.getElementById('pdf-debug-text').value = data.rawText;
-                    document.getElementById('pdf-debug-modal').classList.remove('hidden');
-                }
-
-                const d = data.data;
-                const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
-
-                // الحقول الموثوقة (رقمية/تاريخية) — تُعبَّأ مباشرة بثقة كاملة
-                set('emp-nid', d.nid);
-                set('emp-number', d.empNumber);
-                set('emp-dob', d.dob);
-                set('emp-id-expiry', d.idExpiry);
-                set('emp-iban', d.iban);
-                set('emp-email', d.email);
-                if (d.phone) set('emp-phone', normalizeSaudiMobile(d.phone));
-                set('emp-date', d.startDate);
-                if (d.contractMonths) set('emp-contract-duration', d.contractMonths + ' شهر');
-
-                // حساب التفاصيل المالية من الراتب الأساسي والنسب الفعلية المذكورة بالعقد
-                // (وليس النسب الافتراضية العامة)، ثم استخدام reverseCalculate لحساب الإجمالي
-                if (d.basicSalary) {
-                    const basic = parseFloat(String(d.basicSalary).replace(/,/g, ''));
-                    const housingPct = d.housingPct ? parseFloat(d.housingPct) / 100 : 0;
-                    const transportPct = d.transportPct ? parseFloat(d.transportPct) / 100 : 0;
-                    set('emp-basic', basic.toFixed(2));
-                    set('emp-housing', (basic * housingPct).toFixed(2));
-                    set('emp-transport', (basic * transportPct).toFixed(2));
-                    window.reverseCalculate(); // يحسب الإجمالي وخصم التأمينات تلقائياً من الثلاثة أعلاه
-                }
-
-                // حقول النص العربي — استخراج أفضل جهد، نحاول مطابقتها بقوائم الاختيار المتاحة
-                set('emp-name', d.name);
-                set('emp-job', d.jobTitle);
-                mapToSelectOption('emp-nationality', d.nationality) || set('emp-nationality', d.nationality);
-                mapToSelectOption('emp-gender', d.gender);
-                mapToSelectOption('emp-religion', d.religion);
-                mapToSelectOption('emp-marital', d.maritalStatus);
-                set('emp-education', d.education);
-                set('emp-specialty', d.specialty);
-                set('emp-bank', d.bank);
-
-                if (document.getElementById('emp-job')) window.updateSpecialties();
-
-                const reviewFields = (data.confidence?.needsReview || [])
-                    .filter(k => d[k])
-                    .map(k => ({ name: 'اسم', jobTitle: 'المسمى الوظيفي', nationality: 'الجنسية', gender: 'الجنس', religion: 'الديانة', maritalStatus: 'الحالة الاجتماعية', education: 'المؤهل العلمي', specialty: 'التخصص', bank: 'البنك' }[k] || k));
-
-                window.showToast(
-                    reviewFields.length > 0
-                        ? `تم جلب البيانات — راجع الحقول التالية (قد تحتاج تصحيحاً بسيطاً): ${reviewFields.join('، ')}`
-                        : 'تم جلب بيانات العقد بنجاح'
-                );
-            } catch (err) {
-                window.showToast('تعذر قراءة ملف العقد: ' + (err.message || ''), 'error');
-            } finally {
-                btn.disabled = false; btn.innerHTML = originalHtml;
-                e.target.value = '';
-            }
-        };
-
         window.updateSpecialties = function() {
             const jobTitle = document.getElementById('emp-job')?.value.trim();
             const specSelect = document.getElementById('emp-specialty');
@@ -4881,6 +4737,13 @@
             window.showToast(isTerm ? 'تم حفظ العقد المنتهي بنجاح وبدء المخالصة'
                 : (editingEmployeeId ? 'تم تحديث بيانات الموظف بنجاح!' : 'تم حفظ الموظف بنجاح!'));
             editingEmployeeId = null;
+
+            // تفريغ صريح لكل حقول النموذج بعد نجاح الحفظ، حتى لا تبقى أي قيمة
+            // من هذا الإدخال ظاهرة لو فُتح النموذج مرة أخرى بسرعة لاحقاً
+            document.querySelectorAll('#add-form input, #add-form select, #add-form textarea').forEach(el => {
+                if (el.type === 'checkbox' || el.type === 'radio') el.checked = false;
+                else el.value = '';
+            });
         });
 
         // ====================================================================
