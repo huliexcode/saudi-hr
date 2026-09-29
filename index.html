@@ -3981,6 +3981,7 @@ if (typeof module !== 'undefined') module.exports = HRCore;
         }
 
         function applyFieldLocale(el) {
+            if (el.closest('#hr-contact-panel')) return;
             const id = el.id || '';
             const isEnText = EN_TEXT_FIELDS.includes(id);
             const isEnNum = EN_NUMERIC_FIELDS.includes(id);
@@ -6123,7 +6124,7 @@ if (typeof module !== 'undefined') module.exports = HRCore;
                                 <td class="p-3 font-bold text-slate-500">${escapeHtml(det)}${r.notes ? `<br><span class="text-[10px] text-slate-400">${escapeHtml(r.notes)}</span>` : ''}</td>
                                 <td class="p-3 font-bold">${String(r.created_at || '').slice(0, 10)}</td>
                                 <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-black ${st[1]}">${st[0]}</span></td>
-                                <td class="p-3 whitespace-nowrap">${r.status === 'pending' ? `
+                                <td class="p-3 whitespace-nowrap"><button type="button" onclick="window.hrContactOpen({kind:'request',recordId:'${r.id}'})" title="تواصل بخصوص الطلب" class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-extrabold"><i class="fas fa-comment-dots"></i> تواصل</button> ${r.status === 'pending' ? `
                                     <button onclick="window.decideRequest('${r.id}','approved')" class="px-3 py-1 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold">اعتماد</button>
                                     <button onclick="window.decideRequest('${r.id}','rejected')" class="px-3 py-1 rounded-full bg-red-50 text-red-600 text-[10px] font-extrabold">رفض</button>` : `<span class="text-[10px] font-bold text-slate-400">${r.decided_at ? String(r.decided_at).slice(0, 10) : ''}</span>`}</td></tr>`;
                         }).join('') : `<tr><td colspan="7" class="p-10 text-center text-xs font-bold text-slate-400"><i class="fas fa-inbox text-3xl block mb-2 text-slate-300"></i>لا توجد طلبات</td></tr>`}</tbody>
@@ -6401,7 +6402,7 @@ if (typeof module !== 'undefined') module.exports = HRCore;
 
         function opsActions(o) {
             const btn = (fn, icon, title, cls) => `<button onclick="${fn}" title="${title}" class="w-7 h-7 inline-flex items-center justify-center rounded-lg ${cls || 'bg-slate-100 text-slate-600 hover:bg-slate-200'} ml-1"><i class="fas ${icon} text-[10px]"></i></button>`;
-            let a = '';
+            let a = btn(`window.hrContactOpen({kind:'operation',recordId:'${o.id}'})`, 'fa-comment-dots', 'تواصل بخصوص العملية', 'bg-emerald-50 text-emerald-700');
             if (o.module === 'termination') {
                 if (o.status === 'process') a += btn(`window.opsSetStatus('${o.id}','settlement')`, 'fa-arrow-left', 'نقل إلى تسوية الإنهاء', 'bg-sky-50 text-sky-700');
                 if (o.status === 'settlement') a += btn(`window.opsFinalizeTermination('${o.id}')`, 'fa-check', 'إنهاء واعتماد (نقل للمخالصة)', 'bg-emerald-50 text-emerald-700');
@@ -15079,6 +15080,385 @@ if (typeof module !== 'undefined') module.exports = HRCore;
             window.renderSalaryTable();
             window.showToast('تم حذف التعديل');
         };
-    </script>
+    
+// BEGIN HR CONTACT 2026-09-30
+/* Pure communication rules. Embedded in index.html by build-contact.py. */
+const HRContactCore = (() => {
+    const purposes = {
+        decision: 'طلب قرار', info: 'للإحاطة', update: 'طلب تعديل بيانات',
+        complete: 'طلب استكمال بيانات', inquiry: 'استفسار عن إجراء', notice: 'إبلاغ'
+    };
+    const states = { open: 'بانتظار الرد', approved: 'موافقة على الطلب', rejected: 'رفض الطلب',
+        needs_info: 'طلب استكمال', acknowledged: 'تم الاطلاع', answered: 'تم الرد', cancelled: 'أُلغي الطلب' };
+    function phone(value) {
+        let raw = String(value || '').trim().replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+        if (/[^\d+\s().-]/.test(raw)) return '';
+        raw = raw.replace(/[\s().-]/g, '');
+        if (raw.startsWith('00')) raw = '+' + raw.slice(2);
+        if (/^05\d{8}$/.test(raw)) return '966' + raw.slice(1);
+        if (/^5\d{8}$/.test(raw)) return '966' + raw;
+        if (/^9665\d{8}$/.test(raw)) return raw;
+        if (/^\+[1-9]\d{7,14}$/.test(raw) && !raw.startsWith('+9660')) return raw.slice(1);
+        return '';
+    }
+    const clean = (value, max = 700) => String(value ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, max);
+    const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '');
+    const today = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    function timestamp(value){const d=new Date(value);return Number.isNaN(d.getTime())?'':new Intl.DateTimeFormat('ar-SA',{timeZone:'Asia/Riyadh',calendar:'gregory',dateStyle:'short',timeStyle:'short'}).format(d);}
+    function safeLink(value, base) {
+        try { const url = new URL(value, base); const origin = new URL(base).origin;
+            return /^https?:$/.test(url.protocol) && url.origin === origin && !url.username && !url.password ? url.href : '';
+        } catch (_) { return ''; }
+    }
+    function contextKey(ctx) {
+        return [ctx.companyId, ctx.kind, ctx.recordId || ctx.employeeId || 'general', ctx.month || ctx.date || ''].map(v => clean(v, 100)).join(':');
+    }
+    function defaultInstruction(purpose, ctx) {
+        const missing = [...(ctx.missingFields || []), ...(ctx.missingDocs || [])].map(x => clean(x, 100));
+        if (purpose === 'decision') return 'يرجى مراجعة التفاصيل وإفادتنا بالموافقة أو الرفض أو ما يلزم استكماله.';
+        if (purpose === 'complete') return missing.length ? 'يرجى استكمال: ' + missing.join('، ') + '.' : 'يرجى استكمال البيانات أو المستندات المتعلقة بالطلب.';
+        if (purpose === 'update') return 'يرجى مراجعة البيانات الموضحة وتصحيح ما يحتاج إلى تعديل، وإفادتنا بعد الانتهاء.';
+        if (purpose === 'inquiry') return 'يرجى توضيح حالة الإجراء والخطوة التالية المطلوبة.';
+        if (purpose === 'notice') return 'نبلغكم بالتفاصيل الموضحة، ونرجو تأكيد الاطلاع.';
+        return 'نحيطكم علماً بالتفاصيل الموضحة للمتابعة حسب الاختصاص.';
+    }
+    function message(ctx, opts = {}) {
+        const kind = opts.recipientKind || 'employee', staff = ['manager', 'hr', 'responsible'].includes(kind);
+        const own = kind === 'employee' && ctx.employeeId && opts.recipientEmployeeId === ctx.employeeId;
+        const facts = (ctx.facts || []).filter(f => f && f.value !== '' && f.value != null &&
+            (f.audience !== 'staff' || staff) && (!f.employeeId || f.employeeId === ctx.employeeId) &&
+            (f.audience !== 'employee' || own || staff));
+        const lines = ['السلام عليكم' + (clean(opts.recipientName, 100) ? ' ' + clean(opts.recipientName, 100) : '') + '،',
+            '', `${purposes[opts.purpose] || purposes.inquiry} — ${clean(ctx.subject, 180) || 'متابعة إجراء'}`,
+            `المنشأة: ${clean(ctx.companyName, 160)}`];
+        if (ctx.employeeName) lines.push(`الموظف: ${clean(ctx.employeeName, 120)}${ctx.employeeNumber ? ' — ' + clean(ctx.employeeNumber, 60) : ''}`);
+        if (ctx.reference) lines.push(`مرجع الإجراء: ${clean(ctx.reference, 100)}`);
+        if (ctx.draft) lines.push('الحالة: مسودة للمراجعة، لم تعتمد بعد.');
+        facts.forEach(f => lines.push(`${clean(f.label, 80)}: ${clean(f.value, 400)}`));
+        lines.push('', clean(opts.instruction || defaultInstruction(opts.purpose, ctx), 900));
+        if (opts.deadline) lines.push(`يرجى الرد أو الاستكمال قبل: ${clean(opts.deadline, 20)}`);
+        if (opts.note) lines.push(clean(opts.note, 700));
+        if (opts.portalLink && own && ['complete', 'update'].includes(opts.purpose)) lines.push('', 'رابط الموظف لاستكمال البيانات والمستندات:', opts.portalLink);
+        if (opts.requestLink) lines.push('', 'رابط طلب المتابعة (يتطلب الدخول):', opts.requestLink);
+        if (opts.senderName) lines.push('', clean(opts.senderName, 100));
+        return lines.join('\n');
+    }
+    function whatsapp(number, text) {
+        const n = phone(number), msg = String(text || '').trim();
+        if (!n) throw new Error('أدخل رقم جوال صحيحاً؛ للأرقام غير السعودية استخدم + ورمز الدولة.');
+        if (!msg) throw new Error('اكتب الرسالة أولاً.');
+        if (msg.length > 3500) throw new Error('الرسالة طويلة؛ اختصرها إلى 3500 حرف وأرفق التفاصيل في رابط الطلب.');
+        return `https://wa.me/${n}?text=${encodeURIComponent(msg)}`;
+    }
+    function actions(purpose) {
+        return purpose === 'decision' ? ['approved', 'rejected', 'needs_info'] : purpose === 'inquiry' ? ['answered', 'needs_info'] : ['acknowledged', 'answered', 'needs_info'];
+    }
+    return { purposes, states, phone, clean, isUuid, today, timestamp, safeLink, contextKey, defaultInstruction, message, whatsapp, actions };
+})();
+if (typeof window !== 'undefined') window.HRContactCore = HRContactCore;
+if (typeof module !== 'undefined') module.exports = HRContactCore;
+
+/* Communication panel: explicit context adapters, no page scraping or automatic sending. */
+(() => {
+    const C = HRContactCore, $ = id => document.getElementById(id), esc = value => escapeHtml(String(value ?? ''));
+    const viewNames = { dashboard: 'ملف الموظف والإلحاق', terminated: 'المخالصة وإنهاء الخدمة', salary: 'الرواتب', eos: 'المستحقات', requests: 'الطلبات والحضور', ops: 'العمليات', reports: 'التقارير', archive: 'الأرشيف', idcard: 'بطاقة الموظف', policies: 'السياسات', settings: 'إعدادات المنشأة', overview: 'المتابعة' };
+    let state = null, previousFocus = null, syncSequence = 0, routeBusy = false, routedId = '';
+    const visible = el => !!el && !el.classList.contains('hidden') && !!el.getClientRects().length;
+    const val = id => $(id)?.value || '';
+    const companyEmployees = () => employees.filter(e => e.companyId === activeCompanyId && !e.isArchived);
+    const byId = id => companyEmployees().find(e => e.id === id);
+    function allowed() { return !PORTAL_MODE && !!currentUser && !!activeCompanyId && visible($('hr-layout')); }
+    function currentModal() {
+        return [...document.querySelectorAll('.modal-overlay')].filter(e => visible(e) && e.id !== 'hr-contact-panel')
+            .sort((a,b) => (Number(getComputedStyle(b).zIndex)||0) - (Number(getComputedStyle(a).zIndex)||0))[0];
+    }
+    function context(source = {}) {
+        const comp = getActiveCompany(), view = currentViewName(), modal = source.modalId ? $(source.modalId) : currentModal();
+        const ctx = { companyId: activeCompanyId, companyName: comp?.nameAr || '', kind: source.kind || view || 'overview',
+            subject: viewNames[view] || 'متابعة إجراء', employeeId: source.employeeId || '', recordId: source.recordId || '', facts: [] };
+        const fact = (label, value, audience = 'shared') => { if (value !== '' && value != null) ctx.facts.push({label,value:String(value),audience,employeeId:ctx.employeeId || undefined}); };
+        let op = null, request = null;
+        if (source.kind === 'request') request = hrRequests.find(r => r.id === source.recordId && r.company_id === activeCompanyId);
+        if (source.kind === 'operation') op = hrOps.find(o => o.id === source.recordId && o.company_id === activeCompanyId);
+        if (modal?.id === 'ops-modal') {
+            ctx.kind = 'operation'; ctx.subject = $('ops-modal-title')?.textContent || 'عملية';
+            ctx.employeeId = val('opsf-employee_id'); ctx.recordId = opsEditId || ''; ctx.draft = true;
+            ['sub_type','start_date','end_date','days','amount','effective_month'].forEach((key,i) => fact(['نوع الإجراء','من تاريخ','إلى تاريخ','المدة / الأيام','المبلغ بالريال','شهر الاستحقاق'][i],val('opsf-'+key)));
+        } else if (op) {
+            ctx.employeeId = op.employee_id; ctx.subject = OPS_MODULES[op.module]?.title || op.sub_type || 'عملية'; ctx.reference = '#' + (op.ref_no || op.id);
+            fact('نوع الإجراء',op.sub_type); fact('الحالة',OPS_STATUS[op.status]?.[0] || op.status);
+            fact('من تاريخ',op.start_date); fact('إلى تاريخ',op.end_date); fact('المدة / الأيام',op.days); fact('المبلغ بالريال',op.amount); fact('شهر الاستحقاق',op.effective_month);
+        } else if (request) {
+            ctx.employeeId = request.employee_id; ctx.subject = REQ_TYPE_LABEL[request.request_type] || 'طلب موظف'; ctx.reference = '#' + (request.ref_no || request.id);
+            fact('نوع الطلب',request.sub_type); fact('الحالة',ESS_STATUS[request.status]?.[0] || request.status);
+            fact('من تاريخ',request.date_from); fact('إلى تاريخ',request.date_to); fact('الأيام',request.days); fact('الساعات',request.hours); fact('المبلغ بالريال',request.amount);
+        } else if (modal?.id === 'details-modal' || modal?.id === 'portal-link-modal') {
+            ctx.kind = 'employee'; ctx.employeeId = selectedEmployeeId; ctx.subject = byId(ctx.employeeId)?.isTerminated ? 'متابعة المخالصة' : 'ملف الموظف';
+        } else if (view === 'salary') {
+            ctx.kind = 'salary'; ctx.salaryMode = salaryTab;
+            ctx.subject = salaryTab==='structure'?'هيكل الراتب الثابت':salaryTab==='absence'?'متابعة الغياب والخصم':'الراتب المستحق للشهر';
+            ctx.month = val('crx-month-select') || thisMonthStr();
+            ctx.employeeId ||= salaryTab === 'payroll' ? (paySelected.size === 1 ? [...paySelected][0] : '') : salarySelectedEmpId;
+            if(salaryTab!=='structure')fact('شهر الراتب',ctx.month);
+            if(salaryTab==='structure'&&ctx.employeeId){
+                const e=byId(ctx.employeeId);
+                if(e&&$('ss-total')&&(Number(val('ss-total'))!==Number(e.financials?.total)||Number(val('ss-other'))!==empOtherAllow(e)||$('ss-newgosi').checked!==!!e.financials?.isNewGosi)){
+                    ctx.draft=true;ctx.lockEmployee=true;
+                    try{ctx.structureDraft={...distributeWithOther(val('ss-total'),val('ss-other'),$('ss-newgosi').checked,e.nationality,e.gosiStatus),total:Number(val('ss-total'))};}catch(err){ctx.validation=err.message;}
+                }
+            }
+        } else if (view === 'eos') {
+            ctx.kind = 'entitlement'; ctx.subject = ENT_TITLE[entType] || 'مستحقات';
+            ctx.employeeId ||= entType === 'eos' ? val('eos-emp') : (entSelectedIds().length === 1 ? entSelectedIds()[0] : '');
+            ctx.draft = true;
+            if (ctx.employeeId && entType !== 'eos') {
+                const emp = byId(ctx.employeeId), rec = emp ? collectEntForm(emp) : null;
+                if (rec) {
+                    const errors = validateEntitlementForEmployee(rec,emp);
+                    if (errors.length) ctx.validation = errors.join('، ');
+                    else { fact('الفترة', [rec.from,rec.to].filter(Boolean).join(' إلى ')); if (rec.type==='overtime') fact('الساعات الإضافية',rec.hours); fact('المبلغ بالريال',rec.amount); fact('شهر الاستحقاق',rec.month); }
+                }
+            } else if (entType === 'eos') { fact('تاريخ الحساب',val('eos-date')); fact('سبب الحساب',reasonByKey(val('eos-reason'))?.name); }
+        } else if (view === 'idcard') ctx.employeeId ||= idcState.empId;
+        else if (view === 'requests' && requestsTab === 'attendance') { ctx.date = attendanceDate; fact('تاريخ الحضور',attendanceDate); }
+        else if (view === 'ops' && opsSection === 'bank_file') { ctx.subject = 'ملف البنك'; ctx.month = val('bf-month') || bankFileMonth || thisMonthStr(); fact('شهر الملف',ctx.month); }
+        else if (view === 'reports') {
+            ctx.subject = currentReportType ? ({payroll:'تقرير الرواتب',saudization:'تقرير عدد السعوديين',onboarding:'تقرير الإلحاق والمخالصات',expiry:'تقرير انتهاء الوثائق'}[currentReportType] || 'تقرير') : 'التقارير';
+            fact('تاريخ التقرير',today10());
+        }
+        if (modal && !['details-modal','portal-link-modal','ops-modal'].includes(modal.id)) {
+            ctx.subject = modal.querySelector('h2,h3,h4')?.textContent?.trim() || ctx.subject;
+            if (modal.id === 'salary-adj-modal') {
+                ctx.employeeId = salarySelectedEmpId; ctx.draft = true; ctx.kind = 'salary';ctx.month=val('sa-month');
+                fact('شهر التعديل',val('sa-month')); fact('مبلغ التعديل بالريال',val('sa-amount')); fact('نوع التعديل',SALARY_TYPE_META[val('sa-type')]?.label);
+            }
+            if (modal.id === 'new-emp-modal' || modal.id === 'add-modal') ctx.draft = true;
+        }
+        ctx.lockEmployee ||= !!source.recordId || !!(modal && ['ops-modal','details-modal','portal-link-modal','salary-adj-modal'].includes(modal.id));
+        return enrich(ctx);
+    }
+    function enrich(ctx) {
+        const emp = byId(ctx.employeeId); if (!emp) { ctx.employeeId = ''; return ctx; }
+        ctx.employeeName = emp.name; ctx.employeeNumber = emp.empNumber;
+        if (ctx.kind === 'salary' && (!ctx.draft||ctx.structureDraft)) {
+            ctx.facts = ctx.facts.filter(f => !['الإجمالي المستحق','الصافي المستحق','ملاحظات للمراجعة'].includes(f.label));
+            if(ctx.salaryMode==='structure'){
+                const f=ctx.structureDraft||emp.financials||{};
+                ctx.facts=Object.entries({'إجمالي الراتب الشهري الثابت':f.total,'الراتب الأساسي':f.basic,'بدل السكن':f.housing,'بدل النقل':f.transport,'بدلات أخرى':f.other,'خصم التأمينات الافتراضي':f.gosi}).filter(([,v])=>v!=null).map(([label,value])=>({label,value:fmtMoney(value),audience:'employee',employeeId:emp.id}));
+            }else{
+            const p = payrollFor(emp,ctx.month || thisMonthStr(), salaryAdjustments.map(a=>({employee_id:a.employeeId,adjustment_type:a.type,amount:a.amount,month:a.month,is_recurring:a.isRecurring})));
+            ctx.facts.push({label:'الإجمالي المستحق',value:fmtMoney(p.total),audience:'employee',employeeId:emp.id},{label:'الصافي المستحق',value:fmtMoney(p.net),audience:'employee',employeeId:emp.id});
+            if (payrollValidation(p).length) ctx.facts.push({label:'ملاحظات للمراجعة',value:payrollValidation(p).join('، '),audience:'staff',employeeId:emp.id});
+            }
+        }
+        if (ctx.kind === 'employee') {
+            const r = onboardingReadiness(emp); ctx.missingFields = r.missing; ctx.missingDocs = r.docsLoaded ? r.missingDocs : [];
+            ctx.facts = [{label:'المسمى الوظيفي',value:emp.jobTitle},{label:'تاريخ المباشرة',value:emp.startDate}].filter(f=>f.value);
+            if (emp.terminationRecorded) ctx.facts.push({label:'آخر يوم عمل',value:emp.clearanceData?.lastDay || 'غير محدد'});
+        }
+        return ctx;
+    }
+    function memberFor(emp) {
+        const email = String(emp?.workEmail || emp?.email || '').toLowerCase();
+        return (members || []).find(m => String(m.email || '').toLowerCase() === email && email);
+    }
+    function contacts(kind, ctx) {
+        const emp = byId(ctx.employeeId), comp = getActiveCompany();
+        const fromEmp = e => ({key:'e:'+e.id,name:e.name,phone:e.phone || '',employeeId:e.id,userId:memberFor(e)?.user_id || null});
+        if (kind === 'employee') return emp ? [fromEmp(emp)] : [];
+        if (kind === 'manager') return emp?.managerId && byId(emp.managerId) ? [fromEmp(byId(emp.managerId))] : [];
+        if (kind === 'manual') return [{key:'manual',name:'',phone:'',employeeId:null,userId:null}];
+        let list = kind === 'hr' ? companyEmployees().filter(e => /موارد بشرية|شؤون.*موظف/.test(e.jobTitle || '') || (e.name && e.name === comp?.sign1Name)).map(fromEmp) : companyEmployees().map(fromEmp);
+        (members || []).filter(m => kind !== 'hr' || ['admin','hr'].includes(m.role)).forEach(m => {
+            if (!list.some(c => c.userId === m.user_id)) list.push({key:'u:'+m.user_id,name:m.name || m.email || 'مسؤول المنشأة',phone:m.phone || '',employeeId:null,userId:m.user_id});
+        });
+        if (comp?.ownerId && !list.some(c=>c.userId===comp.ownerId)) list.push({key:'u:'+comp.ownerId,name:comp.sign1Name || 'مسؤول المنشأة',phone:comp.mobile || '',employeeId:null,userId:comp.ownerId});
+        return list;
+    }
+    const field = (label,html) => `<label class="hc-field"><span>${label}</span>${html}</label>`;
+    function mount() {
+        if ($('hr-contact-panel')) return;
+        const css = document.createElement('style'); css.textContent = `
+        .hc-trigger{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9dbcb;border-radius:999px;background:#eaf7f0;color:#126340;padding:9px 12px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+        #hr-layout main>header{flex-direction:row;flex-wrap:wrap}#global-search-wrap{flex:1 1 180px;min-width:180px}#hr-contact-global{flex-shrink:0}#dynamic-actions-bar{margin-inline-start:auto}#app-sidebar>div:first-child{flex:1;min-height:0;overflow-y:auto;padding-bottom:10px}#app-sidebar>div:last-child{flex-shrink:0}
+        .hc-modal-trigger{margin-inline-start:10px;vertical-align:middle}.hc-overlay{position:fixed;inset:0;z-index:10020;background:#15271f99;display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl}.hc-overlay.hidden{display:none}
+        .hc-dialog{width:min(1040px,100%);max-height:94dvh;background:#fff;color:#152c22;border-radius:22px;box-shadow:0 25px 100px #0004;display:flex;flex-direction:column;overflow:hidden}.hc-head,.hc-footer{padding:16px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid #e5ede8}.hc-head h2{font-size:18px;font-weight:900;margin:0;flex:1}.hc-close{background:#f2f5f3;border:0;border-radius:50%;width:34px;height:34px;cursor:pointer}.hc-body{padding:20px;overflow:auto}.hc-grid{display:grid;grid-template-columns:minmax(240px,.8fr) minmax(300px,1.2fr);gap:22px}.hc-field{display:block;margin-bottom:12px;font-size:12px;font-weight:700}.hc-field>span{display:block;margin-bottom:6px}.hc-field input,.hc-field select,.hc-field textarea{width:100%;border:1px solid #cddbd3;border-radius:10px;padding:10px;background:#fff;color:#172b22;font:inherit;box-sizing:border-box}.hc-field textarea{line-height:1.9;resize:vertical}.hc-muted{font-size:11px;color:#52685b;line-height:1.8}.hc-note{padding:10px 12px;border-radius:10px;background:#f3f8f5;font-size:12px;line-height:1.8;margin-bottom:12px}.hc-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 14px;border-radius:10px;border:1px solid #ccdcd3;background:#fff;color:#163e2b;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none}.hc-primary{background:#116b45;color:#fff;border-color:#116b45}.hc-btn:disabled,.hc-btn[aria-disabled=true]{opacity:.5;cursor:not-allowed}.hc-footer{border-top:1px solid #e5ede8;border-bottom:0}.hc-history{margin-top:14px}.hc-history summary{cursor:pointer;font-size:13px;font-weight:800}.hc-history article{padding:12px;border-bottom:1px solid #e5ede8;font-size:12px}.hc-status{font-size:12px;color:#405e4b;line-height:1.7}.hc-danger{color:#b42318}.hc-tabs{display:flex;gap:8px;margin-bottom:16px}.hc-read-message{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;font-size:13px;padding:14px;background:#f5f8f6;border-radius:12px}#hc-message{min-height:340px}#hc-detail{display:none}
+        @media(max-width:700px){#hr-layout main>header>div:first-child{flex-basis:100%}#global-search-wrap{min-width:130px;flex-basis:130px}#hr-contact-global span{display:none}.hc-overlay{padding:5px}.hc-dialog{max-height:98dvh;border-radius:16px}.hc-grid{grid-template-columns:1fr}.hc-body{padding:14px}.hc-head,.hc-footer{padding:12px}.hc-footer .hc-btn{flex:1}#hc-message{min-height:280px}}`;
+        document.head.appendChild(css);
+        const root = document.createElement('div'); root.id='hr-contact-panel';root.className='hc-overlay hidden modal-overlay';
+        root.innerHTML = `<section class="hc-dialog" role="dialog" aria-modal="true" aria-labelledby="hc-title"><header class="hc-head"><h2 id="hc-title">تواصل بخصوص هذا الإجراء</h2><button type="button" class="hc-close" aria-label="إغلاق التواصل" onclick="window.hrContactClose()">×</button></header>
+        <div class="hc-body"><div class="hc-tabs"><button type="button" class="hc-btn" onclick="window.hrContactTab('compose')">رسالة جديدة</button><button type="button" class="hc-btn" onclick="window.hrContactTab('history')">سجل التواصل والطلبات</button></div>
+        <div id="hc-compose"><p id="hc-context" class="hc-note"></p><div class="hc-grid"><div>
+        ${field('الموظف المعني','<select id="hc-employee" onchange="window.hrContactEmployee(this.value)"></select>')}
+        ${field('الغرض',`<select id="hc-purpose" onchange="window.hrContactPurpose()">${Object.entries(C.purposes).map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select>`)}
+        ${field('التواصل مع',`<select id="hc-kind" onchange="window.hrContactRecipients()"><option value="employee">الموظف</option><option value="manager">المدير المباشر</option><option value="hr">مسؤول الموارد البشرية</option><option value="responsible">مسؤول الإجراء</option><option value="manual">مستلم آخر</option></select>`)}
+        ${field('المستلم','<select id="hc-recipient" onchange="window.hrContactPick()"></select>')}
+        ${field('اسم المستلم','<input id="hc-name" maxlength="120" oninput="window.hrContactRefresh()">')}
+        ${field('رقم واتساب','<input id="hc-phone" type="tel" dir="ltr" placeholder="05xxxxxxxx أو +رمز الدولة" oninput="window.hrContactPhone()">')}
+        ${field('الرد أو الاستكمال قبل (اختياري)','<input id="hc-deadline" type="date" onchange="window.hrContactRefresh()">')}
+        <label class="hc-muted"><input id="hc-portal" type="checkbox" onchange="window.hrContactRefresh()"> تضمين رابط استكمال الموظف الموجود</label><p id="hc-link-hint" class="hc-muted"></p>
+        </div><div>${field('المطلوب من المستلم','<textarea id="hc-instruction" rows="2" maxlength="900" oninput="window.hrContactRefresh()"></textarea>')}
+        ${field('إضافة توضيح (اختياري)','<textarea id="hc-note" rows="2" maxlength="700" oninput="window.hrContactRefresh()"></textarea>')}
+        ${field('الرسالة الجاهزة — يمكنك تعديلها','<textarea id="hc-message" maxlength="3500" oninput="window.hrContactEdited()"></textarea>')}
+        <div style="display:flex;justify-content:space-between;gap:8px"><button type="button" class="hc-btn" onclick="window.hrContactRegenerate()">إعادة تجهيز النص</button><span id="hc-count" class="hc-muted"></span></div>
+        <p id="hc-edit-hint" class="hc-muted"></p><p class="hc-muted">واتساب يفتح بالنص والرابط. لإرسال ملف، نزّله من نافذة المستند وأرفقه داخل المحادثة.</p><p id="hc-service" class="hc-status" role="status"></p>
+        </div></div></div><div id="hc-history-view" hidden><p class="hc-muted">فتح واتساب أو نسخ النص لا يثبت إرسال الرسالة أو قراءتها.</p><div id="hc-history-list"></div></div><div id="hc-detail"></div></div>
+        <footer class="hc-footer" id="hc-footer"><a id="hc-whatsapp" class="hc-btn hc-primary" target="_blank" rel="noopener noreferrer" onclick="return window.hrContactLaunch(event)"><i class="fab fa-whatsapp"></i> فتح واتساب بالرسالة</a><button type="button" class="hc-btn" onclick="window.hrContactCopy()">نسخ الرسالة</button><button type="button" class="hc-btn" id="hc-save" onclick="window.hrContactSave()">حفظ طلب متابعة وإضافة رابطه</button><span id="hc-status" class="hc-status" role="status"></span></footer></section>`;
+        document.body.appendChild(root);
+        root.addEventListener('keydown',event=>{
+            if(event.key==='Escape'){event.preventDefault();event.stopPropagation();window.hrContactClose();}
+            if(event.key==='Tab') { const items=[...root.querySelectorAll('button,input,select,textarea,a[href]')].filter(e=>visible(e)&&!e.disabled);const first=items[0],last=items.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();} }
+        });
+    }
+    function status(text,error=false){ if($('hc-status')){$('hc-status').textContent=text;$('hc-status').classList.toggle('hc-danger',error);} }
+    function validState(){return state && state.companyId===activeCompanyId && state.userId===currentUser?.id && state.revision===companyRevision;}
+    window.hrContactOpen = function(source={}) {
+        if(!allowed())return;
+        mount(); previousFocus=document.activeElement; const ctx=context(source);
+        state={ctx,source,companyId:activeCompanyId,userId:currentUser.id,revision:companyRevision,id:crypto.randomUUID(),edited:false,remote:null,busy:false};
+        $('hc-employee').innerHTML='<option value="">الإجراء العام / اختر الموظف</option>'+companyEmployees().map(e=>`<option value="${e.id}" ${e.id===ctx.employeeId?'selected':''}>${esc(e.name)}${e.empNumber?' — '+esc(e.empNumber):''}</option>`).join('');
+        $('hc-employee').disabled=!!ctx.lockEmployee;
+        $('hc-purpose').value=ctx.kind==='employee'?'complete':(['operation','request','entitlement'].includes(ctx.kind)?'decision':'inquiry');
+        $('hc-kind').value=ctx.kind==='employee'?'employee':ctx.employeeId?'manager':'responsible';
+        $('hc-deadline').value='';$('hc-note').value='';$('hc-instruction').value=C.defaultInstruction(val('hc-purpose'),ctx);
+        $('hc-context').textContent=`${ctx.companyName} · ${ctx.subject}${ctx.employeeName?' · '+ctx.employeeName:''}${ctx.draft?' · مسودة':''}${ctx.validation?' — '+ctx.validation:''}`;
+        $('hc-service').textContent='يمكنك تجهيز واتساب مباشرة. حفظ طلب متابعة يضيف سجلاً مشتركاً ورابطاً للمسؤول بعد توفر خدمة التواصل.';
+        $('hr-contact-panel').classList.remove('hidden');window.hrContactTab('compose');window.hrContactRecipients();status('');$('hc-purpose').focus();
+    };
+    window.hrContactClose=()=>{if($('hr-contact-panel'))$('hr-contact-panel').classList.add('hidden');state=null;syncSequence++;if(previousFocus?.isConnected)previousFocus.focus();};
+    window.hrContactTab=function(tab){$('hc-compose').hidden=tab!=='compose';$('hc-history-view').hidden=tab!=='history';$('hc-detail').style.display='none';$('hc-footer').style.display=tab==='compose'?'':'none';if(tab==='history')loadHistory();};
+    window.hrContactEmployee=function(id){
+        if(!validState())return window.hrContactClose();if(state.ctx.lockEmployee)return;
+        const ctx=state.ctx;ctx.employeeId=id;ctx.employeeName='';ctx.employeeNumber='';ctx.missingFields=[];ctx.missingDocs=[];
+        // Never re-label another employee's financial facts when the subject changes.
+        ctx.facts=ctx.facts.filter(f=>!f.employeeId);if(ctx.kind==='entitlement'){ctx.facts=[];ctx.draft=true;ctx.subject='متابعة مستحقات الموظف';}
+        enrich(ctx);state.edited=false;$('hc-instruction').value=C.defaultInstruction(val('hc-purpose'),ctx);
+        $('hc-context').textContent=`${ctx.companyName} · ${ctx.subject}${ctx.employeeName?' · '+ctx.employeeName:''}`;window.hrContactRecipients();
+    };
+    window.hrContactPurpose=function(){if(!validState())return;state.edited=false;$('hc-instruction').value=C.defaultInstruction(val('hc-purpose'),state.ctx);window.hrContactRefresh();};
+    window.hrContactRecipients=function(){
+        if(!validState())return;state.edited=false;state.contacts=contacts(val('hc-kind'),state.ctx);
+        $('hc-recipient').innerHTML=state.contacts.length?state.contacts.map(c=>`<option value="${esc(c.key)}">${esc(c.name||'مستلم آخر')}${c.userId?' — حساب بالمنصة':''}</option>`).join(''):'<option value="">لا يوجد مستلم مسجل لهذا الاختيار</option>';
+        window.hrContactPick();
+    };
+    window.hrContactPick=function(){if(!validState())return;state.edited=false;const r=recipient();$('hc-name').value=r?.name||'';$('hc-phone').value=r?.phone||'';$('hc-save').textContent=r?.userId?'حفظ طلب متابعة وإضافة رابطه':'حفظ في سجل التواصل';setPortal(true);window.hrContactRefresh();};
+    function recipient(){return state?.contacts?.find(c=>c.key===val('hc-recipient'))||null;}
+    function setPortal(defaultCheck=false){
+        const emp=byId(state?.ctx.employeeId),r=recipient();const own=val('hc-kind')==='employee'&&r?.employeeId===emp?.id;
+        const enabled=own&&emp?.portalEnabled&&emp?.portalToken&&C.phone(emp.phone)&&C.phone(emp.phone)===C.phone(val('hc-phone'))&&['complete','update'].includes(val('hc-purpose'));
+        $('hc-portal').disabled=!enabled;if(!enabled)$('hc-portal').checked=false;else if(defaultCheck)$('hc-portal').checked=true;
+        $('hc-link-hint').textContent=enabled?'الرابط الحالي للموظف، ويخضع للتحقق في بوابته.':own?'يلزم رابط موظف مفعّل ورقم مطابق لملفه لإضافته. يمكنك تفعيله من «رابط رفع المستندات» في الملف.':'لا يُدرج رابط الموظف الخاص في رسائل المسؤولين أو الأرقام الأخرى.';
+    }
+    window.hrContactPhone=function(){state&&(state.edited=false);setPortal();window.hrContactRefresh();};
+    function invalidate(){
+        if(!state)return;
+        if(state.remote){const link=requestUrl(state.remote.id,state.companyId);$('hc-message').value=val('hc-message').replace('\n\nرابط طلب المتابعة (يتطلب الدخول):\n'+link,'').split(link).join('');$('hc-service').textContent='عُدلت المسودة. احفظها لإصدار رابط متابعة يطابق التفاصيل الجديدة.';}
+        state.remote=null;state.id=crypto.randomUUID();
+    }
+    function updateLink(){
+        const text=val('hc-message');$('hc-count').textContent=`${text.length} / 3500 حرف`;
+        try{$('hc-whatsapp').href=C.whatsapp(val('hc-phone'),text);$('hc-whatsapp').setAttribute('aria-disabled','false');}
+        catch(_){$('hc-whatsapp').removeAttribute('href');$('hc-whatsapp').setAttribute('aria-disabled','true');}
+    }
+    window.hrContactRefresh=function(keepRemote=false){
+        if(!validState())return; if(!keepRemote)invalidate();setPortal();
+        const r=recipient(),emp=byId(state.ctx.employeeId);
+        if(!state.edited){$('hc-message').value=C.message(state.ctx,{purpose:val('hc-purpose'),recipientKind:val('hc-kind'),recipientName:val('hc-name'),recipientEmployeeId:r?.employeeId,
+            instruction:val('hc-instruction'),note:val('hc-note'),deadline:val('hc-deadline'),portalLink:$('hc-portal').checked?C.safeLink(portalUrlFor(emp.portalToken),location.href):'',
+            requestLink:state.remote&&r?.userId?requestUrl(state.remote.id,state.companyId):'',senderName:getActiveCompany()?.sign1Name||'إدارة الموارد البشرية'});}
+        $('hc-edit-hint').textContent=state.edited?'حافظنا على تعديلك اليدوي. «إعادة تجهيز النص» يعيد صياغة الرسالة من الحقول.':'التفاصيل مأخوذة من الإجراء الحالي؛ راجعها قبل فتح واتساب.';updateLink();
+    };
+    window.hrContactEdited=()=>{if(state){state.edited=true;invalidate();updateLink();}};
+    window.hrContactRegenerate=()=>{if(state){state.edited=false;window.hrContactRefresh();}};
+    function requestUrl(id,companyId){const u=new URL(location.origin+location.pathname);u.searchParams.set('contact',id);u.searchParams.set('company',companyId);return u.href;}
+    function logMessage(text){return String(text).replace(/https?:\/\/[^\s]*[?&]p=[^\s]*/gi,'[رابط الموظف الخاص]');}
+    function snapshot(){
+        const r=recipient();return {id:state.id,company_id:state.companyId,employee_id:state.ctx.employeeId||null,recipient_employee_id:r?.employeeId||null,recipient_user_id:r?.userId||null,
+            purpose:val('hc-purpose'),recipient_kind:val('hc-kind'),recipient_name:C.clean(val('hc-name'),120),recipient_phone:C.phone(val('hc-phone')),
+            subject:C.clean(state.ctx.subject,180),message:logMessage(val('hc-message')),deadline:val('hc-deadline')||null,context_key:C.contextKey(state.ctx),
+            context:{kind:state.ctx.kind,recordId:state.ctx.recordId||null,employeeId:state.ctx.employeeId||null,employeeName:state.ctx.employeeName||'',reference:state.ctx.reference||'',month:state.ctx.month||null,date:state.ctx.date||null,draft:!!state.ctx.draft},
+            status:'open',created_at:new Date().toISOString(),sender_id:state.userId,version:1};
+    }
+    const localKey=(uid,cid)=>`hr_contact_session_v1:${uid}:${cid}`;
+    function readLocal(){try{return JSON.parse(sessionStorage.getItem(localKey(state.userId,state.companyId))||'[]').filter(r=>r.company_id===state.companyId&&r.sender_id===state.userId).slice(0,100);}catch(_){return [];}}
+    function localEvent(row,event){try{const key=localKey(row.sender_id,row.company_id),rows=JSON.parse(sessionStorage.getItem(key)||'[]');const prior=rows.find(r=>r.id===row.id);const next={...row,events:[...(prior?.events||[]),{type:event,at:new Date().toISOString()}].slice(-20),localOnly:!state?.remote};sessionStorage.setItem(key,JSON.stringify([next,...rows.filter(r=>r.id!==row.id)].slice(0,100)));}catch(_){status('تعذر حفظ سجل الجلسة في هذا المتصفح.',true);}}
+    async function remoteEvent(row,event){const session=state;if(!session?.remote)return;try{const {error}=await supabaseClient.rpc('hr_contact_event',{p_id:row.id,p_event:event});if(error&&state===session&&validState())status('تعذر تحديث السجل المشترك؛ بقي الحدث في سجل الجلسة.',true);}catch(_){if(state===session&&validState())status('تعذر تحديث السجل المشترك؛ بقي الحدث في سجل الجلسة.',true);}}
+    window.hrContactLaunch=function(event){
+        if(!validState()){event.preventDefault();window.hrContactClose();return false;}
+        try{event.currentTarget.href=C.whatsapp(val('hc-phone'),val('hc-message'));}
+        catch(err){event.preventDefault();status(err.message,true);return false;}
+        const row=snapshot();localEvent(row,'whatsapp_requested');void remoteEvent(row,'whatsapp_requested');status('طُلب فتح واتساب؛ الإرسال يتم من داخل المحادثة.');return true;
+    };
+    window.hrContactCopy=async function(){
+        if(!validState())return;const session=state,row=snapshot(),text=val('hc-message');try{await navigator.clipboard.writeText(text);if(state!==session||!validState())return;localEvent(row,'copied');void remoteEvent(row,'copied');status('نُسخت الرسالة.');}catch(_){if(state!==session)return;$('hc-message').select();status('تعذر النسخ التلقائي؛ النص محدد للنسخ.',true);}
+    };
+    window.hrContactSave=async function(){
+        if(!validState()||state.busy)return;const session=state;
+        if(!val('hc-message').trim()||val('hc-message').length>3500)return status('اكتب رسالة لا تتجاوز 3500 حرف.',true);
+        if(!val('hc-name').trim())return status('أكمل اسم المستلم أولاً.',true);
+        if(!C.phone(val('hc-phone')))return status('أكمل رقم المستلم أولاً.',true);
+        if(val('hc-purpose')==='decision'&&!recipient()?.userId)return status('للقرار داخل المنصة اختر مسؤولاً يظهر بجانب اسمه «حساب بالمنصة». يمكنك التواصل عبر واتساب دون حفظ قرار.',true);
+        if(val('hc-deadline')&&val('hc-deadline')<C.today())return status('اختر مهلة تبدأ من اليوم أو بعده.',true);
+        session.busy=true;$('hc-save').disabled=true;const row=snapshot();status('جارٍ حفظ طلب المتابعة…');
+        try{
+            const {data,error}=await supabaseClient.rpc('hr_contact_save',{p_record:row});if(error)throw error;
+            if(!data?.id)throw new Error('service_unavailable');if(!validState()||state!==session)return;
+            if(state.id!==row.id){status('حُفظت النسخة السابقة في السجل؛ احفظ التعديلات الجديدة لإضافة رابطها.');return;}
+            state.remote=data;localEvent({...row,...data},'prepared');
+            if(recipient()?.userId){const link=requestUrl(data.id,session.companyId);if(state.edited){$('hc-message').value=val('hc-message')+'\n\nرابط طلب المتابعة (يتطلب الدخول):\n'+link;updateLink();}else window.hrContactRefresh(true);}
+            status('حُفظ طلب المتابعة. افتح واتساب لإرسال الرسالة.');$('hc-service').textContent='السجل مشترك داخل المنشأة. القرار والرد يسجلان باسم الحساب، ولا ينفذان العملية الوظيفية تلقائياً.';
+        }catch(_){if(state===session&&state.id===row.id){localEvent(row,'prepared');status('حُفظ في سجل هذه الجلسة فقط؛ لم يؤكد الخادم الحفظ. تحقق من تفعيل الخدمة وصلاحيات الحساب والمستلم. واتساب والنسخ متاحان.',true);}}
+        finally{session.busy=false;if(state===session)$('hc-save').disabled=false;}
+    };
+    async function loadHistory(){
+        if(!validState())return;const session=state,seq=++syncSequence;$('hc-history-list').textContent='جارٍ تحميل السجل…';
+        const local=readLocal();let remote=[],cloud=false;
+        try{const {data,error}=await supabaseClient.from('hr_communications').select('*').eq('company_id',session.companyId).order('created_at',{ascending:false}).limit(100);if(!error){remote=data||[];cloud=true;}}catch(_){}
+        if(state!==session||!validState()||seq!==syncSequence)return;
+        const merged=[...remote,...local.filter(l=>!remote.some(r=>r.id===l.id)).map(l=>({...l,cached:!l.localOnly}))].filter(r=>r.context_key===C.contextKey(session.ctx)|| (session.ctx.employeeId&&r.employee_id===session.ctx.employeeId)|| !session.ctx.employeeId).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
+        session.history=merged;
+        $('hc-history-list').innerHTML=`<p class="hc-note">${cloud?'السجل المشترك وما جُهّز في هذه الجلسة':'تعذر تحميل سجل المنشأة؛ المعروض ما حُفظ في هذه الجلسة.'}</p>`+(merged.length?merged.map(r=>`<article style="padding:12px;border-bottom:1px solid #dde7e0"><strong>${esc(C.purposes[r.purpose]||r.purpose)} — ${esc(r.subject)}</strong><p class="hc-muted">إلى ${esc(r.recipient_name||'المستلم')} · ${esc(C.timestamp(r.created_at))} · ${esc(C.states[r.status]||r.status)}${r.localOnly?' · في هذه الجلسة':r.cached?' · نسخة محلية؛ الحالة الحالية غير متحققة':''}</p><p class="hc-muted">${r.events?.some(e=>e.type==='whatsapp_requested')?'طُلب فتح واتساب':r.events?.some(e=>e.type==='copied')?'نُسخ النص':'جُهز الطلب'}${r.last_event==='whatsapp_requested'?' · طُلب فتح واتساب':''}</p><button type="button" class="hc-btn" onclick="window.hrContactRead('${r.id}')">عرض الطلب والرد</button></article>`).join(''):'<p class="hc-note">لا يوجد تواصل مسجل لهذا الإجراء.</p>');
+    }
+    window.hrContactRead=async function(id){
+        if(!validState()||!C.isUuid(id))return;const session=state;let row=session.history?.find(r=>r.id===id);
+        if(!row){const {data,error}=await supabaseClient.from('hr_communications').select('*').eq('id',id).eq('company_id',state.companyId).maybeSingle();if(error||!data)return status('الطلب غير متاح لهذا الحساب أو لم يُحفظ في الخادم.',true);row=data;}
+        if(state!==session||!validState())return;session.reading=row;$('hc-compose').hidden=true;$('hc-history-view').hidden=true;$('hc-detail').style.display='block';$('hc-footer').style.display='none';
+        const canRespond=!row.localOnly&&!row.cached&&row.recipient_user_id===currentUser.id&&['open','needs_info'].includes(row.status);
+        $('hc-detail').innerHTML=`<h3 style="font-size:17px;font-weight:800">${esc(row.subject)}</h3><p class="hc-muted">${esc(C.purposes[row.purpose])} · ${esc(C.states[row.status])} · ${esc(row.recipient_name)}</p><div class="hc-read-message">${esc(row.message)}</div>${row.response_note?`<p class="hc-note">الرد: ${esc(row.response_note)}<br>${esc(C.timestamp(row.responded_at))}</p>`:''}<p class="hc-muted">الرد يخص طلب التواصل. تنفيذ الإجراء الأصلي يتم من شاشته وبصلاحياته المعتادة.</p>${canRespond?field('الرد أو سبب القرار','<textarea id="hc-response-note" rows="3" maxlength="1000"></textarea>')+`<div style="display:flex;gap:8px;flex-wrap:wrap">${C.actions(row.purpose).map(action=>`<button type="button" class="hc-btn" onclick="window.hrContactRespond('${action}')">${esc(C.states[action])}</button>`).join('')}</div>`:`<p class="hc-note">${row.cached?'هذه نسخة محلية؛ أعد تحميل السجل للتحقق من الحالة والرد.':row.localOnly?'هذا السجل محفوظ في جلسة المرسل؛ لا يوجد رابط رد مشترك بعد.':'تسجيل الرد متاح للحساب المحدد كمستلم عند بقاء الطلب مفتوحاً.'}</p>`}<p id="hc-response-status" class="hc-status" role="status"></p><button type="button" class="hc-btn" onclick="window.hrContactTab('history')">العودة للسجل</button>`;
+    };
+    window.hrContactRespond=async function(action){
+        if(!validState()||state.busy||!state.reading)return;const session=state,row=state.reading,note=val('hc-response-note').trim();
+        if(!note&&action!=='acknowledged'){$('hc-response-status').textContent='أضف الرد أو سبب القرار.';return;}
+        state.busy=true;try{const {data,error}=await supabaseClient.rpc('hr_contact_respond',{p_id:row.id,p_action:action,p_note:note,p_version:row.version});if(error)throw error;if(!data?.id)throw new Error('unavailable');if(state!==session||!validState())return;state.history=(state.history||[]).filter(r=>r.id!==row.id).concat(data);await window.hrContactRead(row.id);}
+        catch(_){if(state===session)$('hc-response-status').textContent='تعذر تسجيل الرد. قد تكون الحالة تغيرت أو لا يملك الحساب صلاحية الرد؛ أعد فتح الطلب.';}
+        finally{session.busy=false;}
+    };
+    async function route(){
+        if(!allowed()||routeBusy)return;const url=new URL(location.href),id=url.searchParams.get('contact'),cid=url.searchParams.get('company');
+        if(!C.isUuid(id)||!C.isUuid(cid)||routedId===id)return;routeBusy=true;
+        try{
+            if(!companies.some(c=>c.id===cid)){routedId=id;return window.showToast('طلب التواصل غير متاح لهذا الحساب.', 'warning');}
+            if(activeCompanyId!==cid)await window.switchCompany(cid);
+            routedId=id;window.hrContactOpen();await window.hrContactRead(id);
+        }finally{routeBusy=false;}
+    }
+    function attach(){
+        if(!allowed()) {if(state)window.hrContactClose();return;}
+        if(state&&!validState())window.hrContactClose();
+        const header=$('hr-layout')?.querySelector('main > header');
+        if(header&&!$('hr-contact-global')){const b=document.createElement('button');b.id='hr-contact-global';b.type='button';b.className='hc-trigger';b.innerHTML='<i class="fab fa-whatsapp"></i><span>تواصل</span>';b.title='تواصل بخصوص النافذة الحالية';b.setAttribute('aria-label','تواصل بخصوص النافذة الحالية');b.onclick=()=>window.hrContactOpen();header.insertBefore(b,$('global-search-wrap'));}
+        const excluded=/auth|trial|pin|confirm|gov|password|credential|hr-contact/;
+        document.querySelectorAll('.modal-overlay').forEach(modal=>{
+            if(excluded.test(modal.id)||!visible(modal)||modal.querySelector('.hc-modal-trigger'))return;
+            const heading=modal.querySelector('h2,h3,h4');if(!heading)return;
+            const b=document.createElement('button');b.type='button';b.className='hc-trigger hc-modal-trigger';b.innerHTML='<i class="fab fa-whatsapp"></i><span>تواصل</span>';b.title='تواصل بخصوص هذه النافذة';b.onclick=()=>window.hrContactOpen({modalId:modal.id});heading.after(b);
+        });void route();
+    }
+    mount();let tick=null;const observer=new MutationObserver(()=>{clearTimeout(tick);tick=setTimeout(attach,80);});observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+    window.addEventListener('popstate',()=>{routedId='';void route();});setTimeout(attach,0);
+})();
+
+// END HR CONTACT
+</script>
 </body>
 </html>
