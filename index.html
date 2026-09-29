@@ -15,6 +15,124 @@
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
+    <script id="hr-core">
+/* Pure, shared calculations. Embedded in index.html; no network or storage access. */
+const HRCore = (() => {
+    'use strict';
+    const DAY = 86400000;
+    const money = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+    function date(v) {
+        if (v instanceof Date) return Number.isFinite(v.getTime()) ? new Date(Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate())) : null;
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
+        if (!m) return null;
+        const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+        return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3] ? d : null;
+    }
+    const iso = d => d.toISOString().slice(0, 10);
+    function monthBounds(month) {
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month))) throw new Error('اختر شهر راتب صحيحاً');
+        const [y, m] = month.split('-').map(Number);
+        return [new Date(Date.UTC(y, m - 1, 1)), new Date(Date.UTC(y, m, 0))];
+    }
+    function servicePeriod(startValue, endValue, month) {
+        const [first, last] = monthBounds(month), start = date(startValue), end = endValue ? date(endValue) : null;
+        const errors = [];
+        if (!start) errors.push('تاريخ المباشرة مفقود أو غير صالح');
+        if (endValue && !end) errors.push('تاريخ نهاية الخدمة غير صالح');
+        if (start && end && end < start) errors.push('نهاية الخدمة تسبق المباشرة');
+        if (errors.length) return { eligible: false, errors, payDays: 0, calendarDays: 0, ratio: 0, first, last };
+        const from = start > first ? start : first, to = end && end < last ? end : last;
+        const calendarDays = Math.max(0, Math.round((to - from) / DAY) + 1);
+        // Existing wage basis is 30 days; a complete calendar month always earns the full monthly wage.
+        const payDays = calendarDays ? (from <= first && to >= last ? 30 : Math.min(30, calendarDays)) : 0;
+        return { eligible: payDays > 0, errors, payDays, calendarDays, ratio: payDays / 30, first, last, from, to };
+    }
+    function gosiDue(startValue, endValue, month) {
+        const span = servicePeriod(startValue, endValue, month);
+        if (!span.eligible) return false;
+        const end = date(endValue), start = date(startValue);
+        // GOSI employer FAQ: full joining month; no partial exit month unless joining and exiting in the same month.
+        return !end || end >= span.last || iso(start).slice(0, 7) === month;
+    }
+    function distribute(total, other, rate) {
+        total = Number(total); other = Number(other);
+        if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(other) || other < 0 || other > total) throw new Error('أدخل إجمالياً موجباً وبدلات بين الصفر والإجمالي');
+        const base = money(total - other), basic = money(base / 1.35), housing = money(basic * .25), transport = money(base - basic - housing);
+        const gosi = money((basic + housing) * (Number(rate?.emp) || 0) / 100), employer = money((basic + housing) * (Number(rate?.co) || 0) / 100);
+        return { basic, housing, transport, other, gosi, employer, rate, net: money(total - gosi) };
+    }
+    function overtime(financials, hours, mult = 1, dailyHours = 8) {
+        hours = Number(hours); mult = Number(mult); dailyHours = Number(dailyHours);
+        if (![hours, mult, dailyHours].every(Number.isFinite) || hours < 0 || mult < 1 || dailyHours <= 0) throw new Error('قيم العمل الإضافي غير صالحة');
+        const hourly = Number(financials?.total || 0) / 30 / dailyHours, premium = Number(financials?.basic || 0) / 30 / dailyHours * .5;
+        const perHour = hourly + premium, hoursEff = hours * mult;
+        return { hourly: money(hourly), premium: money(premium), perHour: money(perHour), mult, hoursEff, amount: money(perHour * hoursEff) };
+    }
+    function validateEntitlement(rec) {
+        const errors = [], a = date(rec.from), b = date(rec.to || rec.from);
+        if (rec.type === 'overtime' || rec.type === 'assignment') {
+            if (!a || !b) errors.push('أدخل تاريخ بداية ونهاية صحيحين');
+            else if (b < a) errors.push('تاريخ النهاية لا يمكن أن يسبق البداية');
+        }
+        if (rec.type === 'overtime') {
+            if (!Number.isFinite(rec.hours) || rec.hours <= 0) errors.push('عدد الساعات يجب أن يكون موجباً');
+            if (a && b && b >= a && rec.hours > ((b - a) / DAY + 1) * 24) errors.push('الساعات تتجاوز المدة المتاحة في الفترة');
+        }
+        if (rec.type === 'assignment') {
+            if (!String(rec.desc || '').trim()) errors.push('اكتب وصف المهمة');
+            if (![rec.daily, rec.transportAmount].every(x => Number.isFinite(x) && x >= 0)) errors.push('بدل التكليف والنقل يجب ألا يكونا سالبين');
+        }
+        if (!Number.isFinite(rec.amount) || rec.amount < 0 || (rec.type === 'receipt' && rec.amount <= 0)) errors.push('المبلغ غير صالح');
+        if (rec.payroll && !/^\d{4}-(0[1-9]|1[0-2])$/.test(rec.month || '')) errors.push('اختر شهر الترحيل إلى الراتب');
+        if (rec.type === 'receipt' && rec.sub === 'سلفة' && (!Number.isInteger(rec.installments) || rec.installments < 1)) errors.push('عدد الأقساط يجب أن يكون عدداً صحيحاً موجباً');
+        return [...new Set(errors)];
+    }
+    function loanPlan(amount, installments, wage, existingMonthly = 0) {
+        amount = Number(amount); installments = Number(installments); wage = Number(wage);
+        const cap = money(Math.max(0, wage * .1 - Number(existingMonthly || 0)));
+        const installment = installments > 0 ? money(amount / installments) : Infinity;
+        return { cap, installment, valid: Number.isFinite(amount) && amount > 0 && Number.isInteger(installments) && installments > 0 && installment <= cap, minInstallments: cap > 0 ? Math.ceil(amount / cap) : null };
+    }
+    function unpaidServiceDays(request) {
+        const days = Number(request.days) || 0;
+        // A recorded agreement to preserve service overrides the default suspension after 20 days.
+        if (request.data?.preserve_service === true || request.preserve_service === true) return 0;
+        return Math.max(0, days - 20);
+    }
+    function clearanceComplete(emp, taskTitles, asOf) {
+        const end = date(emp.clearanceData?.lastDay);
+        return !!emp.isTerminated && !!end && end < date(asOf) && taskTitles.length > 0 && taskTitles.every(t => (emp.clearanceTasks || []).includes(t));
+    }
+    function scheduleValid(s) {
+        return !!s && Array.isArray(s.days) && s.days.length > 0 && s.days.length <= 6 && new Set(s.days).size === s.days.length && s.days.every(d => Number.isInteger(d) && d >= 0 && d <= 6) && Number(s.hours) > 0 && Number(s.hours) <= 24;
+    }
+    function chooseSchedule(settings, employeeId, asOf) {
+        const get = list => (list || []).filter(s => scheduleValid(s) && date(s.effectiveFrom) && s.effectiveFrom <= asOf).sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
+        return get(settings.employeeSchedules?.[employeeId]) || get(settings.workSchedules) || null;
+    }
+    function probation(startValue, days, exclusions, asOf) {
+        const start = date(startValue), now = date(asOf); days = Number(days);
+        if (!start || !now || !Number.isInteger(days) || days < 0 || days > 180) return null;
+        const excluded = new Set((exclusions || []).filter(x => date(x)));
+        let end = new Date(start), counted = 0;
+        for (let i = 0; counted < days && i < 1000; i++, end = new Date(end.getTime() + DAY)) if (!excluded.has(iso(end))) counted++;
+        if (counted < days) return null;
+        const remaining = Math.max(0, Math.round((end - now) / DAY));
+        return { days, end: iso(new Date(end.getTime() - DAY)), remaining, active: now >= start && now < end };
+    }
+    const normalizeArabic = s => String(s || '').normalize('NFKC').toLowerCase().replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
+    function legalIntent(q) {
+        const s = normalizeArabic(q);
+        if (/اجاز[هت].{0,25}(وضع|اموم)|\b151\b|العامله.{0,15}(ولاد|وضع)|كم اسبوع.{0,35}(ولاد|وضع|اموم)/.test(s)) return 'maternity';
+        if (/اشعار|بدل.{0,8}انذار|مهله.{0,10}(انهاء|استقال)/.test(s)) return 'notice';
+        return null;
+    }
+    return { DAY, money, date, iso, monthBounds, servicePeriod, gosiDue, distribute, overtime, validateEntitlement, loanPlan, unpaidServiceDays, clearanceComplete, scheduleValid, chooseSchedule, probation, normalizeArabic, legalIntent };
+})();
+if (typeof window !== 'undefined') window.HRCore = HRCore;
+if (typeof module !== 'undefined') module.exports = HRCore;
+
+    </script>
     <script>
         // تتبّع طلبات الخادم قبل إنشاء عميل Supabase (لإظهار مؤشر الانتظار عند البطء)
         (function () { window.__net = { start() {}, end() {} }; if (typeof window.fetch !== 'function') return; const o = window.fetch.bind(window);
@@ -838,6 +956,7 @@
                     <input id="emp-login-pw" type="password" autocomplete="current-password" class="w-full border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-black font-bold"></div>
                 <button id="emp-login-btn" type="submit" class="w-full bg-brand text-brand-ink font-extrabold py-3.5 rounded-full shadow-lg">دخول</button>
             </form>
+            <details class="mt-3 rounded-xl border border-slate-200 p-3 text-xs"><summary class="font-bold cursor-pointer">نسيت كلمة المرور؟</summary><p class="mt-2 leading-relaxed">تواصل مع مسؤول الموارد البشرية في منشأتك واطلب رابط خدمة الموظف بعد التحقق من هويتك. افتح الرابط، ثم بطاقة «الدخول ببريدك الرسمي» لتغيير كلمة المرور. إن لم يصلك الرابط، اطلب التحقق من بريدك الرسمي المسجل. لا ترسل كلمة المرور لأي شخص.</p></details>
             <p class="text-[11px] font-bold text-slate-500 text-center mt-4 leading-relaxed">أول مرة؟ افتح الرابط الذي أرسلته لك الموارد البشرية وأنشئ كلمة المرور من داخله.</p>
             <button type="button" onclick="window.showAuthPanel('login')" class="w-full mt-3 text-xs font-extrabold text-slate-600 underline">دخول مسؤولي المنشأة</button>
         </div>
@@ -1178,7 +1297,7 @@
                                 <div>
                                     <span class="text-4xl font-black" id="stat-total">0</span>
                                     <p class="text-[11px] text-white/50 font-semibold mt-2">قيد الإلحاق: <span id="stat-progress" class="font-black text-accent">0</span></p>
-                                    <p class="text-[11px] text-white/50 font-semibold">مكتمل 100%: <span id="stat-completed" class="font-black text-accent">0</span></p>
+                                    <p class="text-[11px] text-white/50 font-semibold">مهام مكتملة 100%: <span id="stat-completed" class="font-black text-accent">0</span></p>
                                 </div>
                                 <div class="gauge gauge-sm shrink-0" id="dash-gauge-completion" style="--gauge-color: rgb(var(--c-accent))">
                                     <div class="gauge-label">
@@ -1208,7 +1327,7 @@
                                     <div class="hbar-track"><div class="hbar-fill" id="bar-progress" style="width:0%; background: rgb(var(--am-500))"></div></div>
                                 </div>
                                 <div class="cursor-pointer hover:opacity-80" onclick="window.setEmpListStatus('completed')" title="عرض الموظفين">
-                                    <div class="flex justify-between text-[11px] font-bold text-slate-600 mb-1"><span>مكتمل الإلحاق</span><span id="bar-completed-val">0</span></div>
+                                    <div class="flex justify-between text-[11px] font-bold text-slate-600 mb-1"><span>مهام الإلحاق مكتملة</span><span id="bar-completed-val">0</span></div>
                                     <div class="hbar-track"><div class="hbar-fill" id="bar-completed" style="width:0%; background: rgb(var(--em-500))"></div></div>
                                 </div>
                                 <div class="cursor-pointer hover:opacity-80" onclick="window.switchView('terminated')" title="عرض الموظفين">
@@ -1329,7 +1448,7 @@
                     <div id="reports-main-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
                         <div onclick="window.openReportDetail('saudization')" class="hl-card p-6 cursor-pointer hover:border-black transition hover:-translate-y-1">
                             <div class="w-12 h-12 bg-brand text-brand-ink rounded-2xl flex items-center justify-center text-xl mb-4"><i class="fas fa-flag"></i></div>
-                            <h3 class="font-black text-lg mb-1">تقرير التوطين والسعودة</h3>
+                            <h3 class="font-black text-lg mb-1">تقرير عدد السعوديين</h3><p class="text-xs text-slate-500 mb-3">نسبة عددية؛ ليست نتيجة نطاقات الرسمية.</p>
                             <p class="text-xs text-slate-500">إجمالي الموظفين، نسبة السعودة، وتوزيعهم حسب المسمى الوظيفي.</p>
                         </div>
                         <div onclick="window.openReportDetail('payroll')" class="hl-card p-6 cursor-pointer hover:border-black transition hover:-translate-y-1">
@@ -2289,7 +2408,7 @@
                                     class="px-4 py-2 rounded-full text-[11px] font-extrabold shadow flex items-center gap-2 transition disabled:opacity-45 disabled:cursor-not-allowed disabled:shadow-none bg-emerald-600 hover:bg-emerald-700 text-white">
                                 <i class="fas fa-file-contract"></i><span id="d-tasks-cert-label">طباعة نموذج اكتمال المهام</span>
                             </button>
-                            <span id="d-progress-text" class="px-4 py-1.5 bg-slate-100 text-slate-800 font-extrabold rounded-full text-xs">0% مكتمل</span>
+                            <div id="d-readiness" class="w-full rounded-xl bg-slate-50 p-3"></div><span id="d-progress-text" class="px-4 py-1.5 bg-slate-100 text-slate-800 font-extrabold rounded-full text-xs">0% مكتمل</span>
                         </div>
                     </div>
                     <p class="text-[11px] font-bold text-slate-400 mb-4"><i class="fas fa-hand-pointer ml-1"></i>اضغط على رقم المرحلة لعرض مهامها وتحديث ما أُنجز منها</p>
@@ -3498,24 +3617,7 @@
 
         // يفصل شرح السبب عن الأمر الطرفي، كي يُعرض الأمر بصيغة LTR قابلة للنسخ
         function otpFailureInfo(info) {
-            if (!info) return { text: '', cmd: '' };
-            switch (info.reason) {
-                case 'not_deployed':
-                    return { text: 'دالة الإرسال غير منشورة على Supabase (404). انشرها بالأمر:',
-                             cmd: 'supabase functions deploy send-otp --no-verify-jwt' };
-                case 'jwt_blocked':
-                    return { text: 'الدالة ترفض الطلب لأن المُسجِّل ليس مسجّل دخول بعد (' + info.status + '). أعد نشر الدالتين بالأمر:',
-                             cmd: 'supabase functions deploy send-otp --no-verify-jwt' };
-                case 'no_api_key':
-                    return { text: 'مفتاح Authentica غير مضبوط في أسرار المشروع. نفّذه بالأمر:',
-                             cmd: 'supabase secrets set AUTHENTICA_API_KEY=YOUR_KEY' };
-                case 'unreachable':
-                    return { text: 'تعذّر الوصول إلى دوال Supabase — تحقق من الاتصال بالإنترنت ومن رابط المشروع.', cmd: '' };
-                case 'provider_error':
-                    return { text: 'مزوّد Authentica رفض الطلب: ' + (info.message || 'سبب غير محدد'), cmd: '' };
-                default:
-                    return { text: info.message || 'سبب غير معروف', cmd: '' };
-            }
+            return { text: info?.reason === 'unreachable' ? 'تعذر الاتصال بخدمة التحقق. تحقق من الاتصال ثم أعد المحاولة.' : 'تعذر إرسال رمز التحقق حالياً. أعد المحاولة أو تواصل مع الدعم. المرجع: AUTH-SEND', cmd: '' };
         }
 
         function escHtml(t) {
@@ -4825,9 +4927,9 @@
             [/Payload too large|\b413\b|exceeded the maximum allowed size|too large/i,
                 'حجم الملف أكبر من المسموح', 'صغّر حجم الملف (أو قسّمه) ثم أعد الرفع',
                 'The file is too large', 'Reduce (or split) the file and upload again'],
-            [/create-trial/i,
-                'خدمة التجربة المجانية (create-trial) غير منشورة أو لا تسمح بالاتصال', 'انشرها من جهازك: supabase functions deploy create-trial --no-verify-jwt ثم أعد المحاولة',
-                'The free-trial function (create-trial) is not deployed or is blocked', 'Deploy it: supabase functions deploy create-trial --no-verify-jwt, then try again'],
+            [/create-trial|TRIAL-/i,
+                'تعذر تجهيز التجربة حالياً', 'أعد المحاولة لاحقاً، أو تواصل مع الدعم واذكر مرجع الخطأ الظاهر',
+                'The trial is temporarily unavailable', 'Try again later or contact support with the displayed reference'],
             [/Failed to fetch|NetworkError|Load failed|network/i,
                 'تعذر الاتصال بالخادم', 'تحقق من اتصال الإنترنت. إن كان سليماً فقد يكون مشروع Supabase موقوفاً (Paused) أو الدالة المطلوبة غير منشورة — التشخيص التلقائي أدناه',
                 'Could not reach the server', 'Check your internet. If it is fine, the Supabase project may be paused or the requested function is not deployed — automatic diagnosis below'],
@@ -5021,8 +5123,10 @@
         let departmentsTableSupported = true;
 
         async function loadDepartments() {
+            const requestCompany = activeCompanyId, revision = companyRevision;
             if (!activeCompanyId) { departments = []; return; }
-            const { data, error } = await supabaseClient.from('departments').select('*').eq('company_id', activeCompanyId).order('created_at', { ascending: true });
+            const { data, error } = await supabaseClient.from('departments').select('*').eq('company_id', requestCompany).order('created_at', { ascending: true });
+            if (requestCompany !== activeCompanyId || revision !== companyRevision) return;
             if (error) {
                 departmentsTableSupported = false;
                 departments = [];
@@ -5245,7 +5349,7 @@
                 { key: 'art74',         name: 'إنهاء خدمات حسب المادة 74', eos: 'full', notice: 30, article: 'المادة 74',
                   note: 'انتهاء العقد باتفاق الطرفين كتابةً أو بانتهاء مدته أو بالقوة القاهرة أو بإغلاق المنشأة: تُحسب المكافأة كاملة وفق المادة 84.' },
                 { key: 'resignation',   name: 'إستقالة الموظف', eos: 'resignation', notice: 30, article: 'المادة 85',
-                  note: 'الاستقالة: أقل من سنتين لا مكافأة، من 2 إلى أقل من 5 سنوات ثلث المكافأة، من 5 إلى أقل من 10 ثلثاها، 10 سنوات فأكثر كاملة.' },
+                  note: 'الاستقالة: أقل من سنتين لا مكافأة، من سنتين حتى خمس سنوات شاملة ثلث المكافأة، وأكثر من خمس إلى أقل من عشر ثلثاها، 10 سنوات فأكثر كاملة.' },
                 { key: 'probation_co',  name: 'إنهاء خدمات خلال فترة التجربة من قبل الشركة', eos: 'none', notice: 0, article: 'المادة 53',
                   note: 'خلال فترة التجربة يحق لأي طرف إنهاء العقد ما لم يُنص على خلافه، ولا يستحق العامل مكافأة نهاية الخدمة ولا تعويضاً.' },
                 { key: 'probation_emp', name: 'إنهاء خدمات خلال فترة التجربة من قبل الموظف', eos: 'none', notice: 0, article: 'المادة 53',
@@ -5257,7 +5361,6 @@
             // العطل الرسمية ذات التاريخ الميلادي الثابت
             holidays: [
                 { name: 'يوم التأسيس', en: 'Foundation Day', month: 2, day: 22 },
-                { name: 'يوم العلم', en: 'Flag Day', month: 3, day: 11 },
                 { name: 'اليوم الوطني', en: 'National Day', month: 9, day: 23 }
             ],
             probationDays: 90,
@@ -5324,7 +5427,7 @@
             const m = String(str).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
             if (!m) { const d = new Date(str); return isNaN(d) ? null : d; }
             const y = +m[1], mo = +m[2], da = +m[3];
-            if (y >= 1700) return new Date(Date.UTC(y, mo - 1, da));
+            if (y >= 1700) return HRCore.date(`${String(y).padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}`);
             try {
                 const approx = Date.UTC(622, 6, 16) + ((y - 1) * 354.36707 + (mo - 1) * 29.5306 + (da - 1)) * 86400000;
                 for (let off = 0; off <= 40; off++) for (const s of (off ? [1, -1] : [1])) {
@@ -5355,7 +5458,7 @@
         function computeEndOfService(startStr, endStr, eosSalary, mode, deductions) {
             const start = toGregorianDate(startStr), end = toGregorianDate(endStr);
             const salary = Number(eosSalary) || 0;
-            if (!start || !end || end < start || salary <= 0) return { rows: [], totalDays: 0, totalDeducted: 0, total: 0, eligibilityDays: 0, payRatio: 0 };
+            if (!start || !end || end < start || !Number.isFinite(salary) || salary <= 0) return { error: !start || !end ? 'أدخل تاريخاً صحيحاً' : end < start ? 'تاريخ نهاية الخدمة يسبق تاريخ المباشرة' : 'الأجر يجب أن يكون موجباً', rows: [], totalDays: 0, totalDeducted: 0, total: 0, eligibilityDays: 0, payRatio: 0 };
             const endExcl = new Date(end.getTime() + 86400000);
             const totalDays = Math.max(0, days360(start, endExcl));
             // الأيام المخصومة: إجازات معتمدة من أنواع مفعّل عليها "يتم خصمها من فترة الخدمة"
@@ -5364,7 +5467,7 @@
             const years = Math.max(0, totalDays - totalDeducted) / 360;
             let payRatio = 1;
             if (mode === 'none') payRatio = 0;
-            else if (mode === 'resignation') payRatio = years < 2 ? 0 : years < 5 ? 1 / 3 : years < 10 ? 2 / 3 : 1;
+            else if (mode === 'resignation') payRatio = years < 2 ? 0 : years <= 5 ? 1 / 3 : years < 10 ? 2 / 3 : 1;
 
             const rows = []; let cur = start, i = 0;
             while (cur < endExcl && i < 60) {
@@ -5391,7 +5494,7 @@
         function serviceDeductionsFrom(requests, employeeId) {
             const names = deductedLeaveNames();
             return (requests || []).filter(r => (!employeeId || r.employee_id === employeeId) && r.request_type === 'leave' && r.status === 'approved' && names.has(r.sub_type))
-                .map(r => ({ date: r.date_from, days: r.days }));
+                .map(r => { const unpaid = HR_REF.leavesUnpaid.some(l => l.name === r.sub_type); const days = unpaid ? HRCore.unpaidServiceDays(r) : Number(r.days) || 0; const start = toGregorianDate(r.date_from); return { date: unpaid && start ? new Date(start.getTime() + Math.min(20, Number(r.days) || 0) * 86400000).toISOString().slice(0, 10) : r.date_from, days }; }).filter(r => r.days > 0);
         }
 
         function reasonByKey(key) { return HR_REF.terminationReasons.find(r => r.key === key) || HR_REF.terminationReasons[0]; }
@@ -5494,7 +5597,7 @@
             const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
             const withStart = active.map(e => ({ e, start: toGregorianDate(e.startDate) }));
             const newThisMonth = withStart.filter(x => x.start && x.start >= monthStart && x.start <= today);
-            const inProbation = withStart.filter(x => x.start && x.start <= today && daysBetween(x.start, today) < HR_REF.probationDays);
+            const inProbation = withStart.filter(x => employeeProbation(x.e)?.active);
             const inTermChain = terminated.filter(e => (e.clearanceTasks || []).length < 5);
             const endedThisMonth = terminated.filter(e => { const d = toGregorianDate(e.clearanceData?.lastDay); return d && d >= monthStart && d <= new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0)); });
 
@@ -5521,8 +5624,8 @@
                             hrRequests.filter(r => r.status === 'pending').map(r => { const e = employees.find(x => x.id === r.employee_id) || {}; return { id: r.employee_id, name: e.name, sub: e.jobTitle, cells: [REQ_TYPE_LABEL[r.request_type] || '', String(r.created_at || '').slice(0, 10)] }; }), 'لا توجد طلبات معلّقة')}
                         ${ovTable('مسارات إلحاق تحتاج متابعة', ['نسبة الإنجاز', 'تاريخ المباشرة'],
                             onboarding.sort((a, b) => (a.progress || 0) - (b.progress || 0)).map(e => ({ id: e.id, name: e.name, sub: e.jobTitle, cells: [`${e.progress || 0}%`, fmtDate(toGregorianDate(e.startDate))] })))}
-                        ${ovTable('في فترة التجربة (90 يوماً)', ['تاريخ المباشرة', 'الأيام المتبقية'],
-                            inProbation.sort((a, b) => a.start - b.start).map(x => ({ id: x.e.id, name: x.e.name, sub: x.e.jobTitle, cells: [fmtDate(x.start), `${HR_REF.probationDays - daysBetween(x.start, today)} يوم`] })))}
+                        ${ovTable('في فترة التجربة (حسب المدة المسجلة؛ الافتراضية تحتاج تأكيد العقد)', ['تاريخ المباشرة', 'الأيام المتبقية'],
+                            inProbation.sort((a, b) => a.start - b.start).map(x => ({ id: x.e.id, name: x.e.name, sub: x.e.jobTitle, cells: [fmtDate(x.start), `${employeeProbation(x.e)?.remaining || 0} يوم`] })))}
                     </div>`;
             } else if (overviewTab === 'upcoming') {
                 const horizon = 30;
@@ -5642,8 +5745,8 @@
             const reason = reasonByKey(document.getElementById('eos-reason').value);
             const salary = Number(emp.financials?.total) || 0;
             const r = computeEndOfService(emp.startDate, asOf, salary, reason.eos, serviceDeductionsFrom(hrRequests, emp.id));
-            // حفظ سبب الإنهاء المختار للموظف المنتهي عقده، ليظهر لاحقاً بلوحة المتابعة وسجل المخالصة
-            if (emp.isTerminated) window.saveClearanceReason(reason.key, emp.id);
+            if (r.error) { box.innerHTML = ''; return window.showToast(r.error, 'warning'); }
+            // المعاينة لا تعدّل سبب الإنهاء المحفوظ.
             const comp = getActiveCompany();
             const pct = v => `${Math.round(v * 10000) / 100} %`;
             box.innerHTML = `
@@ -5820,7 +5923,7 @@
         function renderPolicies() {
             const nav = document.getElementById('pol-nav'), box = document.getElementById('pol-content');
             if (!nav || !box) return;
-            nav.innerHTML = POLICY_TABS.map(t => `<button class="pol-nav-item ${t.key === policiesTab ? 'active' : ''}" onclick="window.setPoliciesTab('${t.key}')"><i class="fas ${t.icon} w-4"></i>${t.label}</button>`).join('');
+            nav.innerHTML = `<button class="pol-nav-item" onclick="window.openWorkSchedule()">جدول العمل</button><button class="pol-nav-item" onclick="window.openOnboardingRequirements()">متطلبات الإلحاق</button>` + POLICY_TABS.map(t => `<button class="pol-nav-item ${t.key === policiesTab ? 'active' : ''}" onclick="window.setPoliciesTab('${t.key}')"><i class="fas ${t.icon} w-4"></i>${t.label}</button>`).join('');
             const tr = (cells, active) => `<tr class="border-t border-slate-100 ${active === false ? 'opacity-50' : ''}">${cells.map(c => `<td class="p-3 font-bold text-slate-700">${c}</td>`).join('')}</tr>`;
             const leaveRows = list => HR_REF[list].map((l, i) => tr([escapeHtml(l.name), polToggle(list, i, 'selfService', l.selfService), polToggle(list, i, 'deducted', l.deducted), activeToggle(list, i, l.active)], l.active)).join('');
             const t = POLICY_TABS.find(x => x.key === policiesTab);
@@ -5872,7 +5975,7 @@
             document.getElementById('pol-modal').classList.remove('hidden');
         }
         window.closePolModal = () => document.getElementById('pol-modal').classList.add('hidden');
-        window.savePolModal = async () => { if (polFormSave && (await polFormSave()) !== false) window.closePolModal(); };
+        window.savePolModal = async () => { try { if (polFormSave && (await polFormSave()) !== false) window.closePolModal(); } catch (err) { window.showToast(err.message || 'تعذر الحفظ', 'error'); } };
         const polInp = 'w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-black bg-white';
         const polField = (label, inner, full) => `<div class="${full ? 'md:col-span-2' : ''}"><label class="block text-[11px] font-bold text-slate-500 mb-1">${label}</label>${inner}</div>`;
 
@@ -5958,9 +6061,11 @@
             wfh: 'العمل من المنزل', financial_claim: 'مطالبة مالية', letter: 'خطاب تعريف بالراتب', other: 'أخرى' };
 
         async function loadHrRequests() {
+            const requestCompany = activeCompanyId, revision = companyRevision;
             if (!activeCompanyId) return;
             const { data, error } = await supabaseClient.from('employee_requests').select('*')
-                .eq('company_id', activeCompanyId).order('created_at', { ascending: false }).limit(500);
+                .eq('company_id', requestCompany).order('created_at', { ascending: false }).limit(500);
+            if (requestCompany !== activeCompanyId || revision !== companyRevision) return;
             if (error) { hrReqLoaded = 'missing'; return; }
             hrRequests = data || []; hrReqLoaded = true;
             const pending = hrRequests.filter(r => r.status === 'pending').length;
@@ -5968,13 +6073,16 @@
             if (badge) { badge.innerText = pending; badge.classList.toggle('hidden', !pending); }
         }
         async function loadHrAttendance(dateStr) {
-            const { data, error } = await supabaseClient.from('employee_attendance').select('*')
-                .eq('company_id', activeCompanyId).eq('work_date', dateStr);
-            hrAttendance = error ? [] : (data || []);
+            const requestCompany = activeCompanyId, revision = companyRevision;
+            const { data, error } = await supabaseClient.from('employee_attendance').select('*').eq('company_id', requestCompany).eq('work_date', dateStr);
+            if (requestCompany !== activeCompanyId || revision !== companyRevision || dateStr !== attendanceDate) return false;
+            if (error) { hrAttendance = []; window.showToast('تعذر تحميل الحضور للتاريخ المختار', 'error'); return false; }
+            hrAttendance = data || []; return true;
         }
         window.loadHrRequests = loadHrRequests;
 
-        window.setRequestsTab = function (t) {
+        window.setRequestsTab = function (t, dateStr) {
+            if (t === 'attendance') attendanceDate = dateStr || document.getElementById('att-date')?.value || attendanceDate || today10();
             requestsTab = t;
             document.querySelectorAll('#req-tabs [data-rt]').forEach(b => b.classList.toggle('active', b.dataset.rt === t));
             renderRequestsView();
@@ -5983,7 +6091,10 @@
 
         async function renderRequestsView(reload = true) {
             const box = document.getElementById('req-content'); if (!box) return;
+            const renderRevision = ++requestRenderRevision, revision = companyRevision;
+            attendanceDate = document.getElementById('att-date')?.value || attendanceDate || today10();
             if (reload) { box.innerHTML = '<div class="hl-card p-10 text-center text-xs font-bold text-slate-400"><i class="fas fa-spinner fa-spin ml-1"></i> جاري التحميل...</div>'; await loadHrRequests(); }
+            if (revision !== companyRevision || renderRevision !== requestRenderRevision) return;
             if (hrReqLoaded === 'missing') {
                 box.innerHTML = `<div class="hl-card p-8 text-center"><i class="fas fa-database text-3xl text-slate-300 mb-3"></i>
                     <p class="font-black text-slate-800">فعّل قاعدة بيانات الخدمة الذاتية</p>
@@ -6018,12 +6129,11 @@
                         }).join('') : `<tr><td colspan="7" class="p-10 text-center text-xs font-bold text-slate-400"><i class="fas fa-inbox text-3xl block mb-2 text-slate-300"></i>لا توجد طلبات</td></tr>`}</tbody>
                     </table></div></div>`;
             } else {
-                const dateEl = document.getElementById('att-date');
-                const dateStr = dateEl?.value || new Date().toISOString().slice(0, 10);
-                await loadHrAttendance(dateStr);
+                const dateStr = attendanceDate;
+                if (!(await loadHrAttendance(dateStr)) || revision !== companyRevision || renderRevision !== requestRenderRevision) return;
                 const recBy = Object.fromEntries(hrAttendance.map(a => [a.employee_id, a]));
                 const onLeave = new Set(hrRequests.filter(r => r.request_type === 'leave' && r.status === 'approved' && r.date_from <= dateStr && (r.date_to || r.date_from) >= dateStr).map(r => r.employee_id));
-                const active = employees.filter(e => !e.isArchived && !e.isTerminated);
+                const active = employees.filter(e => e.companyId === activeCompanyId && employedOn(e, dateStr));
                 const present = active.filter(e => recBy[e.id]?.check_in).length;
                 box.innerHTML = `<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
                         ${ovKpi('حاضرون', present, 'fa-user-check', 'bg-emerald-50 text-emerald-600')}
@@ -6033,8 +6143,8 @@
                     </div>
                     <div class="hl-card overflow-hidden">
                         <div class="px-5 py-4 flex flex-wrap gap-2 items-center justify-between border-b border-slate-100">
-                            <h3 class="font-black text-slate-900">الحضور اليومي</h3>
-                            <input type="date" id="att-date" value="${dateStr}" onchange="window.setRequestsTab('attendance')" class="border rounded-xl p-2 text-xs font-bold">
+                            <h3 class="font-black text-slate-900">الحضور اليومي — ${dateStr}</h3>
+                            <input type="date" id="att-date" value="${dateStr}" onchange="window.setRequestsTab('attendance', this.value)" class="border rounded-xl p-2 text-xs font-bold">
                         </div>
                         <div class="overflow-x-auto"><table class="w-full text-right border-collapse min-w-[560px] text-xs">
                             <thead class="bg-slate-50"><tr>${['الموظف', 'ختم الدخول', 'ختم الخروج', 'الفترة', 'الحالة'].map(h => `<th class="p-3 font-extrabold text-slate-500">${h}</th>`).join('')}</tr></thead>
@@ -6058,6 +6168,7 @@
             rejected: ['مرفوض', 'bg-red-50 text-red-700'], active: ['نشط', 'bg-emerald-50 text-emerald-700'],
             stopped: ['موقوف', 'bg-slate-100 text-slate-500'], process: ['عملية إنهاء', 'bg-amber-50 text-amber-700'],
             settlement: ['تسوية الإنهاء', 'bg-sky-50 text-sky-700'], cancelled: ['ملغي', 'bg-slate-100 text-slate-500'],
+            notice: ['تحت الإشعار', 'bg-amber-50 text-amber-700'],
             closed: ['مغلقة', 'bg-emerald-50 text-emerald-700']
         };
         const nextMonthStr = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 7); };
@@ -6098,7 +6209,7 @@
                 hint: 'امتيازات عينية لا تُصرف ضمن ملف الرواتب الشهري.' },
             fin_deduction: { title: 'الاقتطاعات الدائمة', icon: 'fa-scissors', payroll: -1, statuses: ['active', 'stopped'], defStatus: 'active',
                 fields: [F.emp, F.sub('نوع الاقتطاع', ['قسط سكن', 'نفقة بحكم قضائي', 'اشتراك صندوق ادخار', 'قسط تمويل بموافقة الموظف', 'أخرى']), F.amount(), F.month('يبدأ من شهر'), F.recurring(true), F.notes],
-                hint: 'المادة 92: لا يجوز أن تزيد الاقتطاعات (عدا ما نص عليه النظام) عن نصف أجر العامل المستحق — يُنبَّه تلقائياً في ملف البنك.' },
+                hint: 'المادة 93: مجموع الحسميات له سقف عام نصف الأجر، مع الاستثناءات النظامية. تطبق المادة 92 شروط كل حسم ومنها قروض صاحب العمل. تُوقف ملفات الصرف التي تحتاج مراجعة.' },
             gosi_move: { title: 'حركات الضمان الاجتماعي', icon: 'fa-shield-halved', payroll: 0, statuses: ['open', 'done'], defStatus: 'open',
                 fields: [F.emp, F.sub('نوع الحركة', ['تسجيل مشترك', 'تعديل أجر', 'استبعاد مشترك', 'تعديل مهنة', 'تسجيل منشأة فرعية']), F.start('تاريخ الحركة'), F.amount('الأجر الخاضع (ريال)'), F.notes],
                 hint: 'تُسجَّل حركات التأمينات من منصة التأمينات الاجتماعية، وتُتابَع هنا حتى الإنجاز (تسجيل عند المباشرة، تعديل الأجر عند الزيادة، الاستبعاد عند انتهاء الخدمة).' },
@@ -6106,8 +6217,8 @@
                 fields: [F.emp, F.sub('نوع الامتياز', ['تذكرة سنوية', 'مكافأة سنوية', 'بدل إجازة', 'مكافأة نهاية عام', 'أخرى']), F.amount(), F.month('شهر الصرف'), F.notes],
                 hint: 'تُصرف مرة واحدة في شهر الصرف المحدد ضمن ملف البنك.' },
             fin_hi: { title: 'تكلفة التأمين الصحي', icon: 'fa-notes-medical', payroll: 0, statuses: ['active', 'stopped'], defStatus: 'active',
-                fields: [F.emp, F.sub('البند', ['قسط المنشأة', 'حصة الموظف عن التابعين (بموافقته)']), F.amount('القسط الشهري (ريال)'), F.month('يبدأ من شهر'), F.recurring(true), F.notes],
-                hint: 'التأمين الصحي على العامل إلزامي على صاحب العمل (نظام الضمان الصحي التعاوني). حصة التابعين الاختيارية فقط تُخصم من الراتب.' },
+                fields: [F.emp, F.sub('البند', ['قسط المنشأة', 'ترقية اختيارية فوق التغطية الإلزامية (فرق القسط بموافقة الموظف)']), F.amount('القسط الشهري (ريال)'), F.month('يبدأ من شهر'), F.recurring(true), F.notes],
+                hint: 'التغطية الإلزامية للعامل وأفراد أسرته المشمولين على نفقة صاحب العمل. يسجل هنا فرق ترقية اختيارية موثقة فقط؛ لا يُنشأ حسم تلقائي من هذه الشاشة.' },
             fin_repay: { title: 'إدارة التسديدات (السلف)', icon: 'fa-hand-holding-dollar', payroll: -1, statuses: ['active', 'done', 'stopped'], defStatus: 'active',
                 fields: [F.emp, F.sub('النوع', ['سلفة على الراتب', 'قرض شخصي', 'عهدة مستحقة']), F.amount('إجمالي المبلغ (ريال)'),
                     { key: 'installments', label: 'عدد الأقساط الشهرية', type: 'number', data: true, def: () => 1 }, F.month('أول قسط في شهر'), F.notes],
@@ -6179,8 +6290,10 @@
         ];
 
         async function loadHrOps() {
+            const requestCompany = activeCompanyId, revision = companyRevision;
             if (!activeCompanyId) return;
-            const { data, error } = await supabaseClient.from('hr_operations').select('*').eq('company_id', activeCompanyId).order('created_at', { ascending: false }).limit(2000);
+            const { data, error } = await supabaseClient.from('hr_operations').select('*').eq('company_id', requestCompany).order('created_at', { ascending: false }).limit(2000);
+            if (requestCompany !== activeCompanyId || revision !== companyRevision) return;
             if (error) { hrOpsLoaded = 'missing'; return; }
             hrOps = data || []; hrOpsLoaded = true;
             refreshNotifications();
@@ -6363,6 +6476,14 @@
             if (['fin_annual', 'fin_perf', 'fin_repay', 'fin_absence', 'followup'].includes(module)) row.recurring = false;
             // الملاحظات بتاريخ تعديل تُدرج تلقائياً ضمن المتابعات الشهرية لذلك الشهر
             if (module === 'note' && row.start_date) row.effective_month = row.start_date.slice(0, 7);
+            if (row.amount != null && (!Number.isFinite(row.amount) || row.amount < 0)) return window.showToast('المبلغ يجب ألا يكون سالباً', 'warning');
+            if (row.days != null && (!Number.isFinite(row.days) || row.days < 0)) return window.showToast('عدد الأيام غير صالح', 'warning');
+            if (row.start_date && row.end_date && row.end_date < row.start_date) return window.showToast('نهاية الفترة تسبق بدايتها', 'warning');
+            if (module === 'fin_repay') {
+                const emp = employees.find(e => e.id === row.employee_id);
+                const plan = HRCore.loanPlan(row.amount, Number(row.data.installments), emp?.financials?.total || 0);
+                if (!plan.valid) return window.showToast('القسط يتجاوز الحد المعتاد لقروض صاحب العمل؛ عدل المبلغ أو عدد الأقساط. الحد المتاح: ' + fmtMoney(plan.cap), 'warning');
+            }
             let res;
             if (opsEditId) {
                 const old = hrOps.find(x => x.id === opsEditId);
@@ -6380,7 +6501,8 @@
 
         window.opsSetStatus = async function (id, status) {
             const o = hrOps.find(x => x.id === id); if (!o) return;
-            const { error } = await supabaseClient.from('hr_operations').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+            if (o.module === 'gosi_move' && /استبعاد/.test(o.sub_type || '') && status === 'done' && o.start_date > today10()) return window.showToast('لا يمكن إكمال استبعاد مستقبلي قبل تاريخ سريانه', 'warning');
+            const { error } = await supabaseClient.from('hr_operations').update({ status, updated_at: new Date().toISOString() }).eq('id', id).eq('company_id', activeCompanyId);
             if (error) return window.showToast('تعذر التحديث: ' + error.message, 'error');
             // نقل الموظف: تحديث القسم فعلياً في ملف الموظف عند الإنجاز
             if (o.module === 'transfer' && status === 'done' && o.data?.to_department) {
@@ -6394,6 +6516,7 @@
         window.opsFinalizeTermination = function (id) {
             const o = hrOps.find(x => x.id === id); if (!o) return;
             const emp = employees.find(e => e.id === o.employee_id); if (!emp) return window.showToast('الموظف غير موجود', 'error');
+            if (!o.end_date || !toGregorianDate(o.end_date) || toGregorianDate(o.end_date) < toGregorianDate(emp.startDate)) return window.showToast('حدد آخر يوم عمل صحيحاً لا يسبق المباشرة', 'warning');
             window.showConfirmModal('اعتماد إنهاء الخدمة', `سيتم نقل ${emp.name} إلى العقود المنتهية بآخر يوم عمل ${o.end_date || '-'} لبدء المخالصة. متابعة؟`, async () => {
                 const reason = HR_REF.terminationReasons.find(r => r.name === o.sub_type);
                 const lastDay = o.end_date || addDaysStr(o.start_date, Number(o.days || 0)) || new Date().toISOString().slice(0, 10);
@@ -6402,16 +6525,17 @@
                     clearance_last_paid_value: 0, clearance_last_paid_month: '-', clearance_ded_gosi: 0, clearance_ded_loans: 0, clearance_ded_absence: 0, clearance_ded_delays: 0, clearance_ded_compensation: 0 });
                 const { error } = await supabaseClient.from('employees').update(updates).eq('id', emp.id);
                 if (error) return window.showToast('تعذر إنهاء العقد: ' + error.message, 'error');
-                emp.isTerminated = true;
+                emp.terminationRecorded = true;
                 emp.clearanceData = { ...(emp.clearanceData || { leaveBal: 0, leaveUsed: 0, extraDays: 0, bonusAmt: 0, lastPaidVal: 0, lastPaidMonth: '-', dedGosi: 0, dedLoans: 0, dedCustody: 0, dedAbsence: 0, dedDelays: 0, dedCompensation: 0 }), lastDay };
+                refreshEmploymentState(emp);
                 if (reason) { selectedEmployeeId = emp.id; await window.saveClearanceReason(reason.key, emp.id); }
                 // الأقساط المتبقية تُنقل تلقائياً إلى خصم السلف في المخالصة
                 const remaining = hrOps.filter(x => x.employee_id === emp.id && x.module === 'fin_repay' && x.status === 'active').reduce((s, x) => s + opsRepayRemaining(x, lastDay.slice(0, 7)), 0);
                 if (remaining > 0) { emp.clearanceData.dedLoans = remaining; await supabaseClient.from('employees').update({ clearance_ded_loans: remaining }).eq('id', emp.id); }
-                await supabaseClient.from('hr_operations').update({ status: 'done', updated_at: new Date().toISOString() }).eq('id', id);
+                await supabaseClient.from('hr_operations').update({ status: emp.isUnderNotice ? 'notice' : 'done', updated_at: new Date().toISOString() }).eq('id', id);
                 await supabaseClient.from('hr_operations').insert({ module: 'gosi_move', sub_type: 'استبعاد مشترك', status: 'open', employee_id: emp.id, start_date: lastDay, company_id: activeCompanyId, owner_id: currentUser.id, notes: 'أُنشئت تلقائياً عند اعتماد إنهاء الخدمة' });
                 renderTable(); renderTerminatedTable(); renderStats();
-                window.showToast('تم إنهاء الخدمة ونقل الموظف للمخالصة، وأُضيفت حركة استبعاد من التأمينات' + (remaining > 0 ? ` وخصم سلف متبقية ${remaining} ريال` : ''));
+                window.showToast((emp.isUnderNotice ? 'تم تسجيل الإنهاء المستقبلي؛ يستمر الاستحقاق حتى آخر يوم عمل، وحركة التأمينات قيد الإجراء' : 'تم إنهاء الخدمة ونقل الموظف للمخالصة، وأُضيفت حركة استبعاد من التأمينات') + (remaining > 0 ? ` وخصم سلف متبقية ${remaining} ريال` : ''));
                 await loadHrOps(); renderOps(false);
             });
         };
@@ -6433,6 +6557,169 @@
                     : '<tr><td colspan="4" class="p-10 text-center font-bold text-slate-400">لا توجد حركات</td></tr>'}</tbody></table></div>`;
         }
 
+        // Audit fixes: shared state, validation and policy controls.
+        let companyRevision = 0, requestRenderRevision = 0, attendanceDate = null;
+        let reportCompanyId = null, trialPending = null, entitlementSaving = false;
+        const employeeDocsCache = new Map(), pendingEmployeePatches = new Map();
+        const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+        function employeeSchedule(emp, asOf = today10()) {
+            const explicit = HRCore.chooseSchedule(policySettings, emp?.id, asOf);
+            if (explicit) return explicit;
+            const text = toLatinDigits(getActiveCompany()?.workingHours || '8 ساعات يوميا لمدة 6 أيام في الأسبوع');
+            const hm = text.match(/(\d+(?:\.\d+)?)\s*ساع/), dm = text.match(/([56])\s*(?:أيام|ايام)/);
+            if (!hm || !dm) return null;
+            return { hours: Number(hm[1]), days: dm[1] === '6' ? [0, 1, 2, 3, 4, 6] : [0, 1, 2, 3, 4], effectiveFrom: '1900-01-01', legacy: true };
+        }
+        function scheduleDescription(emp, asOf) {
+            const s = employeeSchedule(emp, asOf);
+            return s ? `${s.hours} ساعات يومياً، ${s.days.length} أيام أسبوعياً (${s.days.map(d => DAY_NAMES[d]).join('، ')})` : getActiveCompany()?.workingHours || 'يحدد جدول العمل في العقد';
+        }
+        window.openWorkSchedule = function (empId = '') {
+            const emp = employees.find(e => e.id === empId), current = employeeSchedule(emp) || { hours: 8, days: [0, 1, 2, 3, 4] };
+            const body = `<p class="text-xs mb-3">يستخدم الجدول في العرض والغياب والإضافي من تاريخ سريانه. يحتفظ النظام بالجداول السابقة.</p>
+                <label class="block text-xs font-bold">النطاق<select id="hr-schedule-emp" class="w-full border rounded-xl p-2"><option value="">كل المنشأة</option>${employees.filter(e => !e.isArchived).map(e => `<option value="${e.id}" ${e.id === empId ? 'selected' : ''}>${escapeHtml(e.name)}</option>`).join('')}</select></label>
+                <label class="block text-xs font-bold mt-3">يسري من<input id="hr-schedule-from" type="date" value="${today10()}" class="w-full border rounded-xl p-2"></label>
+                <label class="block text-xs font-bold mt-3">ساعات اليوم<input id="hr-schedule-hours" type="number" min="1" max="8" step="0.5" value="${current.hours}" class="w-full border rounded-xl p-2"></label>
+                <div class="flex flex-wrap gap-3 mt-3">${DAY_NAMES.map((name, i) => `<label class="text-xs"><input class="hr-schedule-day" type="checkbox" value="${i}" ${current.days.includes(i) ? 'checked' : ''}> ${name}</label>`).join('')}</div>`;
+            const companyId = activeCompanyId;
+            openPolModal('جدول العمل المعتمد', body, async () => {
+                if (companyId !== activeCompanyId) throw new Error('تغيرت المنشأة؛ افتح الإعداد مجدداً');
+                const id = document.getElementById('hr-schedule-emp').value;
+                const row = { hours: Number(document.getElementById('hr-schedule-hours').value), days: [...document.querySelectorAll('.hr-schedule-day:checked')].map(x => Number(x.value)), effectiveFrom: document.getElementById('hr-schedule-from').value };
+                if (!HRCore.scheduleValid(row) || !HRCore.date(row.effectiveFrom) || row.hours > 8 || row.hours * row.days.length > 48) throw new Error('حدد تاريخاً صالحاً وجدولاً ضمن 8 ساعات يومياً و48 أسبوعياً ويوم راحة على الأقل');
+                const next = structuredClone(policySettings);
+                let list;
+                if (id) { next.employeeSchedules ||= {}; list = next.employeeSchedules[id] ||= []; }
+                else list = next.workSchedules ||= [];
+                const at = list.findIndex(x => x.effectiveFrom === row.effectiveFrom); if (at >= 0) list[at] = row; else list.push(row);
+                await savePolicyStrict(next, companyId); window.showToast('تم حفظ جدول العمل');
+            });
+        };
+        async function savePolicyStrict(settings, companyId = activeCompanyId) {
+            const { error } = await supabaseClient.from('companies').update({ policy_settings: settings }).eq('id', companyId);
+            if (error) throw new Error('لم تُحفظ السياسة في الخادم: ' + error.message);
+            const comp = companies.find(c => c.id === companyId); if (comp) comp.policySettings = settings;
+            try { localStorage.setItem(policyStorageKey(companyId), JSON.stringify(settings)); } catch (_) {}
+            if (companyId === activeCompanyId) applyPolicySettings(settings);
+        }
+        function employeeProbation(emp, asOf = today10()) {
+            const cfg = policySettings.employeeProbation?.[emp.id];
+            const days = cfg?.days ?? HR_REF.probationDays;
+            const exclusions = new Set(cfg?.excludedDates || []), start = toGregorianDate(emp.startDate);
+            if (start) for (let i = 0; i < 400; i++) {
+                const d = new Date(start.getTime() + i * 86400000).toISOString().slice(0, 10);
+                const holiday = detectHoliday(d);
+                if (holiday?.type === 'عيد أو عطلة رسمية') exclusions.add(d);
+            }
+            (hrRequests || []).filter(r => r.employee_id === emp.id && r.status === 'approved' && r.request_type === 'leave' && /مرض/.test(r.sub_type || '')).forEach(r => {
+                const a = toGregorianDate(r.date_from), b = toGregorianDate(r.date_to || r.date_from);
+                for (let d = a, i = 0; d && b && d <= b && i < 1000; i++, d = new Date(d.getTime() + 86400000)) exclusions.add(d.toISOString().slice(0, 10));
+            });
+            const result = HRCore.probation(start, days, [...exclusions], asOf);
+            return result ? { ...result, documented: !!cfg } : null;
+        }
+        window.openProbationPolicy = function (empId = selectedEmployeeId) {
+            const emp = employees.find(e => e.id === empId); if (!emp) return;
+            const cfg = policySettings.employeeProbation?.[emp.id] || { days: 90, excludedDates: [] }, companyId = activeCompanyId;
+            openPolModal('فترة التجربة حسب العقد', `<p class="text-xs mb-3">${escapeHtml(emp.name)} — أدخل المدة المنصوص عليها في العقد (0 عند عدم وجود تجربة، والحد الأعلى 180). تستبعد الإجازات النظامية المعرفة والمعتمدة تلقائياً.</p><label class="block text-xs">المدة بالأيام<input type="number" id="hr-prob-days" min="0" max="180" step="1" value="${cfg.days}" class="w-full border rounded-xl p-2"></label><label class="block text-xs mt-3">تواريخ إضافية مستبعدة ومؤيدة (YYYY-MM-DD، تاريخ في كل سطر)<textarea id="hr-prob-excluded" class="w-full border rounded-xl p-2" dir="ltr">${escapeHtml((cfg.excludedDates || []).join('\n'))}</textarea></label>`, async () => {
+                if (companyId !== activeCompanyId) throw new Error('تغيرت المنشأة');
+                const days = Number(document.getElementById('hr-prob-days').value), excludedDates = document.getElementById('hr-prob-excluded').value.split(/[\s,،]+/).filter(Boolean);
+                if (!Number.isInteger(days) || days < 0 || days > 180 || excludedDates.some(d => !HRCore.date(d))) throw new Error('تحقق من المدة والتواريخ');
+                const next = structuredClone(policySettings); next.employeeProbation ||= {}; next.employeeProbation[emp.id] = { days, excludedDates: [...new Set(excludedDates)] };
+                await savePolicyStrict(next, companyId); renderOverview(); window.showToast('تم حفظ مدة التجربة');
+            });
+        };
+        function validateEntitlementForEmployee(rec, emp) {
+            const errors = HRCore.validateEntitlement(rec);
+            if (rec.type === 'overtime' && !errors.length) {
+                let possible = 0;
+                for (let d = HRCore.date(rec.from), i = 0; d <= HRCore.date(rec.to || rec.from) && i < 3660; d = new Date(+d + 86400000), i++) {
+                    const s = employeeSchedule(emp, HRCore.iso(d));
+                    if (!s) { errors.push('حدد جدول عمل الموظف قبل حساب الإضافي'); break; }
+                    const holiday = detectHoliday(HRCore.iso(d));
+                    possible += s.days.includes(d.getUTCDay()) && holiday?.type !== 'عيد أو عطلة رسمية' ? 24 - s.hours : 24;
+                }
+                if (rec.hours > possible) errors.push('الإضافي يتجاوز الساعات المتاحة بعد جدول العمل المعتاد');
+            }
+            if (rec.type === 'receipt' && rec.sub === 'سلفة' && rec.payroll) {
+                const existing = hrOps.filter(o => o.employee_id === emp.id && o.module === 'fin_repay' && o.status === 'active' && o.effective_month <= rec.month && monthDiff(o.effective_month, rec.month) < Number(o.data?.installments || 1)).reduce((sum, o) => sum + opsRepayInstallment(o), 0);
+                const plan = HRCore.loanPlan(rec.amount, rec.installments, employeeServicePeriod(emp, rec.month).ratio * Number(emp.financials?.total || 0), existing);
+                if (!plan.valid) errors.push(`القسط ${fmtMoney(plan.installment)} يتجاوز المتاح ${fmtMoney(plan.cap)} لقروض صاحب العمل؛ ${plan.minInstallments ? 'عدد الأقساط لا يقل عن ' + plan.minInstallments : 'لا يوجد متاح للحسم في الشهر المختار'}`);
+            }
+            if (rec.type === 'receipt' && rec.sub === 'مرتب (كاش)') {
+                if (empPayMethod(emp) !== 'cash' || !String(emp.payMethodNote || '').trim()) errors.push('سند الراتب النقدي يتطلب طريقة صرف نقدية واستثناءً موثقاً في ملف الموظف');
+                const row = payrollRows(rec.month).find(r => r.e.id === emp.id);
+                if (!row) errors.push('الموظف غير مستحق في الشهر المختار');
+                else errors.push(...payrollValidation(row.p));
+            }
+            return errors;
+        }
+        function onboardingReadiness(emp) {
+            const labels = { name: 'الاسم', nid: 'الهوية', startDate: 'المباشرة', jobTitle: 'المسمى', bank: 'البنك', iban: 'الآيبان', workEmail: 'البريد الرسمي' };
+            const keys = policySettings.onboardingRequiredFields || ['name', 'nid', 'startDate', 'jobTitle', 'bank', 'iban'];
+            const missing = keys.filter(k => !(['bank', 'iban'].includes(k) && empPayMethod(emp) === 'cash')).filter(k => !emp[k] || (k === 'iban' && !ibanValid(emp[k])) || (k === 'nid' && !/^\d{10}$/.test(emp[k]))).map(k => labels[k] || k);
+            const docs = employeeDocsCache.get(emp.id), required = policySettings.onboardingRequiredDocs || portalDocsData.filter(d => d.required).map(d => d.key);
+            const missingDocs = required.filter(k => !docs?.has(k)).map(k => portalDocsData.find(d => d.key === k)?.label || k);
+            return { missing, missingDocs, docsLoaded: !!docs, ready: !missing.length && !missingDocs.length && !!docs };
+        }
+        function renderOnboardingReadiness(emp) {
+            const host = document.getElementById('d-readiness'); if (!host) return;
+            const r = onboardingReadiness(emp), p = employeeProbation(emp);
+            host.innerHTML = `<p class="text-xs font-bold ${r.ready ? 'text-emerald-700' : 'text-amber-600'}">جاهزية الملف: ${r.ready ? 'المتطلبات المحددة مكتملة' : !r.docsLoaded ? 'جارٍ التحقق من المستندات' : `${r.missing.length} بيانات و${r.missingDocs.length} مستندات مطلوبة ناقصة`}</p><p class="text-[10px] text-slate-500">${escapeHtml(r.missing.concat(r.docsLoaded ? r.missingDocs : []).join('، '))}</p><p class="text-[10px] text-slate-500">مؤشر المراحل يقيس تأشير المهام، ولا يثبت اكتمال الوثائق أو اعتماد الصرف.</p><div class="flex flex-wrap gap-2 mt-2"><button type="button" onclick="window.openWorkSchedule('${emp.id}')" class="text-xs underline">جدول العمل</button><button type="button" onclick="window.openProbationPolicy('${emp.id}')" class="text-xs underline">التجربة: ${p?.days ?? 'غير محددة'} يوم ${p?.documented ? 'حسب العقد المسجل' : '(افتراضية؛ تحقق من العقد)'}</button><button type="button" onclick="window.openOnboardingRequirements()" class="text-xs underline">المتطلبات</button></div>`;
+        }
+        window.openOnboardingRequirements = function () {
+            const fs = policySettings.onboardingRequiredFields || ['name', 'nid', 'startDate', 'jobTitle', 'bank', 'iban'], ds = policySettings.onboardingRequiredDocs || portalDocsData.filter(d => d.required).map(d => d.key);
+            openPolModal('متطلبات اعتماد الإلحاق', `<p class="text-xs mb-3">تطبق المتطلبات على جاهزية الملف؛ تبقى نسبة المهام مستقلة.</p><div>${Object.entries({ name: 'الاسم', nid: 'الهوية', startDate: 'المباشرة', jobTitle: 'المسمى', bank: 'البنك', iban: 'الآيبان', workEmail: 'البريد الرسمي' }).map(([k,v]) => `<label class="block text-xs p-1"><input class="hr-req-field" type="checkbox" value="${k}" ${fs.includes(k) ? 'checked' : ''}> ${v}</label>`).join('')}</div><hr class="my-3"><div>${portalDocsData.map(d => `<label class="block text-xs p-1"><input class="hr-req-doc" type="checkbox" value="${d.key}" ${ds.includes(d.key) ? 'checked' : ''}> ${escapeHtml(d.label)}</label>`).join('')}</div>`, async () => {
+                const next = structuredClone(policySettings);
+                next.onboardingRequiredFields = [...document.querySelectorAll('.hr-req-field:checked')].map(e => e.value);
+                next.onboardingRequiredDocs = [...document.querySelectorAll('.hr-req-doc:checked')].map(e => e.value);
+                await savePolicyStrict(next); const emp = employees.find(e => e.id === selectedEmployeeId); if (emp) renderOnboardingReadiness(emp);
+            });
+        };
+        function showFieldSaveState(text, error = false) {
+            let el = document.getElementById('field-save-state');
+            const host = document.getElementById('details-modal'); if (!host) return;
+            if (!el) { el = document.createElement('div'); el.id = 'field-save-state'; el.setAttribute('role', 'status'); el.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:10005;padding:12px 18px;border-radius:12px;background:#fff;box-shadow:0 2px 14px #0003;font-size:12px;font-weight:bold'; host.appendChild(el); }
+            el.style.color = error ? '#b42318' : '#17623b'; el.textContent = text;
+            if (error) { const b = document.createElement('button'); b.textContent = ' — إعادة المحاولة'; b.onclick = () => pendingEmployeePatches.forEach((_, key) => flushEmployeePatch(key)); el.appendChild(b); }
+        }
+        function queueEmployeePatch(empId, updates) {
+            const key = activeCompanyId + ':' + empId;
+            let q = pendingEmployeePatches.get(key);
+            if (!q) { q = { empId, companyId: activeCompanyId, values: {}, sending: false }; pendingEmployeePatches.set(key, q); }
+            Object.assign(q.values, updates); clearTimeout(q.timer);
+            showFieldSaveState('تغييرات غير محفوظة…'); q.timer = setTimeout(() => flushEmployeePatch(key), 400);
+        }
+        async function flushEmployeePatch(key) {
+            const q = pendingEmployeePatches.get(key); if (!q || q.sending) return;
+            q.sending = true; const payload = q.values; q.values = {};
+            try {
+                const { error } = await supabaseClient.from('employees').update(payload).eq('id', q.empId).eq('company_id', q.companyId);
+                if (error) throw error;
+                q.sending = false;
+                if (Object.keys(q.values).length) return flushEmployeePatch(key);
+                pendingEmployeePatches.delete(key); if (!pendingEmployeePatches.size) showFieldSaveState('تم حفظ جميع التغييرات');
+            } catch (_) { q.values = { ...payload, ...q.values }; q.sending = false; showFieldSaveState('تعذر الحفظ؛ تغييراتك لم تُحفظ بعد', true); }
+        }
+        window.addEventListener('beforeunload', e => { if (pendingEmployeePatches.size) { e.preventDefault(); e.returnValue = ''; } });
+
+        function employmentEnd(emp) { return (emp.terminationRecorded || emp.isTerminated || emp.isUnderNotice) ? emp.clearanceData?.lastDay || null : null; }
+        function employeeServicePeriod(emp, month) { return HRCore.servicePeriod(toGregorianDate(emp.startDate), employmentEnd(emp) ? toGregorianDate(employmentEnd(emp)) : null, month); }
+        function employedOn(emp, dateStr) {
+            const d = toGregorianDate(dateStr), start = toGregorianDate(emp.startDate), end = toGregorianDate(employmentEnd(emp));
+            return !emp.isArchived && !!d && !!start && d >= start && (!end || d <= end);
+        }
+        function refreshEmploymentState(emp) {
+            const end = toGregorianDate(employmentEnd(emp));
+            if (emp.terminationRecorded || emp.isTerminated || emp.isUnderNotice) {
+                emp.terminationRecorded = true;
+                emp.isUnderNotice = !!end && end >= todayUTC();
+                emp.isTerminated = !end || end < todayUTC();
+            }
+        }
+        function payrollValidation(p) {
+            return [...(p.errors || []), ...(p.overCap ? ['الاستقطاعات تتجاوز السقف العام للمادة 93؛ راجع الأساس النظامي قبل الصرف'] : []), ...(p.net < 0 ? ['صافي الراتب سالب'] : [])];
+        }
         // ---------- محرّك الرواتب الشهري (يُستخدم لملف البنك) ----------
         function monthDiff(a, b) { const [y1, m1] = a.split('-').map(Number), [y2, m2] = b.split('-').map(Number); return (y2 - y1) * 12 + (m2 - m1); }
         function opsRepayInstallment(o) { const n = Math.max(1, Number(o.data?.installments) || 1); return Number(((Number(o.amount) || 0) / n).toFixed(2)); }
@@ -6443,10 +6730,16 @@
         }
         function payrollFor(emp, month, adjustments) {
             const f = emp.financials || {};
-            const total = Number(f.total) || 0, gosi = Number(f.gosi) || 0, daily = total / 30;
+            const service = employeeServicePeriod(emp, month), errors = [...service.errors];
+            const monthlyTotal = Number(f.total) || 0, total = HRCore.money(monthlyTotal * service.ratio), daily = monthlyTotal / 30;
+            const gosi = HRCore.gosiDue(toGregorianDate(emp.startDate), employmentEnd(emp) ? toGregorianDate(employmentEnd(emp)) : null, month) ? Number(f.gosi) || 0 : 0;
+            if (!Number.isFinite(monthlyTotal) || monthlyTotal < 0) errors.push('الراتب المسجل غير صالح');
             const adds = [], deds = [];
-            hrOps.filter(o => o.employee_id === emp.id && OPS_MODULES[o.module]?.payroll && !['stopped', 'cancelled', 'rejected'].includes(o.status)).forEach(o => {
+            hrOps.filter(o => service.eligible && o.company_id === activeCompanyId && o.employee_id === emp.id && OPS_MODULES[o.module]?.payroll && !['stopped', 'cancelled', 'rejected'].includes(o.status)).forEach(o => {
                 const m = OPS_MODULES[o.module], amt = Number(o.amount) || 0, em = o.effective_month;
+                if (!Number.isFinite(amt) || amt < 0) { errors.push('حركة مالية بقيمة غير صالحة: ' + (o.ref_no || o.id)); return; }
+                // Legacy carry-over wage entries may duplicate the newly prorated starting month.
+                if (o.module === 'fin_extra' && o.data?.auto && !o.data?.verified_unpaid_period) { errors.push('راجع مبلغ أيام ما قبل الدورة لمنع ازدواج راتب المباشرة'); return; }
                 let v = 0;
                 if (o.module === 'fin_repay') { const k = em ? monthDiff(em, month) : -1; if (o.status === 'active' && k >= 0 && k < Math.max(1, Number(o.data?.installments) || 1)) v = opsRepayInstallment(o); }
                 else if (o.module === 'fin_absence') { if (em === month) v = Number((daily * (Number(o.days) || 0)).toFixed(2)); }
@@ -6454,14 +6747,19 @@
                 else if (em === month) v = amt;
                 if (v) (m.payroll > 0 ? adds : deds).push({ label: `${m.title}: ${o.sub_type || ''}`, amount: v });
             });
-            (adjustments || []).filter(a => a.employee_id === emp.id && (a.month === month || (a.is_recurring && a.month <= month))).forEach(a => {
+            (adjustments || []).filter(a => service.eligible && a.employee_id === emp.id && (a.month === month || (a.is_recurring && a.month <= month))).forEach(a => {
+                if (!Number.isFinite(Number(a.amount)) || Number(a.amount) < 0) { errors.push('تعديل راتب بقيمة غير صالحة'); return; }
                 const lbl = { increase: 'زيادة', allowance: 'علاوة', bonus: 'مكافأة', deduction: 'خصم' }[a.adjustment_type] + (a.description ? ': ' + a.description : '');
                 (a.adjustment_type === 'deduction' ? deds : adds).push({ label: lbl, amount: Number(a.amount) || 0 });
             });
-            const addT = adds.reduce((s, x) => s + x.amount, 0), dedT = deds.reduce((s, x) => s + x.amount, 0);
+            const loanTotal = deds.filter(x => x.label.startsWith(OPS_MODULES.fin_repay.title)).reduce((n, x) => n + x.amount, 0);
+            if (loanTotal > HRCore.money(total * .1)) errors.push('أقساط قروض صاحب العمل تتجاوز 10% من الأجر المستحق؛ راجع الجدول قبل الصرف');
+            const addT = HRCore.money(adds.reduce((s, x) => s + x.amount, 0)), dedT = HRCore.money(deds.reduce((s, x) => s + x.amount, 0));
             const net = Number((total + addT - gosi - dedT).toFixed(2));
-            return { basic: Number(f.basic) || 0, housing: Number(f.housing) || 0, transport: Number(f.transport) || 0, total, gosi, adds, deds, addT, dedT, net,
-                overCap: dedT > (total + addT) / 2 };
+            const basic = HRCore.money((Number(f.basic) || 0) * service.ratio), housing = HRCore.money((Number(f.housing) || 0) * service.ratio), transport = HRCore.money((Number(f.transport) || 0) * service.ratio);
+            const other = HRCore.money(total - basic - housing - transport);
+            return { basic, housing, transport, other, total, monthlyTotal, gosi, adds, deds, addT, dedT, net, service, errors,
+                overCap: gosi + dedT > (total + addT) / 2 };
         }
         window.payrollFor = payrollFor;
 
@@ -6472,7 +6770,7 @@
         const cleanIban = v => String(v || '').replace(/\s+/g, '').toUpperCase();
         const ibanValid = v => /^SA\d{22}$/.test(cleanIban(v));
         const ibanBank = v => { const c = cleanIban(v).slice(4, 6); const b = HR_REF.banks.find(x => x.code === c); return b ? [b.ar, b.swift || ''] : (SA_BANK_CODES[c] || null); };
-        let bankFileCache = null;
+        let bankFileCache = null, bankFileMonth = null;
 
         function renderBankFile(box) {
             const inp = 'w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black';
@@ -6481,11 +6779,11 @@
                     <div class="border border-slate-200 rounded-2xl p-4 space-y-3"><p class="font-black text-slate-800 text-sm">النطاق</p>
                         <div><label class="block text-[11px] font-bold text-slate-500 mb-1">القسم / الإدارة</label><select id="bf-dept" class="${inp}"><option value="">كل الأقسام</option>${(departments || []).map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('')}</select></div>
                         <div><label class="block text-[11px] font-bold text-slate-500 mb-1">البنك</label><select id="bf-bank" class="${inp}"><option value="">كل البنوك</option>${Object.entries(SA_BANK_CODES).map(([c, b]) => `<option value="${c}">${b[0]}</option>`).join('')}</select></div>
-                        <div><label class="block text-[11px] font-bold text-slate-500 mb-1">الحالة</label><select id="bf-status" class="${inp}"><option value="active">نشط</option><option value="inactive">غير نشط (منتهية عقودهم)</option><option value="both">كلاهما</option></select></div>
+                        <div><label class="block text-[11px] font-bold text-slate-500 mb-1">الحالة</label><select id="bf-status" class="${inp}"><option value="both">كل المستحقين في الفترة</option><option value="active">مستمر بنهاية الفترة</option><option value="inactive">انتهت خدمته خلال الفترة</option></select></div>
                     </div>
                     <div class="border border-slate-200 rounded-2xl p-4 space-y-3"><p class="font-black text-slate-800 text-sm">معلومات ملف البنك</p>
                         <div class="grid grid-cols-2 gap-3">
-                            <div><label class="block text-[11px] font-bold text-slate-500 mb-1">الفترة (شهر الراتب)</label><input type="month" id="bf-month" value="${thisMonthStr()}" class="${inp}"></div>
+                            <div><label class="block text-[11px] font-bold text-slate-500 mb-1">الفترة (شهر الراتب)</label><input type="month" id="bf-month" value="${bankFileMonth || document.getElementById('crx-month-select')?.value || thisMonthStr()}" onchange="bankFileMonth=this.value; bankFileCache=null" class="${inp}"></div>
                             <div><label class="block text-[11px] font-bold text-slate-500 mb-1">تاريخ الدفع</label><input type="date" id="bf-paydate" value="${new Date().toISOString().slice(0, 10)}" class="${inp}"></div>
                         </div>
                         <div><label class="block text-[11px] font-bold text-slate-500 mb-1">نوع الحساب البنكي</label><div class="grid grid-cols-2 gap-2"><span class="text-center py-2 rounded-xl bg-brand text-brand-ink text-xs font-extrabold">IBAN</span><span class="text-center py-2 rounded-xl border border-slate-200 text-slate-400 text-xs font-extrabold" title="قريباً">بطاقة راتب</span></div></div>
@@ -6499,27 +6797,29 @@
         }
 
         async function buildBankFile() {
+            const revision = companyRevision, companyId = activeCompanyId;
             const month = document.getElementById('bf-month').value || thisMonthStr();
             const dept = document.getElementById('bf-dept').value, bank = document.getElementById('bf-bank').value, st = document.getElementById('bf-status').value;
             if (hrOpsLoaded !== true) await loadHrOps();
-            let list = employees.filter(e => !e.isArchived && (st === 'both' || (st === 'active' ? !e.isTerminated : e.isTerminated)) && empPayMethod(e) === 'wps');
+            let list = employees.filter(e => e.companyId === activeCompanyId && !e.isArchived && (employeeServicePeriod(e, month).eligible || employeeServicePeriod(e, month).errors.length) && (st === 'both' || (st === 'active' ? employedOn(e, HRCore.iso(HRCore.monthBounds(month)[1])) : !employedOn(e, HRCore.iso(HRCore.monthBounds(month)[1])))) && empPayMethod(e) === 'wps');
             if (dept) list = list.filter(e => e.departmentId === dept);
             let adjustments = [];
             const ids = list.map(e => e.id);
             if (ids.length) { const r = await supabaseClient.from('salary_adjustments').select('*').in('employee_id', ids); adjustments = r.error ? [] : (r.data || []); }
+            if (revision !== companyRevision || companyId !== activeCompanyId) throw new Error('تغيرت المنشأة؛ أعد المعاينة');
             const ok = [], issues = [];
             list.forEach(e => {
                 const p = payrollFor(e, month, adjustments), iban = cleanIban(e.iban), b = ibanBank(iban);
                 if (bank && iban.slice(4, 6) !== bank) return;
                 const row = { e, p, iban, bank: b };
-                const problems = [];
+                const problems = payrollValidation(p);
                 if (!ibanValid(iban)) problems.push('آيبان غير صالح أو مفقود');
                 if (p.net <= 0) problems.push('صافي الراتب صفر أو سالب');
-                if (!e.nid) problems.push('رقم الهوية مفقود');
-                row.problems = problems; row.warn = p.overCap ? 'الاقتطاعات تتجاوز نصف الأجر (م92)' : '';
+                if (!/^\d{10}$/.test(String(e.nid || ''))) problems.push('رقم الهوية يجب أن يكون عشرة أرقام');
+                row.problems = problems; row.warn = '';
                 (problems.length ? issues : ok).push(row);
             });
-            bankFileCache = { month, ok, issues, payDate: document.getElementById('bf-paydate').value };
+            bankFileCache = { companyId, month, ok, issues, payDate: document.getElementById('bf-paydate').value };
             return bankFileCache;
         }
 
@@ -6530,7 +6830,7 @@
                     ${ovKpi('موظفون في الملف', ok.length, 'fa-users', 'bg-emerald-50 text-emerald-600')}${ovKpi('إجمالي التحويل', fmtMoney(total), 'fa-sack-dollar', 'bg-sky-50 text-sky-600')}${ovKpi('مستبعدون للمراجعة', issues.length, 'fa-triangle-exclamation', 'bg-red-50 text-red-600')}</div>
                 <div class="overflow-x-auto rounded-2xl border border-slate-200"><table class="w-full text-right text-xs min-w-[860px]"><thead class="bg-slate-50"><tr>${['الموظف', 'البنك', 'IBAN', 'الأساسي', 'السكن', 'بدلات أخرى', 'الإضافات', 'الاستقطاعات', 'الصافي', 'ملاحظات'].map(h => `<th class="p-2.5 font-extrabold text-slate-500">${h}</th>`).join('')}</tr></thead><tbody>
                 ${[...ok, ...issues].map(r => `<tr class="border-t border-slate-100 ${r.problems.length ? 'bg-red-50/60' : ''}"><td class="p-2.5 font-black">${escapeHtml(r.e.name || '')}</td><td class="p-2.5 font-bold">${escapeHtml(r.bank?.[0] || r.e.bank || '—')}</td><td class="p-2.5 font-mono" dir="ltr">${escapeHtml(r.iban || '—')}</td>
-                    <td class="p-2.5">${r.p.basic.toFixed(2)}</td><td class="p-2.5">${r.p.housing.toFixed(2)}</td><td class="p-2.5">${r.p.transport.toFixed(2)}</td><td class="p-2.5 text-emerald-700" title="${escapeHtml(r.p.adds.map(x => x.label + ' ' + x.amount).join('\n'))}">${r.p.addT.toFixed(2)}</td>
+                    <td class="p-2.5">${r.p.basic.toFixed(2)}</td><td class="p-2.5">${r.p.housing.toFixed(2)}</td><td class="p-2.5">${(r.p.transport + r.p.other).toFixed(2)}</td><td class="p-2.5 text-emerald-700" title="${escapeHtml(r.p.adds.map(x => x.label + ' ' + x.amount).join('\n'))}">${r.p.addT.toFixed(2)}</td>
                     <td class="p-2.5 text-red-600" title="${escapeHtml(['التأمينات ' + r.p.gosi, ...r.p.deds.map(x => x.label + ' ' + x.amount)].join('\n'))}">${(r.p.gosi + r.p.dedT).toFixed(2)}</td><td class="p-2.5 font-black">${r.p.net.toFixed(2)}</td>
                     <td class="p-2.5 text-[10px] font-bold ${r.problems.length ? 'text-red-600' : 'text-amber-600'}">${escapeHtml([...r.problems, r.warn].filter(Boolean).join('، '))}</td></tr>`).join('') || '<tr><td colspan="10" class="p-8 text-center text-slate-400 font-bold">لا يوجد موظفون ضمن النطاق</td></tr>'}</tbody></table></div>
                 <p class="text-[11px] font-bold text-slate-400 mt-2">شهر الراتب: ${month}</p>`;
@@ -6546,7 +6846,7 @@
                 'Seq': i + 1, 'Employee Number': r.e.empNumber || '', 'Employee Name': r.e.name || '', 'National ID / Iqama': r.e.nid || '',
                 'Bank Code': r.iban.slice(4, 6), 'Bank SWIFT': r.bank?.[1] || '', 'IBAN': r.iban,
                 'Basic Salary': Number(r.p.basic.toFixed(2)), 'Housing Allowance': Number(r.p.housing.toFixed(2)),
-                'Other Earnings': Number((r.p.transport + r.p.addT).toFixed(2)), 'Deductions': Number((r.p.gosi + r.p.dedT).toFixed(2)),
+                'Other Earnings': Number((r.p.transport + r.p.other + r.p.addT).toFixed(2)), 'Deductions': Number((r.p.gosi + r.p.dedT).toFixed(2)),
                 'Net Salary': Number(r.p.net.toFixed(2)), 'Currency': 'SAR', 'Payment Date': payDate, 'Salary Month': month, 'Remarks': `Salary ${month}`
             }));
             const totalNet = ok.reduce((s, r) => s + r.p.net, 0);
@@ -6601,16 +6901,29 @@
         // ====================================================================
         const UPGRADE_CONTACT = { email: 'info@saudi-hr.com', whatsapp: '' };   // ← ضع رقم واتساب المبيعات بصيغة 9665xxxxxxxx
         async function requestTrial() {
-            let r;
-            try { r = await fetch(SUPABASE_URL + '/functions/v1/create-trial', { method: 'POST', headers: { 'content-type': 'application/json', apikey: SUPABASE_ANON_KEY, authorization: 'Bearer ' + SUPABASE_ANON_KEY }, body: '{}' });
-            } catch (netErr) {
-                // فشل الطلب قبل وصول أي رد: إن كان الخادم يستجيب فالدالة غير منشورة، وإلا فهو اتصال/إيقاف مشروع
-                if ((await window.probeBackend()) === 'up') throw new Error('تعذر الوصول لخدمة التجربة (create-trial)');
-                throw netErr;
-            }
-            const j = await r.json().catch(() => ({}));
-            if (!r.ok || !j.email) throw new Error(j.error || (r.status === 404 ? 'خدمة التجربة غير منشورة بعد (create-trial)' : 'تعذر تجهيز التجربة'));
-            return j;
+            if (trialPending) return trialPending;
+            trialPending = (async () => {
+                let key; try { key = sessionStorage.getItem('hr_trial_request'); } catch (_) {}
+                if (!key) { key = crypto.randomUUID(); try { sessionStorage.setItem('hr_trial_request', key); } catch (_) {} }
+                const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 25000);
+                try {
+                    const response = await fetch(SUPABASE_URL + '/functions/v1/create-trial', {
+                        method: 'POST', headers: { 'content-type': 'application/json', apikey: SUPABASE_ANON_KEY, authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+                        body: JSON.stringify({ request_id: key }), signal: controller.signal
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok || !data.email || !data.password || !Number.isFinite(Date.parse(data.trial_ends_at))) {
+                        const code = response.status === 429 ? 'TRIAL-LIMIT' : 'TRIAL-' + (response.status || 'SERVICE');
+                        throw new Error(response.status === 429 ? 'محاولات كثيرة؛ أعد المحاولة لاحقاً. المرجع: ' + code : 'تعذر تجهيز التجربة حالياً. تواصل مع الدعم. المرجع: ' + code);
+                    }
+                    try { sessionStorage.removeItem('hr_trial_request'); } catch (_) {}
+                    return data;
+                } catch (err) {
+                    if (/TRIAL-/.test(err.message || '')) throw err;
+                    throw new Error('تعذر الاتصال بخدمة التجربة. أعد المحاولة بنفس الصفحة. المرجع: TRIAL-CONNECTION');
+                } finally { clearTimeout(timeout); }
+            })();
+            try { return await trialPending; } finally { trialPending = null; }
         }
         window.startTrial = async function (btn) {
             const t = btn?.innerHTML; if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin ml-1"></i>نجهّز مساحتك...'; }
@@ -6717,7 +7030,7 @@
                 }
                 try { sessionStorage.setItem('portalAuto', data.last4); } catch (_) {}
                 location.href = location.pathname + '?p=' + encodeURIComponent(data.token);
-            } catch (err) { fail(/portal_login|function/i.test(err.message || '') ? 'دخول الموظفين غير مفعّل بعد — شغّل migration_employee_login.sql' : 'تعذر الدخول: ' + (err.message || '')); }
+            } catch (err) { fail(/portal_login|function/i.test(err.message || '') ? 'خدمة دخول الموظفين غير متاحة حالياً. تواصل مع الموارد البشرية. المرجع: PORTAL-LOGIN' : 'تعذر الدخول: ' + (err.message || '')); }
             finally { btn.disabled = false; btn.textContent = 'دخول'; }
         };
         // بطاقة داخل رابط الموظف: بريده الرسمي + إنشاء/تغيير كلمة المرور
@@ -6941,7 +7254,19 @@
         const IDC_DESIGNS = [['green', 'الهوية السعودية'], ['light', 'فاتح رسمي'], ['vertical', 'عمودي (بطاقة معلّقة)'], ['dark', 'داكن فاخر']];
         let idcState = { empId: '', groups: ['company', 'work'], design: null };
         const idcPinned = () => (policySettings && policySettings.idcardDesign) || 'green';
-        function loadQRLib() { return window.QRCode ? Promise.resolve() : new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; s.onload = res; s.onerror = () => rej(new Error('تعذر تحميل مكتبة QR')); document.head.appendChild(s); }); }
+        let qrLibraryPending = null;
+        function loadQRLib() {
+            if (window.QRCode) return Promise.resolve();
+            if (!qrLibraryPending) qrLibraryPending = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                const timer = setTimeout(() => reject(new Error('تعذر تحميل رمز البطاقة خلال الوقت المحدد؛ أعد المحاولة بعد التحقق من الاتصال')), 12000);
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+                script.onload = () => { clearTimeout(timer); window.QRCode ? resolve() : reject(new Error('تعذر تجهيز رمز البطاقة')); };
+                script.onerror = () => { clearTimeout(timer); reject(new Error('تعذر تحميل رمز البطاقة؛ تحقق من الاتصال وأعد المحاولة')); };
+                document.head.appendChild(script);
+            }).finally(() => { qrLibraryPending = null; });
+            return qrLibraryPending;
+        }
         async function qrDataUrl(text) {
             await loadQRLib(); const d = document.createElement('div');
             new window.QRCode(d, { text, width: 240, height: 240, correctLevel: window.QRCode.CorrectLevel.M });
@@ -7015,16 +7340,26 @@
             if (error) return window.showToast('تعذر الحفظ: ' + error.message, 'error'); e.currentAddress = v.trim(); window.showToast('تم حفظ العنوان'); };
         window.idcGenerate = async function () {
             const e = employees.find(x => x.id === idcState.empId), comp = getActiveCompany() || {}; if (!e) return;
+            const revision = companyRevision;
+            document.getElementById('idc-designs').innerHTML = '<p class="text-xs font-bold text-slate-500" role="status">جارٍ تجهيز البطاقة ورمزها…</p>';
             const qrText = `SaudiHR ID\nNAME: ${e.nameEn || transliterateName(e.name || '')}\nEMP: ${e.empNumber || ''}\nTITLE-DEPT: ${(departments.find(d => d.id === e.departmentId)?.codePrefix) || ''}\nCO: ${comp.nameEn || ''}\nCR: ${comp.cr || ''}`;
-            let qr = ''; try { qr = await qrDataUrl(qrText); } catch (err) { window.showToast(err.message, 'warning'); }
+            let qr = ''; try { qr = await qrDataUrl(qrText); } catch (err) {
+                if (revision !== companyRevision || idcState.empId !== e.id) return;
+                document.getElementById('idc-designs').textContent = err.message;
+                return window.showToast(err.message, 'warning');
+            }
+            if (revision !== companyRevision || idcState.empId !== e.id) return;
             const pinned = idcPinned();
-            document.getElementById('idc-designs').innerHTML = IDC_DESIGNS.map(([k, l]) => `<div class="hl-card p-4 ${k === pinned ? 'ring-2 ring-emerald-500' : ''}">
+            const designsBox = document.getElementById('idc-designs'); designsBox.className = 'space-y-4';
+            designsBox.innerHTML = `<div class="flex flex-wrap gap-2">${IDC_DESIGNS.map(([k,l]) => `<button class="px-3 py-2 border rounded-xl text-xs font-bold" onclick="window.idcSelectDesign('${k}')">${escapeHtml(l)}</button>`).join('')}</div>` + IDC_DESIGNS.map(([k, l]) => `<div data-idc-design="${k}" class="hl-card p-4 ${k === pinned ? 'ring-2 ring-emerald-500' : ''}">
                 <div class="flex items-center justify-between mb-3"><p class="text-xs font-black text-slate-700">${l}${k === pinned ? ' <span class="text-emerald-600">📌 معتمد</span>' : ''}</p>
                     <div class="flex gap-1"><button onclick="window.idcPin('${k}')" class="px-2.5 py-1 rounded-full bg-slate-100 text-[10px] font-extrabold" title="اعتماده كتصميم دائم"><i class="fas fa-thumbtack"></i></button>
                     <button onclick="window.idcExport('${k}', 'pdf')" class="px-2.5 py-1 rounded-full bg-slate-900 text-white text-[10px] font-extrabold">PDF</button>
                     <button onclick="window.idcExport('${k}', 'png')" class="px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold">صورة</button></div></div>
                 <div class="flex justify-center overflow-x-auto" id="idc-${k}">${idcHtml(e, comp, k, qr)}</div></div>`).join('');
+            window.idcSelectDesign(idcState.design || pinned || IDC_DESIGNS[0][0]);
         };
+        window.idcSelectDesign = function (key) { idcState.design = key; document.querySelectorAll('[data-idc-design]').forEach(el => el.classList.toggle('hidden', el.dataset.idcDesign !== key)); };
         window.idcPin = async function (k) { const s = JSON.parse(JSON.stringify(policySettings || {})); s.idcardDesign = k; applyPolicySettings(s); await persistPolicySettings(getActiveCompany(), s); window.idcGenerate(); window.showToast('تم اعتماد التصميم للبطاقات'); };
         window.idcExport = async function (k, fmt) {
             const card = document.querySelector(`#idc-${k} .idc-card`), e = employees.find(x => x.id === idcState.empId); if (!card || !e || typeof html2pdf === 'undefined') return;
@@ -7097,13 +7432,15 @@
         // إدارة المستخدمين (فريق المنشأة) بالأدوار
         // ====================================================================
         const ROLES = [['admin', 'مدير (كامل الصلاحيات)'], ['hr', 'موارد بشرية'], ['accountant', 'محاسب'], ['viewer', 'مشاهدة فقط']];
-        let members = [], myRole = 'owner';
+        let members = [], myRole = 'viewer';
         async function loadMembers() {
-            if (!activeCompanyId) return;
+            const revision = companyRevision, companyId = activeCompanyId;
+            if (!companyId) return;
             const { data, error } = await supabaseClient.from('company_members').select('*').eq('company_id', activeCompanyId).order('created_at');
+            if (revision !== companyRevision || companyId !== activeCompanyId) return;
             members = error ? null : (data || []);
             const comp = getActiveCompany();
-            myRole = comp && comp.ownerId === currentUser?.id ? 'owner' : (members || []).find(m => m.user_id === currentUser?.id)?.role || 'owner';
+            myRole = comp && comp.ownerId === currentUser?.id ? 'owner' : (members || []).find(m => m.user_id === currentUser?.id)?.role || 'viewer';
         }
         window.loadMembers = loadMembers;
         window.renderUsersSection = async function () {
@@ -7154,19 +7491,19 @@
         // k = كلمات مفتاحية (بعد التطبيع)، وكل سطر: [عنوان، الإجابة، المخاطر، المطلوب]
         const ASK_KB = [
             { k: ['مده الاشعار', 'اشعار انهاء', 'انذار', 'مهله الاستقاله', 'قدم استقالتي', 'كم يوم اشعار'], t: 'مدة الإشعار عند إنهاء العقد غير محدد المدة',
-              a: 'يجوز لأي طرف إنهاء العقد غير محدد المدة لسبب مشروع بإشعار كتابي (المادة 75): **30 يوماً** إذا كان الإنهاء من العامل و**60 يوماً** إذا كان من صاحب العمل بحسب التعديلات النافذة، وتُراجَع مدة العقد إن نصّ على أطول.',
-              r: 'الإنهاء دون إشعار قد يوجب تعويضاً (المادة 77) أو يُعدّ ترك عمل بلا مسوّغ يُسقط حقوقاً.', d: ['وثّق الإشعار كتابياً وبتاريخ ثابت', 'يستمر العامل بأداء عمله وتُصرف أجوره حتى نهاية المدة', 'سجّل الإنهاء في قوى قبل انتهاء المدة'] },
+              a: 'في العقد غير محدد المدة وبسبب مشروع، إذا كان الأجر شهرياً فالإشعار **30 يوماً من العامل و60 يوماً من صاحب العمل**؛ وإذا كان الأجر لا يدفع شهرياً فالإشعار **30 يوماً من أي طرف**، وفق المادة 75. تحقق من نوع العقد ودورية الأجر وشروطه. المصدر الرسمي: https://www.hrsd.gov.sa/علاقات-العمل — مراجعة 2026-09-30.',
+              r: 'بدل مهلة الإشعار تنظمه المادة 76؛ وتعويض الإنهاء غير المشروع تنظمه المادة 77. لكل منهما شروطه ولا يحل أحدهما تلقائياً محل الآخر.', d: ['وثّق الإشعار كتابياً وبتاريخ ثابت', 'يستمر العامل بأداء عمله وتُصرف أجوره حتى نهاية المدة', 'طابق تاريخ نفاذ الإنهاء مع العقد والإشعار والسجلات الرسمية'] },
             { k: ['مكافاه نهايه الخدمه', 'نهايه الخدمه', 'مستحقات نهايه', 'كيف احسب المكافاه'], t: 'مكافأة نهاية الخدمة',
               a: 'تُحسب على آخر أجر (الأساسي + البدلات الثابتة): **نصف شهر عن كل سنة من أول 5 سنوات، وشهر كامل عن كل سنة بعدها** (المادة 84)، وتُحسب كسور السنة بالتناسب. تُصرف كاملة عند انتهاء العقد أو الفصل بغير المادة 80.',
-              r: 'التأخر في صرفها يعرّض المنشأة للمطالبة والغرامة، ويُحتسب على العامل عدم صرفها خلال 7 أيام من انتهاء العلاقة (المادة 88).', d: ['استعمل قسم "مكافأة نهاية الخدمة" في المستحقات لاحتسابها آلياً', 'اخصم السلف المتبقية بموافقة العامل ضمن حد الخصم النظامي', 'أصدر مخالصة موقّعة'] },
+              r: 'التأخر في صرفها يعرّض المنشأة للمطالبة والغرامة، وتكون التصفية خلال أسبوع إذا أنهى صاحب العمل العلاقة، وخلال أسبوعين إذا أنهاها العامل، وفق المادة 88.', d: ['استعمل قسم "مكافأة نهاية الخدمة" في المستحقات لاحتسابها آلياً', 'اخصم السلف المتبقية بموافقة العامل ضمن حد الخصم النظامي', 'أصدر مخالصة موقّعة'] },
             { k: ['استقاله', 'مكافاه الاستقاله', 'اذا استقلت', 'استقال الموظف'], t: 'مكافأة الاستقالة',
-              a: 'عند استقالة العامل تُحسب المكافأة (المادة 85): **لا شيء إن قلّت الخدمة عن سنتين، الثلث من سنتين إلى أقل من 5، الثلثان من 5 إلى أقل من 10، وكاملة بعد 10 سنوات**. وتستحق العاملة المكافأة كاملة إن استقالت خلال 6 أشهر من الزواج أو 3 أشهر من الوضع (المادة 87).',
+              a: 'عند استقالة العامل تُحسب المكافأة (المادة 85): **لا شيء إن قلّت الخدمة عن سنتين، الثلث من سنتين وحتى خمس سنوات شاملة، والثلثان لأكثر من خمس وأقل من عشر، وكاملة عند عشر سنوات فأكثر**. وتستحق العاملة المكافأة كاملة إن استقالت خلال 6 أشهر من الزواج أو 3 أشهر من الوضع (المادة 87).',
               r: 'الاستقالة دون إشعار قد تُحمّل العامل تعويضاً، وقبولها من المنشأة لا يُسقط حقوقه المستحقة.', d: ['اطلب الاستقالة كتابياً', 'احسب المكافأة حسب مدة الخدمة', 'أنهِ العقد في قوى وأصدر المخالصة'] },
             { k: ['فصل دون مكافاه', 'فصل بدون مكافاه', 'المادة 80', 'الفصل التاديبي', 'متى افصل'], t: 'الفصل دون مكافأة أو إشعار (المادة 80)',
               a: 'يجوز الفصل دون مكافأة أو تعويض في حالات محددة حصراً منها: الاعتداء على صاحب العمل أو المدير، عدم أداء الالتزامات الجوهرية، الغش أو التزوير عند التعاقد، الغياب دون عذر **أكثر من 30 يوماً متفرقة خلال السنة أو 15 يوماً متصلة**، إفشاء الأسرار، والحصول على مصلحة غير مشروعة بسبب العمل. ويشترط **تمكين العامل من إبداء أقواله** قبل الفصل.',
               r: 'الفصل خارج هذه الحالات أو دون سماع العامل يُعدّ فصلاً تعسفياً يوجب التعويض (المادة 77) ومكافأة كاملة.', d: ['وثّق المخالفة وأنذر كتابياً في حالات الغياب', 'اسمع أقوال العامل ودوّنها', 'استشر مختصاً قبل قرار الفصل'] },
             { k: ['فتره التجربه', 'تجربه', 'مده التجربه'], t: 'فترة التجربة',
-              a: 'لا تزيد فترة التجربة عن **90 يوماً** ويجوز تمديدها باتفاق كتابي بحيث لا تتجاوز **180 يوماً** في المجموع (المادة 53). يجوز لأي طرف إنهاء العقد خلالها دون إشعار أو مكافأة.',
+              a: 'تُذكر فترة التجربة صراحة في العقد وتحدد مدتها بوضوح بما لا يتجاوز **180 يوماً** وفق المادة 53، مع استبعاد الإجازات التي تحددها اللائحة. يجوز لأي طرف إنهاء العقد خلالها دون إشعار أو مكافأة.',
               r: 'عدم ذكر التجربة كتابةً في العقد يُسقط حق المنشأة فيها، وتُحسب مدة التجربة ضمن مدة الخدمة.', d: ['اكتب مدة التجربة في العقد وفي قوى', 'راقب تاريخ نهايتها من لوحة المتابعة', 'قرّر التثبيت أو الإنهاء قبل انتهائها'] },
             { k: ['اجازه سنويه', 'رصيد الاجازه', 'كم اجازه', 'الاجازه السنويه'], t: 'الإجازة السنوية',
               a: 'الإجازة السنوية **21 يوماً** تزداد إلى **30 يوماً** بعد إتمام 5 سنوات متصلة (المادة 109)، بأجر كامل. لا يجوز التنازل عنها، ويجوز تأجيلها بموافقة العامل لسنة واحدة.',
@@ -7184,10 +7521,10 @@
               a: 'للعامل راحة أسبوعية **24 ساعة متصلة على الأقل** ويكون الجمعة الأصل (المادة 104)، ويجوز تبديلها بيوم آخر ولا يجوز تشغيله فيها إلا بأجر إضافي.',
               r: 'التشغيل في الراحة دون مقابل مخالفة.', d: ['حدّد يوم الراحة في اللائحة', 'احتسب العمل فيها كعمل إضافي'] },
             { k: ['تاخير الراتب', 'تاخر صرف', 'موعد صرف الراتب', 'صرف الراتب', 'حمايه الاجور', 'حماية الاجور'], t: 'موعد صرف الأجور وحماية الأجور',
-              a: 'يُصرف الأجر الشهري **خلال 7 أيام من تاريخ استحقاقه** (المادة 90)، وتُلزم المنشآت بصرفه عبر البنوك ورفعه على منصة **مدد** ضمن برنامج حماية الأجور.',
+              a: 'يُصرف أجر العامل الشهري **مرة في الشهر** في موعد استحقاقه وفق المادة 90، وتُلزم المنشآت بصرفه عبر البنوك ورفعه على منصة **مدد** ضمن برنامج حماية الأجور.',
               r: 'التأخر أو عدم مطابقة الأجر المسجّل يعرّض المنشأة لغرامات وإيقاف الخدمات على قوى ومقيم وتأثير على نطاقات.', d: ['حمّل ملف الرواتب من قسم الرواتب (صنف حماية الأجور)', 'ارفعه على مدد قبل موعد الاستحقاق', 'احتفظ بإثبات التحويل'] },
             { k: ['خصم من الراتب', 'اخصم', 'اخصم من', 'استقطع', 'اقتطاع', 'الخصومات', 'حد الخصم'], t: 'الخصم من أجر العامل',
-              a: 'لا يجوز الخصم من الأجر إلا في حالات محددة، ولا يزيد مجموع الاقتطاعات عن **نصف الأجر المستحق** إلا ما استثناه النظام (المادة 92)، ويجوز خصم الجزاءات بحد أقصى **5 أيام في الشهر** (المادة 66).',
+              a: 'لا يجوز الخصم من الأجر إلا في حالات محددة، ولا يزيد مجموع الاقتطاعات عن **نصف الأجر المستحق** وفق المادة 93 مع استثناءاتها؛ وتحدد المادة 92 شروط أنواع الحسم، ويجوز خصم الجزاءات بحد أقصى **5 أيام في الشهر** وفق المادة 70.',
               r: 'الخصم المخالف يُلزم المنشأة برده مع المطالبة والغرامة.', d: ['وثّق سبب كل خصم كتابياً', 'راجع تنبيه حد 50% في مسير الرواتب'] },
             { k: ['التامينات', 'gosi', 'نسبه التامينات', 'كم ياخذون التامينات', 'استقطاع التامينات'], t: 'نسب التأمينات الاجتماعية',
               a: 'على **السعودي** (النظام الحالي): **9.75%** على الموظف و**11.75%** على المنشأة من (الأساسي + السكن)، ترتفع تدريجياً للنظام الجديد (10.75% و12.75% في 2026). وعلى **غير السعودي**: **2%** على المنشأة فقط (أخطار المهنة).',
@@ -7199,8 +7536,8 @@
               a: 'يُحرَّر العقد **كتابةً من نسختين** (المادة 51) ويُوثَّق إلكترونياً عبر منصة **قوى**، وتُحسب المكافأة والحقوق على أساس بيانات العقد الموثّق.',
               r: 'عقد غير موثّق يُضعف موقف المنشأة عند النزاع ويؤثر على خدمات الإقامة والتأشيرات.', d: ['اجعل الموظف يوقّع العرض الوظيفي من رابطه', 'وثّق العقد في قوى بنفس الراتب والمسمى'] },
             { k: ['اجازه وضع', 'اجازه امومه', 'الحامل', 'العاملات'], t: 'إجازة الأمومة',
-              a: 'للعاملة إجازة وضع بأجر بحسب النظام والتعديلات النافذة، وتُمنع منشأتها من فصلها أثناءها أو بسبب الحمل. **أرقام المدة والأجر تغيّرت في التعديلات الأخيرة**، فراجع النص الرسمي على بوابة وزارة الموارد البشرية قبل الاحتساب.',
-              r: 'فصل العاملة بسبب الحمل أو الوضع باطل وموجب للتعويض.', d: ['اطلب تقريراً طبياً بالموعد المتوقع', 'وثّق الإجازة في قوى'] },
+              a: 'إجازة الوضع **12 أسبوعاً بأجر كامل** وفق المادة **151**؛ ستة أسابيع منها وجوباً بعد الوضع، وتوزع الستة الباقية وفق الشروط النظامية ابتداءً من أربعة أسابيع قبل الموعد المرجح. المصدر الرسمي: https://www.hrsd.gov.sa/تشغيل-النساء — مراجعة 2026-09-30.',
+              r: 'يحظر فصل العاملة أو إنذارها بالفصل أثناء الحمل أو إجازة الوضع وفق المادة 155؛ تُراجع ملابسات أي نزاع قبل تقرير آثاره.', d: ['اطلب تقريراً طبياً بالموعد المتوقع', 'سجّل الإجازة ومستندها الطبي في ملف الموظفة'] },
             { k: ['اجازه زواج', 'اجازه وفاه', 'اجازه مولود', 'اجازه حج', 'اجازه العيد', 'اجازات خاصه'], t: 'الإجازات الخاصة المدفوعة',
               a: 'بأجر كامل: **5 أيام للزواج، 5 أيام للوفاة (زوج/أصل/فرع)، 3 أيام لولادة مولود**، وإجازة **حج** لمرة واحدة بعد سنتين من الخدمة (10 أيام على الأقل)، مع إجازات الأعياد واليوم الوطني ويوم التأسيس (المادة 113 وما بعدها).',
               r: 'رفض هذه الإجازات أو خصمها مخالفة.', d: ['قدّم الطلب مع المستند المؤيد', 'اخترها من نوع الإجازة في رابط الموظف'] },
@@ -7221,8 +7558,7 @@
                 return ASK_FMT(`لك **${l.entitled} يوماً** إجازة سنوية، والمتراكم هذه السنة **${l.accrued} يوماً**، والمستخدم **${l.used} يوماً**، فالرصيد المتاح الآن **${l.balance} يوماً** (المادة 109).`, 'تجاوز الرصيد يُحتسب إجازة بدون أجر أو يُخصم من الراتب.', ['قدّم طلب الإجازة من قسم "طلباتي" قبل موعدها', 'انتظر اعتماد الموارد البشرية قبل السفر']); }
             if (has('مكافاه') && (has('نهايه') || has('الان') || has('مستحقه'))) { const total = Number(e.total_salary) || 0, r = computeEndOfService(e.start_date, new Date().toISOString().slice(0, 10), total, 'full');
                 return ASK_FMT(`مكافأة نهاية الخدمة المتراكمة لك حتى اليوم ≈ **${fmtMoney(r.total)} ريال** عن ${(r.totalDays / 360).toFixed(1)} سنة خدمة، محسوبة على إجمالي أجرك (المادة 84) — ولو استقلت تُطبَّق نسب المادة 85 حسب مدة خدمتك.`, 'الرقم تقديري ويتغير بتغير الأجر وتاريخ الانتهاء وسببه.', ['راجع سبب إنهاء الخدمة، فهو يحدد النسبة', 'اطلب من الموارد البشرية كشفاً رسمياً عند الحاجة']); }
-            if (has('تجرب') && !has('كم مده') && !has('180')) { const s = toGregorianDate(e.start_date); if (s) { const d = 90 - daysBetween(s, todayUTC());
-                return ASK_FMT(d > 0 ? `أنت في فترة التجربة وتبقّى **${d} يوماً** على انتهاء الـ 90 يوماً (المادة 53).` : `انتهت فترة التجربة الأساسية (90 يوماً) منذ ${-d} يوماً ما لم يُتفق كتابةً على تمديدها حتى 180 يوماً.`, 'خلال التجربة يمكن لأي طرف إنهاء العقد دون إشعار أو مكافأة.', ['راجع عقدك لمعرفة ما اتُّفق عليه', 'اسأل الموارد البشرية عن قرار التثبيت']); } }
+            if (has('تجرب') && !has('كم مده')) return ASK_FMT('مدة التجربة هي المدة المحددة صراحة في عقدك، وبحد أقصى 180 يوماً (المادة 53). لا تكفي المباشرة وحدها لإثبات المدة المتفق عليها.', 'تستبعد الإجازات التي تقررها اللائحة من حساب المدة.', ['راجع بند التجربة في عقدك', 'اطلب تاريخ نهايتها المعتمد من الموارد البشرية']);
             if (has('راتبي') || has('تفاصيل راتب')) { const f = n => fmtMoney(Number(n) || 0);
                 return ASK_FMT(`راتبك الشهري **${f(e.total_salary)}**: أساسي ${f(e.basic_salary)} + سكن ${f(e.housing_allowance)} + نقل ${f(e.transport_allowance)}، ويُخصم منه للتأمينات ${f(e.gosi_deduction)}.`, 'أي فرق عن المسجّل في عقدك أو في مدد يستوجب المراجعة.', ['قارن بعقدك الموثّق في قوى', 'تفاصيل الراتب متاحة في تبويب "التعويضات"']); }
             return null;
@@ -7236,13 +7572,13 @@
                 return ASK_FMT(x.length ? `${x.length} موظف تنتهي أو انتهت وثيقتهم خلال 60 يوماً: ${list(x, v => `${v.e.name} (${v.n < 0 ? 'منتهية منذ ' + (-v.n) : 'بعد ' + v.n} يوم)`)}.` : 'لا توجد وثائق تنتهي خلال 60 يوماً.', 'انتهاء الإقامة أو الهوية يوقف الخدمات ويُعرّض المنشأة لغرامة عن كل موظف.', ['جدّد الإقامة عبر مقيم والرخصة عبر قوى', 'حدّث تاريخ الانتهاء في صفحة الموظف بعد التجديد']);
             }
             const whoAsk = has('تنتهي') || has('قريب') || has('من ') || qn.startsWith('من') || has('الموظفين') || has('موظفين');
-            if (has('تجرب') && whoAsk && !has('كم مده') && !has('مده التجرب')) { const x = act.map(e => ({ e, s: toGregorianDate(e.startDate) })).filter(v => v.s).map(v => ({ ...v, left: HR_REF.probationDays - daysBetween(v.s, today) })).filter(v => v.left > 0 && v.left <= 30);
+            if (has('تجرب') && whoAsk && !has('كم مده') && !has('مده التجرب')) { const x = act.map(e => ({ e, p: employeeProbation(e) })).filter(v => v.p?.documented).map(v => ({ ...v, left: v.p.remaining })).filter(v => v.left > 0 && v.left <= 30);
                 return ASK_FMT(x.length ? `${x.length} موظف تنتهي تجربتهم خلال 30 يوماً: ${list(x, v => `${v.e.name} (بعد ${v.left} يوم)`)}.` : 'لا يوجد موظفون تنتهي تجربتهم خلال 30 يوماً.', 'الاستمرار بعد انتهاء التجربة دون قرار يعني التثبيت وسقوط حق الإنهاء دون إشعار.', ['قرّر التثبيت أو الإنهاء قبل التاريخ', 'مدّد التجربة كتابةً حتى 180 يوماً إن لزم']); }
             const ours = has('عندي') || has('عندنا') || has('لدي') || has('لدينا') || has('المنشاه') || has('نشط') || has('شركتي');
             if ((has('كم') && has('موظف') && ours && !has('راتب') && !has('خصم')) || has('عدد الموظفين')) { const s = act.filter(e => /سعود/.test(e.nationality || '')).length;
-                return ASK_FMT(`لديك **${act.length}** موظفاً نشطاً: ${s} سعودي (${act.length ? Math.round(s / act.length * 100) : 0}%) و${act.length - s} غير سعودي، ومنهم ${act.filter(e => (e.progress || 0) < 100).length} قيد الإلحاق.`, 'نسبة السعودة تحدد نطاق المنشأة وخدماتها.', ['راجع تبويب "الرسوم البيانية" للتفاصيل']); }
+                return ASK_FMT(`لديك **${act.length}** موظفاً نشطاً: ${s} سعودي (${act.length ? Math.round(s / act.length * 100) : 0}%) و${act.length - s} غير سعودي، ومنهم ${act.filter(e => (e.progress || 0) < 100).length} قيد الإلحاق.`, 'هذه نسبة عددية فقط؛ تقييم نطاقات يعتمد على قواعده الرسمية.', ['راجع تبويب "الرسوم البيانية" للتفاصيل']); }
             if (has('بدون ايبان') || has('ناقص') && has('ايبان')) { const x = act.filter(e => !ibanValid(e.iban));
-                return ASK_FMT(x.length ? `${x.length} موظف بلا آيبان صحيح: ${list(x, e => e.name)}.` : 'كل الموظفين لديهم آيبان صحيح.', 'الموظف بلا آيبان لا يدخل ملف حماية الأجور ويُعدّ مخالفة.', ['أكمل الآيبان من صفحة الموظف أو انقله إلى "كاش" مؤقتاً']); }
+                return ASK_FMT(x.length ? `${x.length} موظف بلا آيبان صحيح: ${list(x, e => e.name)}.` : 'كل الموظفين لديهم آيبان صحيح.', 'الموظف بلا آيبان لا يدخل ملف حماية الأجور ويُعدّ مخالفة.', ['أكمل الآيبان الصحيح من صفحة الموظف', 'أي استثناء من الصرف البنكي يحتاج سنداً نظامياً موثقاً']); }
             return null;
         }
         // ---------- بحث عميق في قاعدة بيانات المنشأة (للمسؤول) ----------
@@ -7269,7 +7605,7 @@
             const line = e => { const ops = (hrOps || []).filter(o => o.employee_id === e.id).slice(0, 3).map(o => `${OPS_MODULES[o.module]?.title || o.module}: ${o.sub_type || ''} (${String(o.created_at || '').slice(0, 10)})`);
                 const exp = toGregorianDate(e.idExpiry), start = toGregorianDate(e.startDate);
                 return [`${e.name} — ${e.empNumber || 'بلا رقم'} — ${e.jobTitle || ''} — ${deptName(e) || 'بلا قسم'}`,
-                    `الحالة: ${e.isArchived ? 'مؤرشف' : e.isTerminated ? 'عقد منتهٍ' : (e.progress || 0) >= 100 ? 'مكتمل الإلحاق' : `قيد الإلحاق (${e.progress || 0}%، المرحلة ${e.currentStage || 1})`}`,
+                    `الحالة: ${e.isArchived ? 'مؤرشف' : e.isTerminated ? 'عقد منتهٍ' : (e.progress || 0) >= 100 ? 'مهام الإلحاق مكتملة' : `قيد الإلحاق (${e.progress || 0}%، المرحلة ${e.currentStage || 1})`}`,
                     start ? `المباشرة: ${e.startDate} (${Math.floor(daysBetween(start, today) / 30)} شهراً)` : 'المباشرة: غير مسجلة',
                     `الجنسية: ${e.nationality || '—'}، العقد: ${e.contractDuration || '—'}`,
                     exp ? `انتهاء الهوية/الإقامة: ${e.idExpiry} (${daysBetween(today, exp)} يوماً)` : 'انتهاء الهوية: غير مسجل',
@@ -7290,7 +7626,15 @@
             return ASK_FMT(`وجدت **${db.rows.length}** سجلات مطابقة في قاعدة البيانات:\n` + db.rows.map(e => `• ${e.name} — ${e.empNumber || ''} — ${e.jobTitle || ''}`).join('\n'),
                 'تأكد من الشخص المقصود قبل اتخاذ أي إجراء.', ['اذكر الاسم كاملاً أو الرقم الوظيفي لأعطيك تفاصيل موظف واحد']);
         }
+        function verifiedLegalAnswer(q) {
+            if (askExclusive()) return null;
+            const intent = HRCore.legalIntent(q); if (!intent) return null;
+            const item = ASK_KB.find(x => x.t === (intent === 'maternity' ? 'إجازة الأمومة' : 'مدة الإشعار عند إنهاء العقد غير محدد المدة'));
+            return { answer: `**${item.t}**\n${ASK_FMT(item.a, item.r, item.d)}`, source: 'kb', intent,
+                sources: [{ title: 'وزارة الموارد البشرية — النص الرسمي', url: 'https://www.hrsd.gov.sa/' + (intent === 'maternity' ? 'تشغيل-النساء' : 'علاقات-العمل') }] };
+        }
         function askLocalAnswer(q) {
+            const verified = verifiedLegalAnswer(q); if (verified) return verified;
             const qn = askNorm(q), qt = askTokens(q);
             const data = askEmpIntent(qn) || askAdminIntent(qn);
             if (data) return { answer: data, source: 'data' };
@@ -7302,7 +7646,7 @@
 1. أعد صياغة السؤال بكلمات قريبة من نص اللائحة
 2. ${PORTAL_MODE ? 'اسأل الموارد البشرية مباشرة عن هذه المسألة' : 'أضف ملفاً يغطي هذا الموضوع من الإعدادات ← "مراجع المساعد الذكي"، أو ألغِ الوضع الحصري'}`, source: 'exclusive' };
             const scored = ASK_KB.map(item => { let sc = 0;
-                item.k.forEach(k => { if (qn.includes(k)) sc += 3 + k.split(' ').length; else { const kt = askTokens(k); const hit = kt.filter(w => qt.includes(w)).length; if (kt.length && hit === kt.length) sc += 2; else if (hit) sc += hit * .7; } });
+                item.k.forEach(k => { if (qn.includes(askNorm(k))) sc += 3 + k.split(' ').length; else { const kt = askTokens(k); const hit = kt.filter(w => qt.includes(w)).length; if (kt.length && hit === kt.length) sc += 2; else if (hit && !/^اجاز/.test(askNorm(k))) sc += hit * .25; } });
                 askTokens(item.t).forEach(w => { if (qt.includes(w)) sc += .6; });
                 return { item, sc }; }).filter(x => x.sc >= 1.4).sort((a, b) => b.sc - a.sc);
             if (scored.length) { const top = scored[0].item, more = scored.slice(1, 4).map(x => x.item.t);
@@ -7321,7 +7665,7 @@
             if (askUseData()) {   // ملخص محدود بلا رواتب ولا أرقام هويات
                 const exp = act.map(e => ({ e, n: (toGregorianDate(e.idExpiry) ? daysBetween(today, toGregorianDate(e.idExpiry)) : 999) })).filter(v => v.n <= 60).slice(0, 8).map(v => `${v.e.name} (${v.n} يوم)`);
                 if (exp.length) parts.push('وثائق تنتهي خلال 60 يوماً: ' + exp.join('، ') + '.');
-                const prob = act.map(e => ({ e, l: toGregorianDate(e.startDate) ? HR_REF.probationDays - daysBetween(toGregorianDate(e.startDate), today) : 0 })).filter(v => v.l > 0 && v.l <= 30).slice(0, 8).map(v => `${v.e.name} (${v.l} يوم)`);
+                const prob = act.map(e => ({ e, l: employeeProbation(e)?.documented ? employeeProbation(e).remaining : 0 })).filter(v => v.l > 0 && v.l <= 30).slice(0, 8).map(v => `${v.e.name} (${v.l} يوم)`);
                 if (prob.length) parts.push('تنتهي تجربتهم قريباً: ' + prob.join('، ') + '.');
                 const noIban = act.filter(e => !ibanValid(e.iban)).length; if (noIban) parts.push(`${noIban} موظف بلا آيبان صحيح.`);
             }
@@ -7353,12 +7697,12 @@
                 + askState.history.map((m, i) => m.role === 'user'
                     ? `<div class="flex justify-start"><div class="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tr-sm bg-brand text-brand-ink text-xs font-bold">${escapeHtml(m.content)}</div></div>`
                     : `<div class="flex justify-end"><div class="max-w-[92%] px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-slate-100 text-slate-800 text-xs font-semibold leading-relaxed">${askFormat(m.content)}
-                        ${m.sources?.length ? `<div class="mt-2 pt-2 border-t border-slate-200 flex flex-wrap gap-1.5"><span class="text-[10px] font-extrabold text-slate-500 w-full"><i class="fas fa-globe ml-1"></i>مصادر البحث:</span>${m.sources.map(s => `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" class="px-2 py-1 rounded-lg bg-white text-[10px] font-bold text-sky-700 underline max-w-full truncate">${escapeHtml(String(s.title || s.url).slice(0, 60))}</a>`).join('')}</div>` : ''}
+                        ${m.sources?.length ? `<div class="mt-2 pt-2 border-t border-slate-200 flex flex-wrap gap-1.5"><span class="text-[10px] font-extrabold text-slate-500 w-full"><i class="fas fa-globe ml-1"></i>المراجع:</span>${m.sources.map(s => `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" class="px-2 py-1 rounded-lg bg-white text-[10px] font-bold text-sky-700 underline max-w-full truncate">${escapeHtml(String(s.title || s.url).slice(0, 60))}</a>`).join('')}</div>` : ''}
                         ${m.refs?.length ? `<p class="mt-2 text-[10px] font-bold text-emerald-700"><i class="fas fa-folder-open ml-1"></i>من مراجع المنشأة: ${m.refs.map(escapeHtml).join('، ')}</p>` : ''}
                         ${m.related?.length ? `<div class="mt-2 pt-2 border-t border-slate-200"><p class="text-[10px] font-extrabold text-slate-500 mb-1">أسئلة ذات صلة:</p><div class="flex flex-wrap gap-1.5">${m.related.map(btn).join('')}</div></div>` : ''}
                         <div class="mt-1.5 flex items-center gap-2 text-slate-400"><button onclick="window.askSpeak(${i})" title="استمع" class="hover:text-slate-700"><i class="fas fa-volume-high"></i></button>
                         <button onclick="navigator.clipboard?.writeText(askStateText(${i}))" title="نسخ" class="hover:text-slate-700"><i class="fas fa-copy"></i></button>
-                        ${m.mode ? `<span class="text-[9px] font-bold mr-auto">${({ ai: 'ذكاء اصطناعي', deep: 'بحث معمّق', data: 'من بياناتك', db: 'بحث في قاعدة البيانات', refs: 'من مراجع المنشأة', kb: 'قاعدة المعرفة' })[m.mode] || ''}</span>` : ''}</div></div></div>`).join('')
+                        ${m.mode ? `<span class="text-[9px] font-bold mr-auto">${({ ai: 'ذكاء اصطناعي', deep: 'بحث معمّق', data: 'من بياناتك', db: 'بحث في قاعدة البيانات', refs: 'من مراجع المنشأة', kb: 'معرفة محفوظة' })[m.mode] || ''}</span>` : ''}</div></div></div>`).join('')
                 + (pending ? `<div class="flex justify-end"><div class="px-3.5 py-2.5 rounded-2xl bg-slate-100 text-xs font-bold text-slate-500"><i class="fas fa-circle-notch fa-spin ml-1"></i>${askState.deep ? 'أبحث بعمق وأراجع المصادر...' : 'أفكر في إجابتك...'}</div></div>` : '');
             box.scrollTop = box.scrollHeight;
         }
@@ -7368,15 +7712,18 @@
             const q = String(preset || inp?.value || '').trim(); if (!q) return;
             if (inp) inp.value = '';
             askState.history.push({ role: 'user', content: q }); renderAsk(true);
-            let msg = null;
+            const revision = companyRevision, verified = verifiedLegalAnswer(q);
+            let msg = verified ? { role: 'assistant', content: verified.answer + (askState.deep ? '\n\nهذه إجابة من نص رسمي محفوظ؛ لم يُنفذ بحث مباشر لهذه الإجابة.' : ''), sources: verified.sources, mode: 'kb' } : null;
             try {
+                if (!msg) {
                 const body = { question: q, history: askState.history.slice(0, -1).slice(-8).map(m => ({ role: m.role, content: m.content })), context: askContextFor(q), deep: askState.deep, companyId: PORTAL_MODE ? undefined : activeCompanyId, exclusive: askExclusive() };
                 if (PORTAL_MODE) body.portal = { token: portalState.token, last4: portalState.last4 };
                 const { data, error } = await supabaseClient.functions.invoke('ask-hr', { body });
                 let res = data;
                 if (error && error.context && typeof error.context.json === 'function') { try { res = await error.context.clone().json(); } catch (_) {} }
                 if (res?.answer) msg = { role: 'assistant', content: res.answer, sources: res.sources || [], refs: res.usedRefs || [], mode: res.searched ? 'deep' : 'ai' };
-            } catch (_) { /* تُستكمل الإجابة محلياً */ }
+                }
+            } catch (_) { /* تُستكمل الإجابة محلياً مع توضيح مصدرها */ }
             if (!msg) {   // لا "تعذر": الإجابة من بياناتك وقاعدة المعرفة المدمجة
                 const loc = askLocalAnswer(q);
                 let refs = [];
@@ -7384,6 +7731,8 @@
                 if (askExclusive() && refs.length) msg = { role: 'assistant', content: `**الإجابة (من مراجع المنشأة حصراً):**\n${refs.map(r => `• (${r.doc_name}) ${r.content.slice(0, 500)}…`).join('\n')}\n**المخاطر:** هذا نص اللائحة كما رُفع؛ راجع السياق الكامل في الملف قبل التطبيق.\n**المطلوب فعله:**\n1. طبّق ما ورد في المقطع الأقرب لحالتك\n2. للتفسير أو الاستثناءات راجع الموارد البشرية`, refs: [...new Set(refs.map(r => r.doc_name))], mode: 'refs' };
                 else msg = { role: 'assistant', content: loc.answer + (refs.length ? '\n\n**من مراجع منشأتك:**\n' + refs.map(r => `• (${r.doc_name}) ${r.content.slice(0, 380)}…`).join('\n') : ''), related: loc.related || [], mode: loc.source === 'data' ? 'data' : loc.source === 'db' ? 'db' : 'kb' };
             }
+            if (revision !== companyRevision) return;
+            if (askState.deep && msg.mode !== 'deep' && !verified) msg.content += '\n\nلم تؤكد الخدمة تنفيذ بحث مباشر؛ الإجابة المعروضة من المصدر المبين وليست نتيجة بحث معمق موثق.';
             askState.history.push(msg); renderAsk();
             if (askState.speak) window.askSpeak(askState.history.length - 1);
         };
@@ -7718,23 +8067,11 @@
             applyPolicySettings(s); await persistPolicySettings(getActiveCompany(), s);
             window.showToast(`بداية دورة الرواتب: يوم ${d} من كل شهر`); try { renderSalaryStructure(); } catch (_) {}
         };
-        window.addExtraAmountToPayroll = async function (empId) {
-            const emp = employees.find(e => e.id === empId), x = emp && extraAmountFor(emp); if (!x || !x.amount) return;
-            if (hrOps.some(o => o.module === 'fin_extra' && o.employee_id === empId)) return window.showToast('المبلغ الزائد مُضاف مسبقاً لهذا الموظف', 'warning');
-            const { error } = await supabaseClient.from('hr_operations').insert({ module: 'fin_extra', sub_type: 'أيام قبل دورة الرواتب', amount: x.amount, days: x.days, effective_month: x.month,
-                start_date: emp.startDate, end_date: x.cycleStart, status: 'active', employee_id: empId, company_id: activeCompanyId, owner_id: currentUser.id, data: { ack: false, auto: true } });
-            if (error) return window.showToast('تعذر الإضافة: ' + error.message, 'error');
-            await loadHrOps(); window.showToast(`أُضيف المبلغ الزائد ${fmtMoney(x.amount)} لمسير ${x.month}`); try { renderSalaryStructure(); } catch (_) {}
+        window.addExtraAmountToPayroll = async function () {
+            window.showToast('أيام المباشرة محسوبة في شهرها تلقائياً. أي مستحق قديم غير مصروف يُسجّل كتسوية موثقة بعد مراجعة المسير السابق.', 'warning');
         };
         function extraAmountHtml(emp) {
-            const x = extraAmountFor(emp); if (!x) return '';
-            const added = hrOps.some(o => o.module === 'fin_extra' && o.employee_id === emp.id);
-            return `<div class="rounded-2xl p-3 border border-dashed border-slate-300 flex flex-wrap items-center justify-between gap-2">
-                <div><p class="text-[11px] font-black" style="color: rgb(var(--s-800))"><i class="fas fa-calendar-plus ml-1"></i>المبلغ الزائد (أيام قبل دورة الرواتب)</p>
-                    <p class="text-[10px] font-bold" style="color: rgb(var(--s-500))">من المباشرة ${escapeHtml(emp.startDate || '')} حتى بداية الدورة ${x.cycleStart} = ${x.days} يوم × (الإجمالي ÷ 30)</p></div>
-                <div class="flex items-center gap-2"><span class="text-base font-black" style="color: rgb(var(--s-900))">${fmtMoney(x.amount)}</span>
-                    ${x.amount ? (added ? '<span class="text-[10px] font-black text-emerald-600">✓ في المسير</span>' : `<button onclick="window.addExtraAmountToPayroll('${emp.id}')" class="px-3 py-1.5 rounded-full text-[11px] font-extrabold" style="background: rgb(var(--c-brand)); color: rgb(var(--c-brand-ink))">إضافة لمسير ${x.month}</button>`) : ''}
-                    <select onchange="window.setPayrollCycleDay(this.value)" title="يوم بداية دورة الرواتب" class="border rounded-lg px-2 py-1 text-[11px] font-bold bg-white">${Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}" ${cycleDay() === i + 1 ? 'selected' : ''}>الدورة تبدأ يوم ${i + 1}</option>`).join('')}</select></div></div>`;
+            return `<p class="text-[11px] font-bold text-slate-500 p-3 bg-slate-50 rounded-xl">يحسب المسير الاستحقاق من تاريخ المباشرة حتى نهاية الشهر على أساس 30 يوماً، ويعرض أيام الاستحقاق. لا تُضاف أيام المباشرة مرة أخرى للشهر التالي.</p>`;
         }
         window.extraAmountHtml = extraAmountHtml;
 
@@ -8210,13 +8547,14 @@
         }
         window.renderPayBulkBar = renderPayBulkBar;
         window.bulkSetPayMethod = async function (m) {
-            const ids = [...paySelected]; if (!ids.length || !m) return;
+            const ids = [...paySelected]; if (!ids.length || !PAY_METHODS.some(p => p[0] === m)) return;
+            if (m === 'cash' && ids.some(id => !String(employees.find(e => e.id === id)?.payMethodNote || '').trim())) return window.showToast('وثق أساس الصرف النقدي لكل موظف قبل النقل الجماعي', 'warning');
+            const companyId = activeCompanyId;
+            const { error } = await supabaseClient.from('employees').update({ pay_method: m }).in('id', ids).eq('company_id', companyId);
+            if (error) return window.showToast('لم تُحفظ طريقة الصرف', 'error');
+            if (companyId !== activeCompanyId) return;
             ids.forEach(id => { const e = employees.find(x => x.id === id); if (e) { e.payMethod = m; try { localStorage.setItem(payKey(id), m); } catch (_) {} } });
-            const { error } = await supabaseClient.from('employees').update({ pay_method: m }).in('id', ids);
-            if (error && !isMissingColumnError(error)) window.showToast('تعذر الحفظ: ' + error.message, 'error');
-            const noIban = ids.filter(id => m !== 'cash' && !ibanValid(employees.find(x => x.id === id)?.iban)).length;
-            window.showToast(`تم نقل ${ids.length} موظف إلى: ${PAY_METHODS.find(p => p[0] === m)[1]}${noIban ? ` — ${noIban} بلا آيبان صحيح` : ''}`, noIban ? 'warning' : 'success');
-            paySelected.clear(); renderPayrollRegister();
+            paySelected.clear(); renderPayrollRegister(); window.showToast('تم حفظ طريقة الصرف للموظفين المحددين');
         };
 
         // ====================================================================
@@ -8226,7 +8564,7 @@
         let absenceDraft = null; // { month, source, rows: [{ emp, days, late, note, detail }] }
         const absMonth = () => document.getElementById('crx-month-select')?.value || thisMonthStr();
         const monthRange = m => { const [y, mo] = m.split('-').map(Number); return [new Date(Date.UTC(y, mo - 1, 1)), new Date(Date.UTC(y, mo, 0))]; };
-        const absEmps = () => employees.filter(e => e.companyId === activeCompanyId && !e.isArchived && !e.isTerminated).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+        const absEmps = () => employees.filter(e => e.companyId === activeCompanyId && !e.isArchived && employeeServicePeriod(e, absMonth()).eligible).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
         const absExisting = (empId, month) => hrOps.find(o => o.module === 'fin_absence' && o.employee_id === empId && o.effective_month === month && ['fingerprint', 'sheet'].includes(o.data?.source));
 
         // أيام العمل المتوقعة: الأحد–الخميس، بدون العطل الرسمية والأعياد، ومن تاريخ المباشرة حتى اليوم
@@ -8235,7 +8573,10 @@
             const days = [];
             for (let d = new Date(s); d <= e && d <= today; d = new Date(d.getTime() + 864e5)) {
                 if (start && d < start) continue;
-                const wd = d.getUTCDay(); if (wd === 5 || wd === 6) continue;
+                if (!employedOn(emp, d.toISOString().slice(0, 10))) continue;
+                const schedule = employeeSchedule(emp, d.toISOString().slice(0, 10));
+                if (!schedule) throw new Error('حدد جدول عمل معتمداً للموظف: ' + (emp.name || ''));
+                if (!schedule.days.includes(d.getUTCDay())) continue;
                 const h = detectHoliday(d.toISOString().slice(0, 10)); if (h && h.type === 'عيد أو عطلة رسمية') continue;
                 days.push(d.toISOString().slice(0, 10));
             }
@@ -8249,6 +8590,7 @@
             if (!att?.length) return window.showToast('لا توجد بيانات بصمة لهذا الشهر — استورد ملف جهاز البصمة أو استخدم نموذج الغياب', 'warning');
             if (hrReqLoaded !== true) await loadHrRequests();
             const byEmp = {}; att.forEach(a => { if (a.check_in) (byEmp[a.employee_id] = byEmp[a.employee_id] || new Set()).add(a.work_date); });
+            if (absEmps().some(emp => !employeeSchedule(emp, month + '-01'))) return window.showToast('حدد جداول العمل قبل احتساب الغياب', 'warning');
             const rows = absEmps().map(emp => {
                 const work = expectedWorkdays(emp, month), present = byEmp[emp.id] || new Set();
                 const leave = new Set(); (hrRequests || []).filter(r => r.employee_id === emp.id && r.request_type === 'leave' && r.status === 'approved').forEach(r => {
@@ -8376,7 +8718,7 @@
                         <td class="font-black text-red-600">${n(amt)}</td><td class="text-[11px] text-slate-500">${escapeHtml(o.notes || '')}</td>
                         <td><button onclick="window.editAbsenceRecord('${o.id}', 0)" class="text-red-600 text-xs" title="إلغاء الخصم"><i class="fas fa-trash"></i></button></td></tr>`; }).join('')
                     : '<tr><td colspan="6" class="p-8 text-center text-xs font-bold text-slate-400">لا يوجد خصم غياب معتمد لهذا الشهر</td></tr>'}</tbody></table></div>
-                <p class="text-[10px] font-bold mt-3" style="color: rgb(var(--s-400))">الخصم = إجمالي الراتب ÷ 30 × أيام الغياب، ويُطبَّق تلقائياً في مسير الرواتب وملف البنك لشهر ${month}. البصمة: أيام العمل (الأحد–الخميس، بدون العطل الرسمية والإجازات المعتمدة) التي لا يوجد لها ختم دخول. المادة 80: تنبيه تلقائي عند تجاوز حد الغياب.</p>`;
+                <p class="text-[10px] font-bold mt-3" style="color: rgb(var(--s-400))">الخصم = إجمالي الراتب ÷ 30 × أيام الغياب، ويُطبَّق تلقائياً في مسير الرواتب وملف البنك لشهر ${month}. البصمة: أيام جدول العمل الساري للموظف، بدون العطل الرسمية والإجازات المعتمدة التي لا يوجد لها ختم دخول. المادة 80: تنبيه تلقائي عند تجاوز حد الغياب.</p>`;
             renderAbsenceTotals();
         }
         window.renderAbsenceCard = renderAbsenceCard;
@@ -8550,28 +8892,28 @@
         }
         window.empPayMethod = empPayMethod;
         window.setPayMethod = async function (id, m) {
-            const e = employees.find(x => x.id === id); if (!e) return;
-            if (m !== 'cash' && !ibanValid(e.iban)) window.showToast(`تنبيه: ${e.name} بلا آيبان صحيح — أكمله من صفحة الإدارة قبل الصرف البنكي`, 'warning');
+            const e = employees.find(x => x.id === id); if (!e || !PAY_METHODS.some(p => p[0] === m)) return;
+            if (m === 'cash' && !String(e.payMethodNote || '').trim()) { window.showToast('سجل أساس الاستثناء النظامي للصرف النقدي في «إيضاح طريقة الصرف» أولاً', 'warning'); renderPayrollRegister(); return; }
+            if (m !== 'cash' && !ibanValid(e.iban)) window.showToast('أكمل الآيبان قبل إصدار ملف الصرف', 'warning');
+            const { error } = await supabaseClient.from('employees').update({ pay_method: m }).eq('id', id).eq('company_id', e.companyId);
+            if (error) return window.showToast('لم تُحفظ طريقة الصرف', 'error');
             e.payMethod = m; try { localStorage.setItem(payKey(id), m); } catch (_) {}
-            const { error } = await supabaseClient.from('employees').update({ pay_method: m }).eq('id', id);
-            if (error && !isMissingColumnError(error)) window.showToast('تعذر الحفظ: ' + error.message, 'error');
-            window.showToast(`نُقل ${e.name} إلى: ${PAY_METHODS.find(p => p[0] === m)[1]}`);
-            renderPayrollRegister();
+            window.showToast('تم حفظ طريقة الصرف'); renderPayrollRegister();
         };
         let payrollTab = 'all';
         window.setPayrollTab = t => { payrollTab = t; renderPayrollRegister(); };
 
         function payrollRows(month) {
             const adj = (typeof salaryAdjustments !== 'undefined' ? salaryAdjustments : []).map(a => ({ employee_id: a.employeeId, adjustment_type: a.type, amount: a.amount, month: a.month, is_recurring: a.isRecurring, description: a.description }));
-            return employees.filter(e => e.companyId === activeCompanyId && !e.isArchived && !e.isTerminated)
+            return employees.filter(e => e.companyId === activeCompanyId && !e.isArchived && (employeeServicePeriod(e, month).eligible || employeeServicePeriod(e, month).errors.length))
                 .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'))
-                .map(e => ({ e, p: payrollFor(e, month, adj), other: empOtherAllow(e), method: empPayMethod(e), iban: cleanIban(e.iban), bank: ibanBank(e.iban) }));
+                .map(e => { const p = payrollFor(e, month, adj); return { e, p, other: p.other, method: empPayMethod(e), iban: cleanIban(e.iban), bank: ibanBank(e.iban) }; });
         }
         function payrollSheetData(rows, method) {
             return rows.map((r, i) => ({
                 'م': i + 1, 'الرقم الوظيفي': r.e.empNumber || '', 'الاسم': r.e.name || '', 'رقم الهوية': r.e.nid || '', 'الجنسية': r.e.nationality || '',
                 ...(method === 'cash' ? {} : { 'البنك': r.bank?.[0] || r.e.bank || '', 'رمز البنك': r.iban.slice(4, 6), 'الآيبان': r.iban }),
-                'الأساسي': r.p.basic, 'السكن': r.p.housing, 'النقل': r.p.transport, 'بدلات أخرى': r.other, 'الإجمالي': r.p.total,
+                'أيام الاستحقاق': r.p.service.payDays, 'الأساسي': r.p.basic, 'السكن': r.p.housing, 'النقل': r.p.transport, 'بدلات أخرى': r.other, 'الإجمالي': r.p.total,
                 'الإضافات': Number(r.p.addT.toFixed(2)), 'التأمينات': r.p.gosi, 'الاستقطاعات': Number(r.p.dedT.toFixed(2)), 'الصافي': r.p.net,
                 ...(method === 'cash' ? { 'توقيع المستلم': '' } : {})
             }));
@@ -8581,6 +8923,7 @@
             if (typeof XLSX === 'undefined') return window.showToast('مكتبة Excel غير محمّلة', 'error');
             const month = document.getElementById('crx-month-select')?.value || thisMonthStr();
             const rows = payrollRows(month), comp = getActiveCompany();
+            if (rows.some(r => payrollValidation(r.p).length)) return window.showToast('راجع تنبيهات الاستحقاق والاستقطاعات قبل إصدار ملفات الصرف', 'warning');
             const list = which === 'all3' ? PAY_METHODS.map(p => p[0]) : [which];
             let files = 0;
             list.forEach(m => {
@@ -9916,6 +10259,7 @@
 
         // تفقيط: تحويل المبلغ إلى كلمات عربية (ريال وهللة)
         function tafqeet(amount) {
+            if (!Number.isFinite(Number(amount)) || Number(amount) < 0 || Number(amount) > 999999999.99) return 'مبلغ غير صالح للتفقيط';
             const ones = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر'];
             const tens = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون'];
             const hundreds = ['', 'مائة', 'مائتان', 'ثلاثمائة', 'أربعمائة', 'خمسمائة', 'ستمائة', 'سبعمائة', 'ثمانمائة', 'تسعمائة'];
@@ -9934,7 +10278,7 @@
                 if (r) parts.push(below1000(r));
                 return parts.join(' و');
             };
-            const v = Math.round((Number(amount) || 0) * 100);
+            const v = Math.round((Number(amount) + Number.EPSILON) * 100);
             const riyals = Math.floor(v / 100), halalas = v % 100;
             return `فقط ${words(riyals)} ريال سعودي${halalas ? ` و${words(halalas)} هللة` : ''} لا غير`;
         }
@@ -10068,15 +10412,28 @@
             if (m === 2 && day === 22) return { type: 'عيد أو عطلة رسمية', label: 'يوم التأسيس' };
             try {
                 const h = hijriPartsOf(d);
-                if ((h.month === 9 && h.day >= 29) || (h.month === 10 && h.day <= 4)) return { type: 'عيد أو عطلة رسمية', label: 'إجازة عيد الفطر' };
-                if (h.month === 12 && h.day >= 9 && h.day <= 13) return { type: 'عيد أو عطلة رسمية', label: 'إجازة عيد الأضحى' };
+                // Four days starting the day after Ramadan 29, based on Umm al-Qura.
+                let fitr = h.month === 9 && h.day === 30;
+                if (h.month === 10 && h.day <= 4) {
+                    const lastRamadan = hijriPartsOf(new Date(d.getTime() - h.day * 86400000));
+                    fitr = h.day <= (lastRamadan.day === 30 ? 3 : 4);
+                }
+                if (fitr) return { type: 'عيد أو عطلة رسمية', label: 'إجازة عيد الفطر' };
+                if (h.month === 12 && h.day >= 9 && h.day <= 12) return { type: 'عيد أو عطلة رسمية', label: 'إجازة عيد الأضحى' };
             } catch (_) {}
             const wd = d.getUTCDay();
             if (wd === 5 || wd === 6) return { type: 'عطلة أسبوعية', label: wd === 5 ? 'يوم الجمعة' : 'يوم السبت' };
             return null;
         }
         window.entDetectDay = function () {
-            const h = detectHoliday(document.getElementById('ent-from')?.value);
+            const date = document.getElementById('ent-from')?.value;
+            let h = detectHoliday(date);
+            if (h?.type !== 'عيد أو عطلة رسمية') {
+                const selected = entSelectedIds().map(id => employees.find(e => e.id === id)).filter(Boolean);
+                const schedules = (selected.length ? selected : [null]).map(e => employeeSchedule(e, date));
+                const weekday = HRCore.date(date)?.getUTCDay();
+                h = schedules.length && schedules.every(s => s && !s.days.includes(weekday)) ? { type: 'عطلة أسبوعية', label: 'راحة بحسب جدول العمل' } : null;
+            }
             const sel = document.getElementById('ent-daytype');
             if (sel) sel.value = h ? h.type : 'يوم عمل عادي';
             entHolidayLabel = h ? `اكتُشف تلقائياً: ${h.label}` : '';
@@ -10087,16 +10444,14 @@
             const t = document.getElementById('ent-daytype').value, box = document.getElementById('ent-holiday-box');
             box.classList.toggle('hidden', t === 'يوم عمل عادي');
             document.getElementById('ent-holiday-label').innerText = entHolidayLabel || (t === 'عطلة أسبوعية' ? 'عمل في العطلة الأسبوعية' : 'عمل في عيد أو عطلة رسمية');
-            const dbl = document.getElementById('ent-double'); if (dbl) dbl.checked = t === 'عيد أو عطلة رسمية';
+            const dbl = document.getElementById('ent-double'); if (dbl) dbl.checked = false;
             window.entPreviewCalc();
         };
 
         // العمل الإضافي — المادة 107: أجر الساعة + 50% من أجر الساعة الأساسي (والمضاعف اختياري للعطل)
         function overtimeCalc(emp, hours, mult) {
-            const f = emp?.financials || {};
-            const hourly = (Number(f.total) || 0) / 30 / 8, premium = (Number(f.basic) || 0) / 30 / 8 * 0.5;
-            const perHour = Number((hourly + premium).toFixed(2)), m = Number(mult) || 1, eff = Number(((Number(hours) || 0) * m).toFixed(2));
-            return { hourly: Number(hourly.toFixed(2)), premium: Number(premium.toFixed(2)), perHour, mult: m, hoursEff: eff, amount: Number((perHour * eff).toFixed(2)) };
+            const schedule = employeeSchedule(emp, document.getElementById('ent-from')?.value || today10());
+            return HRCore.overtime(emp?.financials || {}, hours, mult, schedule?.hours || 8);
         }
         function entDays(from, to) { const a = toGregorianDate(from), b = toGregorianDate(to || from); return a && b ? Math.max(0, daysBetween(a, b) + 1) : 0; }
         function entMult() { const dbl = document.getElementById('ent-double'); return dbl?.checked && !document.getElementById('ent-holiday-box')?.classList.contains('hidden') ? Number(document.getElementById('ent-mult').value) : 1; }
@@ -10114,6 +10469,8 @@
             let html = '';
             if (!emps.length) html = 'حدّد الموظفين المطلوب إصدار نماذجهم';
             else {
+                const invalid = emps.flatMap(e => validateEntitlementForEmployee(collectEntForm(e), e));
+                if (invalid.length) { box.innerHTML = `<p class="text-xs text-red-600 p-3">${escapeHtml([...new Set(invalid)].join('، '))}</p>`; return; }
                 const totals = emps.map(e => collectEntForm(e).amount || 0), total = totals.reduce((s, x) => s + x, 0);
                 if (entType === 'overtime') {
                     const c = overtimeCalc(emps[0], v('ent-hours'), entMult());
@@ -10136,7 +10493,7 @@
                 daytype: v('ent-daytype'), holiday: entHolidayLabel, transport: v('ent-transport'), transportAmount: Number(v('ent-tamount')) || 0, method: v('ent-method'), month: v('ent-month'),
                 hours: Number(v('ent-hours')) || 0, daily: Number(v('ent-daily')) || 0, installments: Number(v('ent-inst')) || 1,
                 payroll: !!document.getElementById('ent-payroll')?.checked, date: today10() };
-            if (entType === 'overtime') Object.assign(rec, overtimeCalc(emp, rec.hours, entMult()));
+            if (entType === 'overtime') { try { Object.assign(rec, overtimeCalc(emp, rec.hours, entMult())); } catch (_) { rec.amount = NaN; } }
             else if (entType === 'assignment') { rec.days = entDays(rec.from, rec.to); rec.dailyTotal = Number((rec.days * rec.daily).toFixed(2)); rec.amount = Number((rec.dailyTotal + rec.transportAmount).toFixed(2)); }
             else if (rec.sub === 'مرتب (كاش)') rec.amount = Number(entSalaryNet(emp, rec.month).toFixed(2));
             else rec.amount = Number(v('ent-amount')) || 0;
@@ -10145,30 +10502,41 @@
 
         let entDocs = []; // [{ emp, rec, ref }]
         window.generateEntDoc = async function (save) {
+            if (entitlementSaving) return window.showToast('جارٍ حفظ النماذج؛ انتظر النتيجة', 'warning');
+            const revision = companyRevision, companyId = activeCompanyId;
             const emps = entSelectedIds().map(id => employees.find(e => e.id === id)).filter(Boolean);
             if (!emps.length) return window.showToast('حدّد موظفاً واحداً على الأقل من القائمة', 'warning');
             const isCash = entType === 'receipt' && document.getElementById('ent-sub')?.value === 'مرتب (كاش)';
             const docs = emps.map(emp => ({ emp, rec: collectEntForm(emp), ref: '' }));
+            const invalid = docs.flatMap(d => validateEntitlementForEmployee(d.rec, d.emp));
+            if (invalid.length) { entDocs = []; document.getElementById('eos-result').innerHTML = ''; return window.showToast([...new Set(invalid)].join('، '), 'warning'); }
             const r0 = docs[0].rec;
             if (entType === 'overtime' && !r0.hours) return window.showToast('أدخل عدد الساعات', 'warning');
             if (entType === 'assignment' && !r0.desc) return window.showToast('اكتب المهمة المكلَّف بها', 'warning');
             if (entType === 'receipt' && !isCash && !r0.amount) return window.showToast('أدخل المبلغ', 'warning');
             if (save) {
+                entitlementSaving = true;
+                try {
                 for (const d of docs) {
                     const rec = d.rec;
-                    const row = { module: ENT_MODULE[entType], sub_type: entType === 'receipt' ? rec.sub : (entType === 'overtime' ? 'عمل إضافي' : 'تكليف بمهمة'),
-                        amount: rec.amount || null, days: entType === 'overtime' ? rec.hoursEff : (rec.days || null), start_date: rec.from || null, end_date: rec.to || null,
-                        effective_month: (entType !== 'receipt' && rec.payroll) ? rec.month : null, status: entType === 'receipt' ? 'done' : 'active',
-                        notes: rec.desc || null, data: { form: rec, ack: false, auto: true }, employee_id: d.emp.id, company_id: activeCompanyId, owner_id: currentUser.id };
+                    const row = { module: ENT_MODULE[rec.type], sub_type: rec.type === 'receipt' ? rec.sub : (rec.type === 'overtime' ? 'عمل إضافي' : 'تكليف بمهمة'),
+                        amount: rec.amount, days: rec.type === 'overtime' ? rec.hoursEff : (rec.days || null), start_date: rec.from || null, end_date: rec.to || null,
+                        effective_month: (rec.type !== 'receipt' && rec.payroll) ? rec.month : null, status: rec.type === 'receipt' ? 'done' : 'active',
+                        notes: rec.desc || null, data: { form: rec, ack: false, auto: true }, employee_id: d.emp.id, company_id: companyId, owner_id: currentUser.id };
                     const { data, error } = await supabaseClient.from('hr_operations').insert(row).select().single();
-                    if (error) return window.showToast('تعذر الحفظ: ' + error.message + ' — تأكد من تشغيل migration_hr_operations.sql', 'error');
+                    if (error) throw new Error('تعذر حفظ النماذج. راجع سجل المستحقات قبل إعادة المحاولة لتجنب تكرار ما حُفظ.');
                     d.ref = String(data.ref_no);
-                    if (entType === 'receipt' && rec.sub === 'سلفة' && rec.payroll) await supabaseClient.from('hr_operations').insert({ module: 'fin_repay', sub_type: 'سلفة على الراتب', amount: rec.amount,
-                        effective_month: rec.month || nextMonthStr(), status: 'active', data: { installments: rec.installments }, notes: `من سند تسليم رقم ${d.ref}`, employee_id: d.emp.id, company_id: activeCompanyId, owner_id: currentUser.id });
+                    if (rec.type === 'receipt' && rec.sub === 'سلفة' && rec.payroll) { const { error: loanError } = await supabaseClient.from('hr_operations').insert({ module: 'fin_repay', sub_type: 'سلفة على الراتب', amount: rec.amount,
+                        effective_month: rec.month || nextMonthStr(), status: 'active', data: { installments: rec.installments }, notes: `من سند تسليم رقم ${d.ref}`, employee_id: d.emp.id, company_id: companyId, owner_id: currentUser.id });
+                    if (loanError) throw new Error(`حُفظ السند ${d.ref} وتعذر ربط أقساط السلفة. راجع السند وسجل السلف قبل إعادة الإصدار.`); }
                 }
+                if (revision !== companyRevision) return;
                 await loadHrOps(); renderEntHistory();
                 window.showToast(`تم حفظ ${docs.length} نموذج`);
+                } catch (err) { window.showToast(err.message || 'تعذر الحفظ', 'error'); return; }
+                finally { entitlementSaving = false; }
             }
+            if (revision !== companyRevision) return;
             entDocs = docs;
             Object.keys(entSendState).forEach(k => delete entSendState[k]);
             Object.keys(entBlobCache).forEach(k => delete entBlobCache[k]);
@@ -10704,14 +11072,7 @@
         }
         // يوزّع الإجمالي: يُطرح منه أولاً البدلات الأخرى، ثم يوزَّع الباقي أساسي/سكن/نقل
         function distributeWithOther(total, other, isNewGosi, nationality, gosiStatus) {
-            const base = Math.max(0, (Number(total) || 0) - (Number(other) || 0));
-            const basic = Number((base / 1.35).toFixed(2));
-            const housing = Number((basic * 0.25).toFixed(2));
-            const transport = Number((base - basic - housing).toFixed(2)); // الباقي لضمان تطابق المجموع بدقة
-            const rate = gosiRateFor(nationality, isNewGosi, gosiStatus);
-            const gosi = Number(((basic + housing) * rate.emp / 100).toFixed(2));
-            const employer = Number(((basic + housing) * rate.co / 100).toFixed(2));
-            return { basic, housing, transport, other: Number(other) || 0, gosi, employer, rate, net: Number(((Number(total) || 0) - gosi).toFixed(2)) };
+            return HRCore.distribute(total, other, gosiRateFor(nationality, isNewGosi, gosiStatus));
         }
         window.distributeWithOther = distributeWithOther;
 
@@ -10756,15 +11117,20 @@
                     <p class="text-[10px] font-bold" style="color: rgb(var(--s-400))"><i class="fas fa-keyboard ml-1"></i>↑↓ للتنقل بين الموظفين، Enter للحفظ والانتقال للتالي</p>
                     <button onclick="window.saveSalaryStructure()" class="px-5 py-2.5 rounded-full text-xs font-black shadow" style="background: rgb(var(--c-brand)); color: rgb(var(--c-accent))"><i class="fas fa-floppy-disk ml-1"></i>حفظ هيكل الراتب</button>
                 </div>`;
-            window.salStructRecalc();
+            window.salStructRecalc(true);
         }
 
-        window.salStructRecalc = function () {
+        window.salStructRecalc = function (saved = false) {
             const emp = employees.find(e => e.id === salarySelectedEmpId); if (!emp) return;
             const total = document.getElementById('ss-total').value, other = document.getElementById('ss-other').value;
-            const d = distributeWithOther(total, other, document.getElementById('ss-newgosi').checked, emp.nationality, emp.gosiStatus);
+            let d;
+            try { d = distributeWithOther(total, other, document.getElementById('ss-newgosi').checked, emp.nationality, emp.gosiStatus); }
+            catch (err) { document.getElementById('ss-breakdown').textContent = err.message; return; }
+            const unchanged = Number(total) === Number(emp.financials?.total) && Number(other) === empOtherAllow(emp) && document.getElementById('ss-newgosi').checked === !!emp.financials?.isNewGosi;
+            if (saved || unchanged) d = { ...d, ...emp.financials, other: empOtherAllow(emp), net: HRCore.money(Number(total) - Number(emp.financials?.gosi || 0)) };
+            const status = saved || unchanged ? 'الهيكل المحفوظ المعتمد' : 'معاينة توزيع جديد — لم يُحفظ بعد';
             const cell = (l, v, tone) => `<div class="rounded-2xl p-3" style="background: rgb(var(--s-50))"><p class="text-[10px] font-bold" style="color: rgb(var(--s-500))">${l}</p><p class="text-base font-black mt-1" style="color: ${tone || 'rgb(var(--s-900))'}">${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></div>`;
-            document.getElementById('ss-breakdown').innerHTML = cell('الراتب الأساسي', d.basic) + cell('بدل السكن (25%)', d.housing) + cell('بدل النقل (10%)', d.transport) + cell('بدلات أخرى', d.other)
+            document.getElementById('ss-breakdown').innerHTML = `<p class="col-span-full text-xs font-bold">${status}</p>` + cell('الراتب الأساسي', d.basic) + cell('بدل السكن', d.housing) + cell('بدل النقل', d.transport) + cell('بدلات أخرى', d.other)
                 + cell(`خصم التأمينات (${d.rate.emp}%)`, d.gosi, 'rgb(var(--rd-700))') + cell(`حصة المنشأة (${d.rate.co}%)`, d.employer, 'rgb(var(--s-500))')
                 + `<div class="rounded-2xl p-3 col-span-2" style="background: rgb(var(--c-brand))"><p class="text-[10px] font-bold" style="color: rgb(var(--c-accent) / .8)">صافي الراتب الشهري</p><p class="text-lg font-black mt-1 text-white">${d.net.toLocaleString('en-US', { minimumFractionDigits: 2 })} ريال</p></div>`;
         };
@@ -10772,16 +11138,15 @@
         window.saveSalaryStructure = async function () {
             const emp = employees.find(e => e.id === salarySelectedEmpId); if (!emp) return;
             const total = Number(document.getElementById('ss-total').value) || 0, other = Number(document.getElementById('ss-other').value) || 0;
-            if (other > total) return window.showToast('البدلات الأخرى أكبر من الإجمالي', 'warning');
+            if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(other) || other < 0 || other > total) return window.showToast('تحقق من إجمالي الراتب والبدلات الأخرى', 'warning');
             const isNew = document.getElementById('ss-newgosi').checked;
+            if (total === emp.financials.total && other === empOtherAllow(emp) && isNew === !!emp.financials.isNewGosi) return window.showToast('لا توجد تغييرات؛ تم الاحتفاظ بالهيكل المحفوظ');
             const d = distributeWithOther(total, other, isNew, emp.nationality, emp.gosiStatus);
             const { error } = await supabaseClient.from('employees').update({ total_salary: total, basic_salary: d.basic, housing_allowance: d.housing,
-                transport_allowance: d.transport, gosi_deduction: d.gosi, is_new_gosi: isNew }).eq('id', emp.id);
+                transport_allowance: d.transport, gosi_deduction: d.gosi, is_new_gosi: isNew, other_allowances: other }).eq('id', emp.id).eq('company_id', activeCompanyId);
             if (error) return window.showToast('تعذر الحفظ: ' + error.message, 'error');
             emp.financials = { ...(emp.financials || {}), total, basic: d.basic, housing: d.housing, transport: d.transport, gosi: d.gosi, isNewGosi: isNew, other };
             try { localStorage.setItem(otherAllowKey(emp.id), String(other)); } catch (_) {}
-            const r2 = await supabaseClient.from('employees').update({ other_allowances: other }).eq('id', emp.id);
-            if (r2.error && !isMissingColumnError(r2.error)) window.showToast('حُفظ الهيكل، وتعذر حفظ البدلات الأخرى: ' + r2.error.message, 'warning');
             window.showToast(`تم حفظ هيكل راتب ${emp.name}`);
             try { renderTable(); window.renderSalaryTable(); } catch (_) {}
             moveSalarySelection(1, true);
@@ -10790,8 +11155,10 @@
         // ---------- مسير الرواتب الشهري ----------
         async function renderPayrollRegister() {
             const box = document.getElementById('crx-payroll-card'); if (!box) return;
+            const revision = companyRevision;
             const month = document.getElementById('crx-month-select')?.value || thisMonthStr();
             if (hrOpsLoaded !== true && hrOpsLoaded !== 'missing') await loadHrOps();
+            if (revision !== companyRevision) return;
             const all = payrollRows(month);
             const rows = payrollTab === 'all' ? all : all.filter(r => r.method === payrollTab);
             const sum = (list, k) => list.reduce((s, r) => s + (k(r) || 0), 0);
@@ -10808,7 +11175,7 @@
                         <button onclick="window.goOps('bank_file')" class="px-4 py-2 rounded-full text-xs font-black" style="background: rgb(var(--c-brand)); color: rgb(var(--c-accent))"><i class="fas fa-building-columns ml-1"></i>ملف البنك (WPS)</button>
                     </div></div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">${card('all', 'الكل', 'fa-layer-group', 'bg-slate-50 text-slate-800')}${PAY_METHODS.map(p => card(p[0], p[1], p[2], p[3])).join('')}</div>
-                ${warn ? `<p class="text-[11px] font-bold text-amber-600 mb-2"><i class="fas fa-triangle-exclamation ml-1"></i>${warn} موظف بصرف بنكي بلا آيبان صحيح — انقلهم إلى كاش أو أكمل الآيبان.</p>` : ''}
+                ${warn ? `<p class="text-[11px] font-bold text-amber-600 mb-2"><i class="fas fa-triangle-exclamation ml-1"></i>${warn} موظف بصرف بنكي بلا آيبان صحيح — أكمل الآيبان قبل التصدير. الصرف النقدي يتطلب استثناءً نظامياً موثقاً، ولا يعالج نقص الآيبان تلقائياً.</p>` : ''}
                 <div id="pay-bulk-bar" class="${paySelected.size ? '' : 'hidden'} flex flex-wrap items-center gap-2 mb-2 p-2.5 rounded-2xl bg-slate-900 text-white">
                     <span class="text-xs font-extrabold">محدَّد: <b id="pay-bulk-count">${paySelected.size}</b></span>
                     <span class="text-[11px] font-bold opacity-70">نقل إلى:</span>
@@ -10819,7 +11186,7 @@
                     <thead style="background: rgb(var(--s-50))"><tr><th class="w-8"><input type="checkbox" onchange="window.payToggleAll(this.checked)" title="تحديد الكل" class="w-4 h-4"></th><th>الموظف</th><th>طريقة الصرف</th><th>البنك / الآيبان</th><th>الأساسي</th><th>السكن</th><th>النقل</th><th>أخرى</th><th>الإضافات</th><th>التأمينات</th><th>الاستقطاعات</th><th>الصافي</th></tr></thead>
                     <tbody>${rows.map(r => `<tr>
                         <td><input type="checkbox" class="pay-sel w-4 h-4" value="${r.e.id}" ${paySelected.has(r.e.id) ? 'checked' : ''} onchange="window.payToggle('${r.e.id}', this.checked)"></td>
-                        <td class="font-black cursor-pointer" onclick="window.selectSalaryEmployee('${r.e.id}'); window.setSalaryTab('structure')">${escapeHtml(r.e.name || '')}<br><span class="text-[10px] font-bold text-slate-400">${escapeHtml(r.e.empNumber || '')}</span></td>
+                        <td class="font-black cursor-pointer" onclick="window.selectSalaryEmployee('${r.e.id}'); window.setSalaryTab('structure')">${escapeHtml(r.e.name || '')}<br><span class="text-[10px] font-bold text-slate-400">${escapeHtml(r.e.empNumber || '')} · استحقاق ${r.p.service.payDays}/30 يوم</span>${payrollValidation(r.p).length ? `<br><span class="text-[10px] text-red-600">${escapeHtml(payrollValidation(r.p).join('، '))}</span>` : ''}</td>
                         <td><select onchange="window.setPayMethod('${r.e.id}', this.value)" class="border rounded-lg px-2 py-1 text-[11px] font-extrabold bg-white">${PAY_METHODS.map(p => `<option value="${p[0]}" ${r.method === p[0] ? 'selected' : ''}>${p[1]}</option>`).join('')}</select></td>
                         <td class="text-[10px] font-bold ${r.method !== 'cash' && !ibanValid(r.iban) ? 'text-red-600' : 'text-slate-500'}" dir="ltr">${r.method === 'cash' ? '—' : escapeHtml((r.bank?.[0] || r.e.bank || '') + ' ' + (r.iban || 'بلا آيبان'))}</td>
                         <td>${n(r.p.basic)}</td><td>${n(r.p.housing)}</td><td>${n(r.p.transport)}</td><td>${n(r.other)}</td>
@@ -10828,16 +11195,7 @@
                     </tbody></table></div>
                 <p class="text-[10px] font-bold mt-3" style="color: rgb(var(--s-400))">لنقل عدة موظفين: حدّدهم بالمربعات ثم اختر الصنف من الشريط الأسود. أو غيّر "طريقة الصرف" لكل موظف من القائمة. ملف البنك (WPS) يشمل صنف حماية الأجور فقط.</p>`;
         }
-        window.exportPayrollRegister = function () {
-            const month = document.getElementById('crx-month-select')?.value || thisMonthStr();
-            const adj = salaryAdjustments.map(a => ({ employee_id: a.employeeId, adjustment_type: a.type, amount: a.amount, month: a.month, is_recurring: a.isRecurring, description: a.description }));
-            const data = employees.filter(e => !e.isArchived && !e.isTerminated).map(e => { const p = payrollFor(e, month, adj); return {
-                'الرقم الوظيفي': e.empNumber || '', 'الاسم': e.name || '', 'الأساسي': p.basic, 'السكن': p.housing, 'النقل': p.transport, 'بدلات أخرى': empOtherAllow(e),
-                'الإجمالي': p.total, 'الإضافات': Number(p.addT.toFixed(2)), 'خصم التأمينات': p.gosi, 'الاستقطاعات': Number(p.dedT.toFixed(2)), 'الصافي': p.net }; });
-            const ws = XLSX.utils.json_to_sheet(data); ws['!views'] = [{ RTL: true }]; ws['!cols'] = Object.keys(data[0] || { a: 1 }).map(() => ({ wch: 16 }));
-            const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'مسير الرواتب');
-            XLSX.writeFile(wb, `مسير_الرواتب_${month}.xlsx`);
-        };
+        window.exportPayrollRegister = function () { return window.exportPayrollByMethod('all3'); };
 
         // ---------- التنقل بلوحة المفاتيح ----------
         function salaryVisibleIds() { return Array.from(document.querySelectorAll('#crx-employee-list [data-emp-id]')).map(el => el.dataset.empId); }
@@ -10952,9 +11310,12 @@
         // بعد تحميل موظفي أي منشأة: ترقيم من لا يملك رقماً، ثم تحديث العمليات والطلبات وجرس التنبيهات
         const __loadEmployeesBase = loadEmployeesFromDb;
         loadEmployeesFromDb = async function () {
+            const revision = companyRevision;
             const r = await __loadEmployeesBase.apply(this, arguments);
+            if (revision !== companyRevision) return;
             hrOpsLoaded = false; hrReqLoaded = false;
-            assignMissingEmpNumbers();
+            // Do not mutate employee numbering as a side effect of reading a company.
+            // Number assignment remains part of the explicit employee creation/import flows.
             loadHrOps(); loadHrRequests();
             return r;
         };
@@ -11003,7 +11364,7 @@
             const order = { high: 0, mid: 1, low: 2 };
             return alerts.sort((a, b) => order[a.level] - order[b.level]);
         }
-        window.goOps = function (section) { window.switchView('ops'); window.setOpsSection(section); };
+        window.goOps = function (section) { if (section === 'bank_file') bankFileMonth = document.getElementById('crx-month-select')?.value || bankFileMonth || thisMonthStr(); window.switchView('ops'); window.setOpsSection(section); };
 
         function refreshNotifications() {
             const alerts = computeAlerts();
@@ -11160,12 +11521,26 @@
         }
 
         window.switchCompany = async function(compId) {
-            activeCompanyId = compId;
-            await loadEmployeesFromDb();
+            if (!companies.some(c => c.id === compId)) return window.showToast('المنشأة غير متاحة لهذا الحساب', 'error');
+            const revision = ++companyRevision, previousView = currentViewName();
+            activeCompanyId = compId; requestRenderRevision++;
+            employees = []; departments = []; members = []; hrOps = []; hrRequests = []; hrAttendance = []; salaryAdjustments = [];
+            hrOpsLoaded = false; hrReqLoaded = false; bankFileCache = null; bankFileMonth = null; attendanceDate = null;
+            selectedEmployeeId = null; salarySelectedEmpId = null; idcState.empId = null; entDocs = []; absenceDraft = null; paySelected.clear();
+            currentReportRows = []; currentReportType = null; reportCompanyId = null; employeeDocsCache.clear(); askState.history = []; documentTemplates = []; teDraftPositions = {}; bulkSelected.clear();
+            window.speechSynthesis?.cancel(); window.closeAsk?.();
+            window.closeReportDetail();
+            document.querySelectorAll('.modal-overlay').forEach(el => { if (!el.id?.startsWith('auth')) el.classList.add('hidden'); });
+            ['report-detail-content', 'cr-preview', 'bf-preview', 'ops-content', 'req-content', 'eos-result', 'crx-payroll-card', 'crx-adjustments-table', 'crx-employee-list', 'idc-designs'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+            ['crx-profile-avatar', 'crx-profile-name', 'crx-profile-job', 'crx-profile-nid', 'crx-profile-nat', 'crx-profile-email', 'crx-profile-phone'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
             loadCompanySettingsToUI();
-            renderTable();
-            renderTerminatedTable();
-            renderStats();
+            renderTable(); renderTerminatedTable(); renderStats();
+            await loadEmployeesFromDb(); if (revision !== companyRevision) return;
+            await Promise.all([loadDepartments(), loadSalaryAdjustmentsFromDb(), loadHrOps(), loadHrRequests()]);
+            if (revision !== companyRevision) return;
+            populateDepartmentDropdowns(); refreshNotifications();
+            renderTable(); renderTerminatedTable(); renderStats();
+            if (previousView) window.switchView(previousView);
             window.showToast('تم التبديل إلى المنشأة بنجاح');
         };
 
@@ -11425,16 +11800,10 @@
         };
 
         window.calculateSalaryStructure = function(totalSalary, isNewGosi = false, nationality = 'سعودي', gosiStatus = '') {
-            const basic = Number((totalSalary * (3704 / 5000)).toFixed(2));
-            const housing = Number((totalSalary * (926 / 5000)).toFixed(2));
-            const transport = Number((totalSalary * (370 / 5000)).toFixed(2));
-            // النسب من جدول الضمان الاجتماعي المعتمد (السياسات والجداول) على (الأساسي + السكن)
             const rate = gosiRateFor(nationality, isNewGosi, gosiStatus);
-            const gosiSalary = Number((basic + housing).toFixed(2));
-            const employeeGosi = Number((gosiSalary * rate.emp / 100).toFixed(2));
-            const employerGosi = Number((gosiSalary * rate.co / 100).toFixed(2));
-            const netSalary = Number((totalSalary - employeeGosi).toFixed(2));
-            return { basic, housing, transport, employeeGosi, employerGosi, gosiSalary, netSalary, rate };
+            if (!(Number(totalSalary) > 0)) return { basic: 0, housing: 0, transport: 0, employeeGosi: 0, employerGosi: 0, gosiSalary: 0, netSalary: 0, rate };
+            const d = HRCore.distribute(totalSalary, 0, rate);
+            return { ...d, employeeGosi: d.gosi, employerGosi: d.employer, gosiSalary: HRCore.money(d.basic + d.housing), netSalary: d.net };
         };
 
         // نسب البنود تظهر تحت كل حقل: الأساسي من الإجمالي، والسكن والنقل من الأساسي
@@ -11727,7 +12096,9 @@
                     other: row.other_allowances != null ? Number(row.other_allowances) || 0 : null
                 },
                 currentStage: row.current_stage, progress: row.progress, completedTasks: row.completed_tasks || [],
-                tags: row.tags || [], isTerminated: row.is_terminated, clearanceTasks: row.clearance_tasks || [],
+                tags: row.tags || [], terminationRecorded: row.is_terminated === true,
+                isUnderNotice: row.is_terminated === true && !!toGregorianDate(row.clearance_last_day) && toGregorianDate(row.clearance_last_day) >= todayUTC(),
+                isTerminated: row.is_terminated === true && (!toGregorianDate(row.clearance_last_day) || toGregorianDate(row.clearance_last_day) < todayUTC()), clearanceTasks: row.clearance_tasks || [],
                 clearanceReason: row.clearance_reason || null,
                 isArchived: row.is_archived === true, archivedAt: row.archived_at || null,
                 portalToken: row.portal_token || null, portalEnabled: row.portal_enabled === true,
@@ -11744,8 +12115,10 @@
         }
 
         async function loadEmployeesFromDb() {
+            const requestCompany = activeCompanyId, revision = companyRevision;
             if (!companies.some(c => c.id === activeCompanyId)) { employees = []; return; }   // منشأة لا يملكها المستخدم
-            const { data, error } = await supabaseClient.from('employees').select('*').eq('company_id', activeCompanyId).order('created_at', { ascending: true });
+            const { data, error } = await supabaseClient.from('employees').select('*').eq('company_id', requestCompany).order('created_at', { ascending: true });
+            if (requestCompany !== activeCompanyId || revision !== companyRevision) return;
             if (error) { window.showToast('تعذر تحميل بيانات الموظفين: ' + error.message, 'error'); employees = []; return; }
             employees = (data || []).map(mapEmployeeFromDb);
             // تنبيه: موظفون أضافهم حساب آخر داخل هذه المنشأة (بيانات متداخلة تحتاج تشغيل ملف العزل)
@@ -11756,9 +12129,11 @@
             if (foreign) setTimeout(() => window.showToast(`يوجد ${foreign} موظف أُضيف بحساب آخر داخل هذه المنشأة — شغّل migration_tenant_isolation.sql لعزل بيانات الحسابات وإعادتهم لحساباتهم`, 'error'), 1500);
 
             // تحميل عهد كل الموظفين في هذه المنشأة بطلب واحد بدل طلب لكل موظف
+            if (revision !== companyRevision) return;
             const empIds = employees.map(e => e.id);
             if (empIds.length > 0) {
                 const { data: custodyRows, error: custodyError } = await supabaseClient.from('custody_items').select('*').in('employee_id', empIds);
+                if (revision !== companyRevision) return;
                 if (!custodyError && custodyRows) {
                     employees.forEach(emp => {
                         emp.custodyItems = custodyRows.filter(c => c.employee_id === emp.id).map(c => ({ id: c.id, type: c.item_type, amount: Number(c.amount) || 0 }));
@@ -12165,6 +12540,7 @@
 
         // عرض ما رفعه الموظف داخل ملفه، مع فتح الملف برابط موقّع مؤقت
         async function renderEmployeeDocs(emp) {
+            const revision = companyRevision;
             const list = document.getElementById('d-portal-docs-list');
             const count = document.getElementById('d-portal-docs-count');
             if (!list) return;
@@ -12174,6 +12550,7 @@
                 .from('employee_documents').select('doc_key, file_name, file_path, uploaded_at')
                 .eq('employee_id', emp.id);
 
+            if (revision !== companyRevision || selectedEmployeeId !== emp.id) return;
             if (error) {
                 list.innerHTML = `<div class="col-span-full text-center text-[11px] font-bold text-slate-400 py-3">
                     ${isMissingColumnError(error) ? 'نفّذ ملف migration_portal_archive.sql في Supabase لتفعيل المستندات' : 'تعذر تحميل المستندات'}</div>`;
@@ -12183,6 +12560,8 @@
 
             const byKey = {};
             (data || []).forEach(d => { byKey[d.doc_key] = d; });
+            employeeDocsCache.set(emp.id, new Set(Object.keys(byKey)));
+            renderOnboardingReadiness(emp);
             if (count) count.innerText = `${(data || []).length} / ${portalDocsData.length}`;
 
             list.innerHTML = portalDocsData.map(d => {
@@ -12509,14 +12888,11 @@
         // ====================================================================
         // تعديل التفاصيل المالية الثابتة والبيانات الإضافية مباشرة من نافذة "إدارة"
         // ====================================================================
-        const persistEmployeeFinancials = debounce(async (empId, financials) => {
-            const { error } = await supabaseClient.from('employees').update({
-                total_salary: financials.total, basic_salary: financials.basic,
-                housing_allowance: financials.housing, transport_allowance: financials.transport,
-                gosi_deduction: financials.gosi
-            }).eq('id', empId);
-            if (error) window.showToast('تعذر حفظ التفاصيل المالية: ' + error.message, 'error');
-        }, 600);
+        const persistEmployeeFinancials = (empId, financials) => queueEmployeePatch(empId, {
+            total_salary: financials.total, basic_salary: financials.basic,
+            housing_allowance: financials.housing, transport_allowance: financials.transport,
+            gosi_deduction: financials.gosi
+        });
 
         // مؤشرات مالية مشتقة: راتب التأمينات، حصة المنشأة، ومكافأة نهاية الخدمة حتى اليوم
         function refreshEmployeeFinancialInsights(emp) {
@@ -12527,7 +12903,7 @@
             setText('d-gosi-salary', gosiSalary.toLocaleString('en-US') + ' ﷼');
             setText('d-gosi-employer', Number((gosiSalary * rate.co / 100).toFixed(2)).toLocaleString('en-US') + ` ﷼ (${rate.co}%)`);
             const eos = computeEndOfService(emp.startDate, new Date().toISOString().slice(0, 10), f.total || 0, 'full', serviceDeductionsFrom(hrRequests, emp.id));
-            setText('d-eos-today', eos.total.toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' ﷼');
+            setText('d-eos-today', eos.error ? 'غير متاح: تحقق من الأجر وتاريخ المباشرة' : eos.total.toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' ﷼');
             setText('d-net', Number(((f.total || 0) - (f.gosi || 0)).toFixed(2)) + ' ﷼');
         }
 
@@ -12537,7 +12913,11 @@
             const emp = employees.find(e => e.id === selectedEmployeeId); if (!emp) return;
             if (!emp.financials) emp.financials = {};
             const f = emp.financials;
-            f[key] = parseFloat(value) || 0;
+            const amount = Number(value);
+            if (value === '' || !Number.isFinite(amount) || amount < 0 || (key === 'total' && (amount <= 0 || amount < empOtherAllow(emp)))) {
+                showFieldSaveState('لم يُحفظ المدخل المالي: أدخل مبلغاً صالحاً وغير سالب', true); return;
+            }
+            f[key] = amount;
             const setVal = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v; };
 
             if (key === 'total') {
@@ -12546,7 +12926,7 @@
                 f.basic = s.basic; f.housing = s.housing; f.transport = s.transport; f.gosi = s.gosi;
                 setVal('d-basic', s.basic); setVal('d-housing', s.housing); setVal('d-transport', s.transport); setVal('d-gosi', s.gosi);
             } else if (key === 'basic' || key === 'housing' || key === 'transport') {
-                f.total = Number(((f.basic || 0) + (f.housing || 0) + (f.transport || 0)).toFixed(2));
+                f.total = Number(((f.basic || 0) + (f.housing || 0) + (f.transport || 0) + empOtherAllow(emp)).toFixed(2));
                 const rate = gosiRateFor(emp.nationality, !!f.isNewGosi, emp.gosiStatus);
                 f.gosi = Number((((f.basic || 0) + (f.housing || 0)) * rate.emp / 100).toFixed(2));
                 setVal('d-total', f.total); setVal('d-gosi', f.gosi);
@@ -12588,7 +12968,8 @@
         const D_EXTRA_FIELDS = D_EXTRA_GROUPS.flatMap(g => g[2]);
         function renderDetailsExtraFields(emp) {
             const box = document.getElementById('d-extra-fields'); if (!box) return;
-            const missing = D_EXTRA_FIELDS.filter(f => !['bool', 'paymethod'].includes(f[3]) && !['visitor_note', 'pay_method_note'].includes(f[0]) && !emp[f[1]]).length;
+            const applicable = f => !((/^passport_/.test(f[0]) && /سعود/.test(emp.nationality || '') && !emp[f[1]]) || (['school_stage', 'track'].includes(f[0]) && !/تعليم|معلم|مدرس|مدير مدرس/.test(emp.jobTitle || '') && !emp[f[1]]));
+            const missing = D_EXTRA_FIELDS.filter(applicable).filter(f => !['bool', 'paymethod'].includes(f[3]) && !['visitor_note', 'pay_method_note'].includes(f[0]) && !emp[f[1]]).length;
             const fieldHtml = ([col, key, label, type, opts]) => {
                 if (col === 'gosi_status') opts = GOSI_STATUSES.filter(o => /سعود[يى]/.test(emp.nationality || '') ? o.startsWith('سعودي') : o.startsWith('أجنبي'));
                 if (type === 'dept' || type === 'paymethod' || type === 'bool') {
@@ -12611,6 +12992,7 @@
                 + `<div class="flex flex-wrap items-center justify-between gap-2"><p class="text-[11px] font-black ${missing ? 'text-amber-600' : 'text-emerald-600'}">${missing ? `<i class="fas fa-pen-to-square ml-1"></i>${missing} حقول لم تُكمل — مرتبة حسب الأولوية، أكملها هنا` : '<i class="fas fa-circle-check ml-1"></i>كل البيانات مكتملة'}</p>
                     <button type="button" onclick="window.openPortalLink()" class="px-3 py-1.5 rounded-full bg-sky-600 text-white text-[11px] font-extrabold" title="يرسل للموظف رابطاً يكمل منه بياناته الإضافية بنفسه"><i class="fas fa-link ml-1"></i>رابط استكمال البيانات للموظف</button></div>`
                 + D_EXTRA_GROUPS.map(([title, icon, fields]) => {
+                    fields = fields.filter(applicable); if (!fields.length) return '';
                     const miss = fields.filter(f => !emp[f[1]]).length;
                     return `<div class="rounded-2xl border ${miss ? 'border-amber-200' : 'border-slate-100'} p-3 space-y-2.5">
                         <p class="text-[11px] font-black text-slate-700 flex items-center justify-between"><span><i class="fas ${icon} ml-1 text-slate-400"></i>${title}</span>${miss ? `<span class="text-amber-600">${miss} ناقص</span>` : '<i class="fas fa-circle-check text-emerald-500"></i>'}</p>
@@ -12627,8 +13009,11 @@
         window.refreshDetailsExtra = () => { const e = employees.find(x => x.id === selectedEmployeeId); if (e) setTimeout(() => renderDetailsExtraFields(e), 700); };
 
         // اعتماد اكتمال مسار الإلحاق بضغطة واحدة: كل مهام المراحل منجزة والتقدم 100%
-        window.completeOnboardingNow = function () {
+        window.completeOnboardingNow = async function () {
             const emp = employees.find(e => e.id === selectedEmployeeId); if (!emp) return;
+            await renderEmployeeDocs(emp);
+            const readiness = onboardingReadiness(emp);
+            if (!readiness.ready) return window.showToast('أكمل المتطلبات أولاً: ' + readiness.missing.concat(readiness.missingDocs).join('، '), 'warning');
             window.showConfirmModal('اعتماد اكتمال الإلحاق', `سيتم اعتماد إنجاز جميع مهام مسار إلحاق ${emp.name} (${TOTAL_ONBOARDING_TASKS} مهمة) وتفعيل بوابة الخدمة الذاتية له. متابعة؟`, async () => {
                 const all = stagesData.flatMap(st => st.tasks);
                 emp.completedTasks = all.slice();
@@ -12643,20 +13028,20 @@
         };
         function updateCompleteOnboardingBtn(emp) {
             const b = document.getElementById('btn-complete-onboarding'); if (!b) return;
+            renderOnboardingReadiness(emp);
             const done = (emp.progress || 0) >= 100;
             b.disabled = done;
             b.className = 'px-4 py-2 rounded-full font-bold shadow-sm text-xs flex items-center gap-2 transition ' + (done ? 'bg-emerald-100 text-emerald-700 cursor-default' : 'bg-emerald-600 hover:bg-emerald-700 text-white');
-            b.innerHTML = done ? '<i class="fas fa-circle-check"></i> الإلحاق مكتمل' : '<i class="fas fa-flag-checkered"></i> اعتماد اكتمال الإلحاق';
+            b.innerHTML = done ? '<i class="fas fa-circle-check"></i> مهام الإلحاق مكتملة' : '<i class="fas fa-flag-checkered"></i> اعتماد اكتمال الإلحاق';
         }
-        const persistEmployeeField = debounce(async (empId, column, value) => {
-            const { error } = await supabaseClient.from('employees').update({ [column]: value }).eq('id', empId);
-            if (error) window.showToast('تعذر حفظ التعديل: ' + error.message, 'error');
-        }, 600);
+        const persistEmployeeField = (empId, column, value) => queueEmployeePatch(empId, { [column]: value });
 
         // حقل عام لأي من: رقم الهوية، الجنسية، تاريخ المباشرة، رقم الجوال
         window.saveEmployeeField = function (uiKey, value) {
             const emp = employees.find(e => e.id === selectedEmployeeId); if (!emp) return;
             const column = EMP_FIELD_TO_COLUMN[uiKey]; if (!column) return;
+            if (column === 'nid' && !/^\d{10}$/.test(String(value || ''))) return window.showToast('رقم الهوية يجب أن يكون عشرة أرقام', 'warning');
+            if (column === 'start_date' && !toGregorianDate(value)) return window.showToast('تاريخ المباشرة غير صالح', 'warning');
 
             // تحديث الحالة المحلية فوراً بنفس اسم الخاصية المستخدم في باقي الواجهة (camelCase)
             const camelKey = ({ job_title: 'jobTitle', department_id: 'departmentId', manager_id: 'managerId' })[uiKey] || uiKey.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -12705,10 +13090,7 @@
             window.saveClearanceProgress();
         };
 
-        const persistClearanceProgress = debounce(async (empId, updates) => {
-            const { error } = await supabaseClient.from('employees').update(updates).eq('id', empId);
-            if (error) window.showToast('تعذر حفظ بيانات المخالصة: ' + error.message, 'error');
-        }, 500);
+        const persistClearanceProgress = (empId, updates) => queueEmployeePatch(empId, updates);
 
         window.saveClearanceProgress = function() {
             const emp = employees.find(e => e.id === selectedEmployeeId); if (!emp) return;
@@ -12770,7 +13152,8 @@
             const bar = document.getElementById('d-timeline-bar');
             const { progress } = computeOnboardingProgress(emp);
             const txt = document.getElementById('d-progress-text');
-            if (txt) txt.innerText = `${progress}% مكتمل`;
+            if (txt) txt.innerText = `${progress}% من مهام القائمة`;
+            renderOnboardingReadiness(emp);
             if (bar) bar.style.width = `${progress}%`;
             updateTasksCertButton(emp);
             if (!container) return;
@@ -12847,10 +13230,7 @@
             panel.classList.remove('hidden');
         }
 
-        const persistOnboardingProgress = debounce(async (empId, updates) => {
-            const { error } = await supabaseClient.from('employees').update(updates).eq('id', empId);
-            if (error) window.showToast('تعذر حفظ تقدم المهام: ' + error.message, 'error');
-        }, 500);
+        const persistOnboardingProgress = (empId, updates) => queueEmployeePatch(empId, updates);
 
         window.toggleStageTask = function(stageId, taskIdx) {
             const emp = employees.find(e => e.id === selectedEmployeeId); if (!emp) return;
@@ -12895,8 +13275,13 @@
         let currentReportType = null;
         let currentReportRows = [];
 
-        window.openReportDetail = function(type) {
-            currentReportType = type;
+        window.openReportDetail = async function(type) {
+            currentReportType = type; reportCompanyId = activeCompanyId;
+            const reportRevision = companyRevision;
+            if (type === 'payroll') {
+                await Promise.all([loadSalaryAdjustmentsFromDb(), loadHrOps()]);
+                if (reportRevision !== companyRevision || currentReportType !== type) return;
+            }
             document.getElementById('reports-main-grid')?.classList.add('hidden');
             document.getElementById('report-detail-container')?.classList.remove('hidden');
             const box = document.getElementById('report-detail-content');
@@ -12910,10 +13295,10 @@
                 const jobCounts = {}; activeEmps.forEach(e => { jobCounts[e.jobTitle || 'غير محدد'] = (jobCounts[e.jobTitle || 'غير محدد'] || 0) + 1; });
                 currentReportRows = Object.entries(jobCounts).map(([job, count]) => ({ 'المسمى الوظيفي': job, 'عدد الموظفين': count }));
                 box.innerHTML = `
-                    <h3 class="text-2xl font-black mb-4">تقرير التوطين والسعودة</h3>
+                    <h3 class="text-2xl font-black mb-4">تقرير عدد السعوديين</h3><p class="text-xs text-slate-500 mb-3">نسبة عددية؛ ليست نتيجة نطاقات الرسمية.</p>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                         <div class="bg-blue-50 p-5 rounded-2xl border border-blue-100"><p class="text-xs text-blue-600 font-bold">إجمالي الموظفين</p><p class="text-3xl font-black text-blue-900 mt-2">${total}</p></div>
-                        <div class="bg-emerald-50 p-5 rounded-2xl border border-emerald-100"><p class="text-xs text-emerald-600 font-bold">نسبة التوطين</p><p class="text-3xl font-black text-emerald-700 mt-2">${rate}%</p></div>
+                        <div class="bg-emerald-50 p-5 rounded-2xl border border-emerald-100"><p class="text-xs text-emerald-600 font-bold">نسبة السعوديين من العدد</p><p class="text-3xl font-black text-emerald-700 mt-2">${rate}%</p></div>
                         <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200"><p class="text-xs text-slate-500 font-bold">سعودي / مقيم</p><p class="text-xl font-black text-slate-800 mt-2">${saudis} / ${total - saudis}</p></div>
                     </div>
                     <h4 class="font-bold text-lg mb-3">توزيع الموظفين حسب المسمى الوظيفي:</h4>
@@ -12922,16 +13307,14 @@
                     </div>`;
 
             } else if (type === 'payroll') {
-                const totalGross = activeEmps.reduce((s, e) => s + (e.financials?.total || 0), 0);
-                const totalGosi = activeEmps.reduce((s, e) => s + (e.financials?.gosi || 0), 0);
-                const totalNet = totalGross - totalGosi;
-                currentReportRows = activeEmps.map(e => ({
-                    'الاسم': e.name || '', 'المسمى الوظيفي': e.jobTitle || '',
-                    'الراتب الأساسي': e.financials?.basic || 0, 'السكن': e.financials?.housing || 0, 'النقل': e.financials?.transport || 0,
-                    'الإجمالي': e.financials?.total || 0, 'خصم التأمينات': e.financials?.gosi || 0, 'الصافي': (e.financials?.total || 0) - (e.financials?.gosi || 0)
-                }));
+                const month = document.getElementById('crx-month-select')?.value || thisMonthStr();
+                const reportPayroll = payrollRows(month);
+                const totalGross = HRCore.money(reportPayroll.reduce((n, r) => n + r.p.total + r.p.addT, 0));
+                const totalGosi = HRCore.money(reportPayroll.reduce((n, r) => n + r.p.gosi, 0));
+                const totalNet = HRCore.money(reportPayroll.reduce((n, r) => n + r.p.net, 0));
+                currentReportRows = payrollSheetData(reportPayroll).map((row, i) => ({ 'الشهر': month, ...row, 'المراجعة': payrollValidation(reportPayroll[i].p).join('، ') }));
                 box.innerHTML = `
-                    <h3 class="text-2xl font-black mb-4">تقرير الرواتب والمستحقات</h3>
+                    <h3 class="text-2xl font-black mb-4">تقرير الرواتب والمستحقات — ${month}</h3><p class="text-xs mb-3">يتطابق مع مسير الشهر، ويشمل أيام الاستحقاق والإضافات والاستقطاعات. التقرير للمراجعة ولا يثبت صرف المبالغ.</p>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                         <div class="bg-blue-50 p-5 rounded-2xl border border-blue-100"><p class="text-xs text-blue-600 font-bold">إجمالي الرواتب (شامل)</p><p class="text-2xl font-black text-blue-900 mt-2">${totalGross.toLocaleString('en-US')}</p></div>
                         <div class="bg-red-50 p-5 rounded-2xl border border-red-100"><p class="text-xs text-red-600 font-bold">إجمالي خصومات التأمينات</p><p class="text-2xl font-black text-red-700 mt-2">${totalGosi.toLocaleString('en-US')}</p></div>
@@ -12944,7 +13327,8 @@
                                 <th class="p-3 text-xs font-extrabold text-slate-500">الإجمالي</th><th class="p-3 text-xs font-extrabold text-slate-500">التأمينات</th><th class="p-3 text-xs font-extrabold text-slate-500">الصافي</th>
                             </tr></thead>
                             <tbody class="divide-y divide-slate-100">
-                                ${activeEmps.map(e => `<tr><td class="p-3 font-bold">${escapeHtml(e.name || '')}</td><td class="p-3 text-slate-500">${escapeHtml(e.jobTitle || '')}</td><td class="p-3 font-mono">${(e.financials?.total||0).toLocaleString('en-US')}</td><td class="p-3 font-mono text-red-600">${(e.financials?.gosi||0).toLocaleString('en-US')}</td><td class="p-3 font-mono font-black">${((e.financials?.total||0)-(e.financials?.gosi||0)).toLocaleString('en-US')}</td></tr>`).join('') || '<tr><td colspan="5" class="p-6 text-center text-slate-400">لا توجد بيانات</td></tr>'}
+                                ${reportPayroll.map(({e,p}) => `<tr><td class="p-3 font-bold">${escapeHtml(e.name || '')}<p class="text-[10px] text-amber-700">${escapeHtml(payrollValidation(p).join('، '))}</p></td><td class="p-3 text-slate-500">${escapeHtml(e.jobTitle || '')}</td><td class="p-3 font-mono">${fmtMoney(p.total + p.addT)}</td><td class="p-3 font-mono text-red-600">${fmtMoney(p.gosi)}</td><td class="p-3 font-mono font-black">${fmtMoney(p.net)}</td></tr>`).join('') || '<tr><td colspan="5" class="p-6 text-center text-slate-400">لا توجد بيانات</td></tr>'}
+
                             </tbody>
                         </table>
                     </div>`;
@@ -12952,7 +13336,7 @@
             } else if (type === 'onboarding') {
                 const avgProgress = activeEmps.length > 0 ? (activeEmps.reduce((s, e) => s + (e.progress || 0), 0) / activeEmps.length).toFixed(0) : 0;
                 currentReportRows = allEmps.map(e => ({
-                    'الاسم': e.name || '', 'الحالة': e.isTerminated ? 'منتهي (مخالصة)' : 'نشط',
+                    'الاسم': e.name || '', 'الحالة': e.isTerminated ? (HRCore.clearanceComplete(e, clearanceTasksData.map(t => t.title), today10()) ? 'مخالصة مكتملة' : 'مخالصة غير مكتملة') : e.isUnderNotice ? 'تحت الإشعار' : 'نشط',
                     'نسبة الإلحاق': e.isTerminated ? '-' : (e.progress || 0) + '%', 'تاريخ الالتحاق': e.startDate || '-'
                 }));
                 box.innerHTML = `
@@ -12960,7 +13344,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                         <div class="bg-blue-50 p-5 rounded-2xl border border-blue-100"><p class="text-xs text-blue-600 font-bold">قيد الإلحاق حالياً</p><p class="text-3xl font-black text-blue-900 mt-2">${activeEmps.filter(e=>e.progress<100).length}</p></div>
                         <div class="bg-emerald-50 p-5 rounded-2xl border border-emerald-100"><p class="text-xs text-emerald-600 font-bold">متوسط نسبة الإلحاق</p><p class="text-3xl font-black text-emerald-700 mt-2">${avgProgress}%</p></div>
-                        <div class="bg-red-50 p-5 rounded-2xl border border-red-100"><p class="text-xs text-red-600 font-bold">مخالصات مكتملة</p><p class="text-3xl font-black text-red-700 mt-2">${termEmps.length}</p></div>
+                        <div class="bg-red-50 p-5 rounded-2xl border border-red-100"><p class="text-xs text-red-600 font-bold">مخالصات مكتملة</p><p class="text-3xl font-black text-red-700 mt-2">${termEmps.filter(e => HRCore.clearanceComplete(e, clearanceTasksData.map(t => t.title), today10())).length}</p></div>
                     </div>
                     <div class="overflow-x-auto rounded-2xl border border-slate-200">
                         <table class="w-full text-right border-collapse min-w-[560px]">
@@ -12996,17 +13380,19 @@
                         </table>
                     </div>`;
             }
+            box.insertAdjacentHTML('afterbegin', `<p class="text-xs font-bold mb-3">المنشأة: ${escapeHtml(getActiveCompany()?.nameAr || '')} · تاريخ التقرير: ${today10()}</p>`);
         };
 
         window.closeReportDetail = function() { document.getElementById('report-detail-container')?.classList.add('hidden'); document.getElementById('reports-main-grid')?.classList.remove('hidden'); };
 
         window.exportReportToExcel = function() {
             if (!currentReportRows || currentReportRows.length === 0) { window.showToast('لا توجد بيانات لتصديرها', 'warning'); return; }
-            const ws = XLSX.utils.json_to_sheet(currentReportRows);
+            if (reportCompanyId !== activeCompanyId) return window.showToast('تغيرت المنشأة؛ أعد فتح التقرير', 'warning');
+            const ws = XLSX.utils.json_to_sheet(currentReportRows.map(r => ({ 'المنشأة': getActiveCompany()?.nameAr || '', 'تاريخ التقرير': today10(), ...r })));
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'التقرير');
             const names = { saudization: 'تقرير_التوطين', payroll: 'تقرير_الرواتب', onboarding: 'تقرير_الإلحاق', expiry: 'تقرير_انتهاء_الوثائق' };
-            XLSX.writeFile(wb, (names[currentReportType] || 'تقرير') + '.xlsx');
+            XLSX.writeFile(wb, (names[currentReportType] || 'تقرير') + '_' + (getActiveCompany()?.nameAr || '').replace(/[\\/:*?"<>|]/g, '_') + '_' + today10() + '.xlsx');
         };
 
         // ====================================================================
@@ -13352,9 +13738,12 @@
                     // لنستخدمه في خطوة ربط لاحقة بعد أن تصبح كل الأسماء موجودة فعلياً بقاعدة البيانات
                     const managerNameByNid = {};
 
-                    rows.slice(0, 500).forEach(row => {
+                    const importErrors = [];
+                    rows.slice(0, 500).forEach((row, index) => {
                         const name = row['الاسم الرباعي'] || row['الاسم']; const nid = String(row['رقم الهوية'] || '').trim();
                         if (name && nid) {
+                            if (!/^\d{10}$/.test(toLatinDigits(nid))) { importErrors.push('الصف ' + (index + 2) + ': الهوية ليست عشرة أرقام'); return; }
+                            if (!Number.isFinite(Number(row['إجمالي الراتب'] || 5000)) || Number(row['إجمالي الراتب'] || 5000) <= 0) { importErrors.push('الصف ' + (index + 2) + ': الراتب غير صالح'); return; }
                             const total = parseFloat(row['إجمالي الراتب'] || 5000); const nat = row['الجنسية'] || 'سعودي';
                             const s = window.calculateSalaryStructure(total, false, nat);
                             const managerName = String(row['المدير المباشر'] || '').trim();
@@ -13378,12 +13767,14 @@
                         }
                     });
 
+                    if (importErrors.length) { window.showToast('لم يُستورد الملف: ' + importErrors.slice(0, 5).join('، '), 'warning'); e.target.value = ''; return; }
                     if (dbRows.length === 0) { window.showToast('لم يتم العثور على صفوف صالحة في الملف', 'warning'); e.target.value = ''; return; }
 
                     // 1) إزالة التكرار داخل الملف نفسه (نفس رقم الهوية أكثر من مرة) — سبب خطأ
                     //    "ON CONFLICT DO UPDATE command cannot affect row a second time". يُعتمد آخر صف.
                     const byNid = new Map(); let dupCount = 0;
                     dbRows.forEach(r => { r.nid = toLatinDigits(String(r.nid)).replace(/\D/g, ''); if (byNid.has(r.nid)) dupCount++; byNid.set(r.nid, r); });
+                    if (dupCount) { window.showToast('لم يُستورد الملف: توجد هويات مكررة. راجع الصفوف قبل الاستيراد.', 'warning'); return; }
                     const uniqueRows = [...byNid.values()].filter(r => r.nid);
 
                     // 2) الموظفون الموجودون: تحديث بياناتهم فقط دون المساس بمسار الإلحاق أو حالة الإنهاء أو الرقم الوظيفي،
@@ -13562,8 +13953,10 @@
         };
 
         async function loadDocumentTemplates() {
+            const revision = companyRevision;
             const comp = getActiveCompany(); if (!comp) { documentTemplates = []; return; }
             const { data, error } = await supabaseClient.from('document_templates').select('*').eq('company_id', comp.id).order('created_at', { ascending: false });
+            if (revision !== companyRevision) return;
             if (error) { templatesTableSupported = false; documentTemplates = []; return; }
             templatesTableSupported = true;
             documentTemplates = (data || []).map(r => ({
@@ -13833,7 +14226,7 @@
         window.previewDocument = function (kind) {
             const comp = getActiveCompany(); if (!comp) return;
             const emp = employees[0] || null;
-            if (kind === 'settlement') fillSettlementFields(emp, comp, true);
+            if (kind === 'settlement') { try { fillSettlementFields(emp, comp, true); } catch (_) { return window.showToast('أكمل تاريخ المباشرة والأجر وتاريخ الانتهاء لمعاينة المخالصة', 'warning'); } }
             else fillOfferFields(emp, comp, true);
             applyDocIdentity(comp);
             applyLetterhead(kind, comp);
@@ -14037,7 +14430,7 @@
 
             const leaveDays  = comp.annualLeaveDays  || '21';
             const validDays  = comp.offerValidityDays || 'ثلاثة';
-            const workHours  = comp.workingHours || '8 ساعات يوميا لمدة 6 أيام في الأسبوع';
+            const workHours = scheduleDescription(emp, emp.startDate || today10());
             const healthCare = comp.healthCare || 'حسب اللوائح الداخلية للشركة';
 
             // ── الترويسة: مكان الشعار وحجمه حسب إعدادات المنشأة ──
@@ -14362,20 +14755,20 @@
 
             document.getElementById('stl-comp-name').innerText = comp.nameAr; document.getElementById('stl-name').innerText = emp.name;
             document.getElementById('stl-nid').innerText = emp.nid; document.getElementById('stl-job').innerText = emp.jobTitle;
-            document.getElementById('stl-nat').innerText = emp.nationality; document.getElementById('stl-start').innerText = emp.startDate || '2025-08-18';
+            document.getElementById('stl-nat').innerText = emp.nationality; document.getElementById('stl-start').innerText = emp.startDate || '—';
             document.getElementById('stl-bot-name').innerText = emp.name; document.getElementById('stl-hr-name').innerText = comp.sign1Name || 'مدير الموارد البشرية';
             document.getElementById('stl-mgr-title').innerText = comp.sign2Title || 'المشرف العام'; document.getElementById('stl-mgr-name').innerText = comp.sign2Name || '';
             const lastDay = clsText('cls-last-day', new Date().toISOString().split('T')[0]); document.getElementById('stl-end').innerText = lastDay;
 
-            const total = parseFloat(emp.financials?.total || 5000); const basic = parseFloat(emp.financials?.basic || 3704);
-            const housing = parseFloat(emp.financials?.housing || 926); const transport = parseFloat(emp.financials?.transport || 370);
+            const total = Number(emp.financials?.total); const basic = Number(emp.financials?.basic || 0);
+            const housing = Number(emp.financials?.housing || 0); const transport = Number(emp.financials?.transport || 0);
             document.getElementById('stl-total').innerText = total; document.getElementById('stl-basic').innerText = basic;
             document.getElementById('stl-housing').innerText = housing; document.getElementById('stl-transport').innerText = transport;
 
             const lastPaidVal = clsNum('cls-last-paid-val'); const lastPaidMonth = clsText('cls-last-paid-month', '-');
             document.getElementById('stl-last-val').innerText = lastPaidVal; document.getElementById('stl-last-month').innerText = lastPaidMonth;
 
-            const start = new Date(emp.startDate || '2025-08-18'); const end = new Date(lastDay);
+            const start = toGregorianDate(emp.startDate); const end = new Date(lastDay);
             let diffYears = end.getFullYear() - start.getFullYear(); let diffMonths = end.getMonth() - start.getMonth(); let diffDays = end.getDate() - start.getDate();
             if (diffDays < 0) { diffMonths--; const prevMonth = new Date(end.getFullYear(), end.getMonth(), 0); diffDays += prevMonth.getDate(); }
             if (diffMonths < 0) { diffYears--; diffMonths += 12; }
@@ -14386,7 +14779,8 @@
             // مكافأة نهاية الخدمة: نفس المحرّك المعتمد بحاسبة "مكافأة نهاية الخدمة"
             // (المادتان 84 و85، نظام 30/360) مع مراعاة سبب الإنهاء المختار للموظف
             const eosMode = emp === SAMPLE_EMP ? 'full' : reasonByKey(getClearanceReason(emp)).eos;
-            const eosCalc = computeEndOfService(emp.startDate || '2025-08-18', lastDay, total, eosMode, emp === SAMPLE_EMP ? [] : serviceDeductionsFrom(hrRequests, emp.id));
+            const eosCalc = computeEndOfService(emp.startDate, lastDay, total, eosMode, emp === SAMPLE_EMP ? [] : serviceDeductionsFrom(hrRequests, emp.id));
+            if (eosCalc.error) throw new Error(eosCalc.error);
             const eosAmt = eosCalc.total;
             const totalServiceDays = Math.max(1, eosCalc.totalDays);
 
@@ -14423,8 +14817,12 @@
             const emp = employees.find(e => e.id === selectedEmployeeId); const comp = getActiveCompany(); if (!emp || !comp) return;
             applyLetterhead('settlement', comp);
             applyDocIdentity(comp);
-            fillSettlementFields(emp, comp);
-
+            const cd = emp.clearanceData || {}, end = document.getElementById('cls-last-day')?.value || cd.lastDay;
+            const check = computeEndOfService(emp.startDate, end, Number(emp.financials?.total), reasonByKey(getClearanceReason(emp)).eos, serviceDeductionsFrom(hrRequests, emp.id));
+            if (check.error) return window.showToast(check.error, 'warning');
+            const nums = [...document.querySelectorAll('#details-modal input[id^="cls-"][type="number"]')];
+            if (nums.some(el => !Number.isFinite(Number(el.value)) || Number(el.value) < 0)) return window.showToast('تحقق من المبالغ والأيام في التصفية؛ لا تقبل القيم السالبة', 'warning');
+            try { fillSettlementFields(emp, comp); } catch (err) { return window.showToast(err.message || 'تعذر حساب التصفية', 'warning'); }
             const container = document.getElementById('settlement-pdf-container'); container.classList.remove('hidden');
             const content = document.getElementById('settlement-pdf-content');
             window.showToast('جاري تجهيز نموذج المخالصة...', 'warning');
@@ -14463,9 +14861,11 @@
 
         // تحميل كل تعديلات الرواتب الخاصة بموظفي المنشأة النشطة بطلب واحد
         async function loadSalaryAdjustmentsFromDb() {
+            const requestCompany = activeCompanyId, revision = companyRevision;
             const empIds = employees.map(e => e.id);
             if (empIds.length === 0) { salaryAdjustments = []; return; }
             const { data, error } = await supabaseClient.from('salary_adjustments').select('*').in('employee_id', empIds).order('month', { ascending: false });
+            if (requestCompany !== activeCompanyId || revision !== companyRevision) return;
             if (error) { console.error(error); salaryAdjustments = []; return; }
             salaryAdjustments = (data || []).map(r => ({
                 id: r.id, employeeId: r.employee_id, type: r.adjustment_type, description: r.description,
@@ -14476,9 +14876,10 @@
         window.renderSalaryView = async function() {
             if (employees.length === 0) {
                 document.getElementById('crx-employee-list').innerHTML = `<p class="text-[11px] font-bold text-center py-6" style="color: rgb(var(--s-400))">لا يوجد موظفون بعد</p>`;
-                return;
+                salarySelectedEmpId = null; salaryAdjustments = [];
+                window.setSalaryTab(salaryTab); return;
             }
-            await loadSalaryAdjustmentsFromDb();
+            await Promise.all([loadSalaryAdjustmentsFromDb(), loadHrOps()]);
             if (!salarySelectedEmpId || !employees.some(e => e.id === salarySelectedEmpId)) {
                 salarySelectedEmpId = employees[0].id;
             }
@@ -14565,7 +14966,7 @@
             const month = document.getElementById('crx-month-select').value || currentSalaryMonthKey();
             document.getElementById('crx-selected-name').innerText = emp.name || '—';
 
-            const rows = salaryAdjustments.filter(a => a.employeeId === emp.id && a.month === month);
+            const rows = salaryAdjustments.filter(a => a.employeeId === emp.id && (a.month === month || (a.isRecurring && a.month <= month)));
 
             if (rows.length === 0) {
                 tbody.innerHTML = '';
@@ -14591,7 +14992,7 @@
             const allowanceTotal = rows.filter(a => a.type === 'allowance').reduce((s, a) => s + a.amount, 0);
             const bonusTotal = rows.filter(a => a.type === 'bonus' || a.type === 'increase').reduce((s, a) => s + a.amount, 0);
             const deductionTotal = rows.filter(a => a.type === 'deduction').reduce((s, a) => s + a.amount, 0);
-            const net = basic + allowanceTotal + bonusTotal - deductionTotal;
+            const net = entSalaryNet(emp, month);
 
             document.getElementById('crx-sum-basic').innerText = basic.toLocaleString('en-US');
             document.getElementById('crx-sum-allowance').innerText = allowanceTotal.toLocaleString('en-US');
@@ -14653,6 +15054,7 @@
                 month: monthInput
             };
 
+            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(payload.month) || !Number.isFinite(payload.amount) || payload.amount <= 0) return window.showToast('اختر شهراً صحيحاً ومبلغاً موجباً', 'warning');
             const { data, error } = await supabaseClient.from('salary_adjustments').insert(payload).select().single();
             if (error) { window.showToast('تعذر حفظ التعديل: ' + error.message, 'error'); return; }
 
