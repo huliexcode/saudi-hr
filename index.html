@@ -5705,7 +5705,16 @@ window.verifyBackupFile=async function(input) {
             [/JWT expired|invalid JWT|jwt (?:expired|malformed)/i,
                 'انتهت جلسة الدخول', 'سجّل الخروج ثم سجّل الدخول من جديد وأعد العملية',
                 'Your sign-in session has expired', 'Sign out, sign in again, then repeat the operation'],
-            [/closed month|month (?:is )?closed|period (?:is )?closed|affects a closed/i,
+            [/(?:تعذر (?:ال)?حذف|delete)[\s\S]*Employee\/company mismatch/i,
+                'لا يمكن حذف موظف له سجلات مرتبطة (عقود أو حركات مالية أو طلبات)', 'قاعدة البيانات تحمي هذه السجلات للتدقيق والرواتب. استعمل «أرشفة» الموظف أو «المخالصة» بدل الحذف.',
+                'An employee with linked records (contracts, financial operations, requests) cannot be deleted', 'The database protects these records for audit and payroll. Archive the employee or run the clearance flow instead of deleting.'],
+            [/Employee\/company mismatch|company mismatch/i,
+                'قاعدة البيانات رفضت العملية: فشل فحص «تطابق الموظف مع المنشأة»', 'تأكد أن الموظف يتبع المنشأة المحددة وأن السجل المرتبط به من المنشأة نفسها، ثم أعد المحاولة؛ وإن تكرر فراجع مسؤول قاعدة البيانات.',
+                'The database rejected the operation: the employee/company consistency check failed', 'Make sure the employee belongs to the selected company and the linked record is from the same company, then retry; if it persists, contact the database admin.'],
+            [/Approved contract is immutable|Contract closure needs dated evidence/i,
+                'العقد المعتمد لا يُعدَّل ولا يُحذف', 'أنشئ نسخة جديدة مؤرخة من العقد، أو أغلق العقد القائم بتاريخ نهاية مع دليل الإغلاق.',
+                'An approved contract cannot be edited or deleted', 'Create a new dated version, or close the existing contract with an end date and closure evidence.'],
+            [/closed month|month (?:is )?closed|period (?:is )?closed|affects (?:a )?closed/i,
                 'هذا التغيير يمس شهراً مُقفلاً', 'اختر تاريخ سريان أو مباشرة في شهر مفتوح، أو أعد فتح الشهر المُقفل إن كنت مخوّلاً بذلك',
                 'This change affects a closed month', 'Choose an effective or start date in an open month, or reopen the closed month if you are authorized'],
             [/invalid (?:work )?quantity|quantity (?:must|is)/i,
@@ -19024,6 +19033,45 @@ if (typeof module !== 'undefined') module.exports = HRContactCore;
   const ENTRY = ['archiveEmployee', 'bulkArchive', 'bulkDelete', 'confirmDeleteEmployee', 'restoreEmployee', 'confirmTerminateEmployee', 'openOffboarding', 'openAddModal', 'createNewEmp', 'openBulkEdit', 'bulkAddColumn', 'bulkRemoveColumn', 'bulkSetPayMethod', 'openOpsForm', 'saveOpsForm', 'setOpFlow', 'ackOps', 'addFollowupForSelected', 'addExtraAmountToPayroll', 'openAddAdjustmentModal', 'saveSalaryAdjustment', 'deleteSalaryAdjustment', 'saveSalaryStructure', 'saveEmployeeField', 'saveEmployeeFinancialField', 'setPayMethod', 'setPayrollCycleDay', 'importSalaries', 'importExcelFile', 'importAbsenceSheet', 'importFingerprintLog', 'applyAbsenceDraft', 'openContractForm', 'openContractMonth', 'openContractEntry', 'approveContract', 'removeContractRecord', 'cfRegister', 'cfDelete', 'cfSaveOps', 'createDepartment', 'deleteDepartment', 'deleteSelectedDepartments', 'openNewDeptForm', 'createGeneratedDepts', 'addActivityDepartments', 'saveCompanySettings', 'uploadCompanyDoc', 'removeCompanyDoc', 'addMember', 'removeMember', 'sendPortalEmail', 'sendPortalSms', 'restoreBackup', 'saveProfileField', 'saveQuickNote', 'addTagToEmployee', 'removeTag', 'saveClearanceProgress', 'saveClearanceReason', 'savePolModal', 'openReasonForm', 'deleteCustomPolicy', 'resetPolicyTab', 'addCustodyRow', 'removeCustodyRow', 'saveBrandColor', 'saveDocLayout', 'saveDocSize', 'saveOfferPolicy', 'saveExtraSpecial', 'saveWebhook', 'uploadSignerImage', 'saveTemplateFromEditor', 'deleteSavedTemplate', 'uploadKbFiles', 'deleteKbDoc', 'addReceiptType', 'sendOfferForSignature'];
   GUARD.wrapped = [];
   ENTRY.forEach(n => { const f = window[n]; if (typeof f !== 'function' || f.__vg) return; const w = function () { if (window.hrIsViewer()) { GUARD.blockedLog.push('entry.' + n); showViewerDialog(); return; } return f.apply(this, arguments); }; w.__vg = 1; window[n] = w; GUARD.wrapped.push(n); });
+})();
+</script>
+
+<script id="hr-delete-blockers">
+/* قبل حذف موظف: فحص السجلات المرتبطة التي تحميها حراس قاعدة البيانات (عقود، وحدات عمل، بيانات شهرية، حركات مالية، طلبات).
+   إن وُجدت: مربع يوضح السبب ويقترح الأرشفة بدل رسالة خطأ غامضة. القاعدة تبقى المرجع (لا نعدّل أي حارس). */
+(function () {
+  'use strict';
+  const E = s => escapeHtml(String(s ?? ''));
+  const SRC = [['hr_contracts', 'عقود'], ['hr_contract_entries', 'وحدات عمل'], ['hr_contract_months', 'بيانات شهرية'], ['hr_operations', 'حركات مالية'], ['employee_requests', 'طلبات']];
+  window.hrDeleteBlockers = async function (ids) {
+    const by = {};
+    await Promise.all(SRC.map(async ([t, label]) => {
+      try { const { data, error } = await supabaseClient.from(t).select('employee_id').in('employee_id', ids).limit(5000); if (error || !Array.isArray(data)) return;   // جدول غير موجود أو خطأ: لا نمنع، والقاعدة تحكم
+        data.forEach(r => { if (!ids.includes(r.employee_id)) return; const o = (by[r.employee_id] = by[r.employee_id] || {}); o[label] = (o[label] || 0) + 1; }); } catch (_) {}
+    }));
+    return by;
+  };
+  function dialog(by, ids, mode) {
+    document.getElementById('delete-blockers')?.remove();
+    const prev = document.activeElement, blocked = ids.filter(id => by[id]), name = id => (employees.find(e => e.id === id) || {}).name || '—';
+    const m = document.createElement('div'); m.id = 'delete-blockers'; m.setAttribute('role', 'alertdialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'db-title'); m.setAttribute('aria-describedby', 'db-desc');
+    m.className = 'fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4'; m.style.zIndex = '10040';
+    const list = blocked.slice(0, 8).map(id => `<li class="flex justify-between gap-3 border-b border-slate-100 py-1.5 text-xs font-bold"><span class="font-black text-slate-900">${E(name(id))}</span><span class="text-slate-500">${Object.entries(by[id]).map(([k, v]) => E(k) + ' ' + v).join(' · ')}</span></li>`).join('');
+    m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-3"><div class="flex items-start gap-3"><div class="w-11 h-11 flex-none rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-lg"><i class="fas fa-shield-halved"></i></div><div><h3 id="db-title" class="text-base font-black text-slate-900">${blocked.length === 1 && ids.length === 1 ? 'لا يمكن حذف هذا الموظف' : `لا يمكن حذف ${blocked.length} من الموظفين المحددين`}</h3><p id="db-desc" class="text-xs font-bold text-slate-600 leading-relaxed mt-1">${blocked.length > 1 ? 'لديهم' : 'لديه'} سجلات مرتبطة تحميها قاعدة البيانات من الحذف حفاظاً على سجل الرواتب والتدقيق. استعمل <b>الأرشفة</b> (أو «المخالصة» عند انتهاء الخدمة) بدل الحذف.</p></div></div><ul class="rounded-2xl bg-slate-50 px-3 py-1 max-h-48 overflow-y-auto">${list}${blocked.length > 8 ? `<li class="py-1.5 text-[11px] font-bold text-slate-500">و ${blocked.length - 8} آخرون…</li>` : ''}</ul>
+      <div class="flex flex-wrap justify-end gap-2 pt-1"><button type="button" id="db-archive" class="px-5 py-2.5 rounded-full bg-slate-900 text-white text-xs font-extrabold"><i class="fas fa-box-archive ml-1"></i>${mode === 'single' ? 'أرشفة الموظف' : 'أرشفة المحددين'}</button><button type="button" id="db-close" class="px-5 py-2.5 rounded-full border border-slate-300 text-xs font-extrabold">إغلاق</button></div></div>`;
+    document.body.appendChild(m); const close = () => { m.remove(); try { prev && prev.focus && prev.focus(); } catch (_) {} };
+    m.querySelector('#db-close').addEventListener('click', close); m.addEventListener('click', e => { if (e.target === m) close(); });
+    m.querySelector('#db-archive').addEventListener('click', () => { m.remove(); if (mode === 'single') window.archiveEmployee && window.archiveEmployee(ids[0]); else window.bulkArchive && window.bulkArchive(); });
+    m.addEventListener('keydown', e => { if (e.key === 'Escape') close(); else if (e.key === 'Tab') { const f = [...m.querySelectorAll('button')], i = f.indexOf(document.activeElement); e.preventDefault(); f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus(); } });
+    m.querySelector('#db-archive').focus();
+  }
+  const wrap = (name, getIds, mode) => { const base = window[name]; if (typeof base !== 'function' || base.__db) return;
+    const w = async function () { if (window.hrIsViewer && window.hrIsViewer()) return base.apply(this, arguments);   // المشاهد: مربع الصلاحية أولاً
+      const ids = getIds.apply(this, arguments); if (!ids.length) return base.apply(this, arguments);
+      const by = await window.hrDeleteBlockers(ids); if (Object.keys(by).length) return dialog(by, ids, mode); return base.apply(this, arguments); };
+    w.__db = 1; window[name] = w; };
+  wrap('confirmDeleteEmployee', function (id) { return [id || selectedEmployeeId].filter(Boolean); }, 'single');
+  wrap('bulkDelete', function () { return [...(window.bulkSelectedSet || [])]; }, 'bulk');
 })();
 </script>
 
