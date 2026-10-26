@@ -24,6 +24,14 @@
         // تنفيذ مهام مستقلة بتوازٍ محدود (بدل استعلام متسلسل لكل صف)
         // أجر المكافأة: أجر العقد في آخر يوم (كما في نموذج المخالصة)، وإلا الأجر الإجمالي في الملف — مصدر واحد للمعالج والنموذج
         window.hrSettlementWage = (emp, last) => { try { const st = HRContracts.settlement(emp, last); if (st && !st.error && Number(st.wage) > 0) return Number(st.wage); } catch (_) {} return Number(emp && emp.financials && emp.financials.total) || 0; };
+        // قوائم الأشهر: type=month في متصفح عربي يعرض اسم شهر هجري مع سنة ميلادية («شوال 2026» لقيمة 2026-10) وأرقاماً هندية، ولا تصلحه أي سمة لغة.
+        // القائمة بأسماء الأشهر الميلادية العربية وأرقام لاتينية، وقيمتها YYYY-MM كما كانت.
+        const __mo = { fmt: null, cache: new Map() };
+        window.hrMonthOptions = (selected, o) => { o = o || {}; const key = [selected, o.min, o.back, o.fwd, o.asc, (window.HRIntegrity && HRIntegrity.today && HRIntegrity.today().slice(0, 7))].join('|'); if (__mo.cache.has(key)) return __mo.cache.get(key); const re = /^\d{4}-\d{2}$/, idx = v => +v.slice(0, 4) * 12 + (+v.slice(5, 7) - 1), t = (window.HRIntegrity && HRIntegrity.today()) || new Date().toISOString().slice(0, 10), cur = idx(t), sel = re.test(selected || '') ? selected : '';
+            let from = cur - (o.back ?? 36), to = cur + (o.fwd ?? 12); if (o.min && re.test(o.min)) from = Math.max(from, idx(o.min)); if (sel) { from = Math.min(from, idx(sel)); to = Math.max(to, idx(sel)); }
+            const f = __mo.fmt || (__mo.fmt = new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { month: 'long', year: 'numeric', timeZone: 'UTC' })); const items = []; for (let i = from; i <= to; i++) { const y = Math.floor(i / 12), m = i % 12, v = y + '-' + String(m + 1).padStart(2, '0'); items.push(`<option value="${v}"${v === sel ? ' selected' : ''}>${f.format(new Date(Date.UTC(y, m, 1)))}</option>`); }
+            const out = (o.asc ? items : items.reverse()).join(''); if (__mo.cache.size > 200) __mo.cache.clear(); __mo.cache.set(key, out); return out; };
+        window.hrSetMonth = (el, v) => { if (!el) return; if (el.tagName === 'SELECT' && v && ![...el.options].some(x => x.value === v)) { const o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o); } el.value = v; };
         window.hrPool = async (items, limit, fn) => { const out = new Array(items.length); let i = 0; const run = async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k], k); } }; await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run)); return out; };
         // تأكيد بنافذة المنصة (بدل confirm الأصلية)، يعيد وعداً بنعم/لا
         window.hrConfirm = (title, msg) => new Promise(res => { const m = document.getElementById('custom-confirm-modal'); if (!m) return res(window.confirm(msg)); let done = false; const fin = v => { if (done) return; done = true; mo.disconnect(); res(v); };
@@ -1176,6 +1184,13 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
     </style>
 
 <style id="hr-ui-polish">
+/* صف القراءة في بطاقة المؤشر: عمود واحد على الجوال، وثلاثة أعمدة (القراءة | التقدم | الأزرار) من 640px */
+.kpi-row{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 16px;align-items:end}
+@media (min-width:640px){.kpi-row{grid-template-columns:8.5rem minmax(0,1fr) auto}}
+.kpi-row input[data-kpi-read]{max-width:100%}
+/* جدول رصيد الإجازة: رؤوسه لا تتكسّر حرفاً حرفاً على الجوال (يتمرّر أفقياً بدل ذلك) */
+#d-leave-card table{min-width:27rem}
+#d-leave-card th,#d-leave-card td{white-space:nowrap;padding-inline:8px}
 /* شارة الحالة لا تتكسّر («نش/ط») */
 #d-status-badge{white-space:nowrap;flex-shrink:0}
 @media (max-width:640px){
@@ -3427,7 +3442,7 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">الشهر</label>
-                    <input type="month" id="sa-month" required class="w-full border rounded-xl p-2.5 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-black">
+                    <select id="sa-month" required class="w-full border rounded-xl p-2.5 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-black"></select>
                 </div>
                 <div class="flex justify-end gap-2 pt-4 border-t">
                     <button type="button" onclick="window.closeAddAdjustmentModal()" class="px-4 py-2 rounded-full border text-xs font-bold">إلغاء</button>
@@ -3880,7 +3895,10 @@ document.addEventListener('DOMContentLoaded',()=>{
     (window.requestIdleCallback||(f=>setTimeout(f,300)))(()=>integrityA11y(),{timeout:1500});   // التسمية الأولية لا تلزم للرسم الأول
     // يُعالَج المضاف فقط (لا مسح لكل المستند عند كل تغيّر: كان 15–52% من معالج الرواتب والعمليات بـ1000 موظف)
     const pending=new Set();let scheduled=false;
-    const flush=()=>{scheduled=false;const nodes=[...pending];pending.clear();for(const n of nodes) if(n.isConnected) integrityA11y(n);};
+    const flush=()=>{scheduled=false;const nodes=[...pending];pending.clear();for(const n of nodes) if(n.isConnected){integrityA11y(n);
+        // حقول type=number المرسومة بعد الإقلاع تعرض أرقاماً هندية في المتصفح العربي: نحوّلها بآلية المنصة نفسها (text + لاتينية)
+        // جذر مصغَّر بالحقول الرقمية الجديدة وحدها: لا تُعاد معالجة بقية حقول الحاوية عند كل إضافة (كانت تؤخر الرسم)
+        try{const list=(n.matches&&n.matches('input[type="number"]'))?[n]:[...(n.querySelectorAll?n.querySelectorAll('input[type="number"]'):[])];if(list.length&&window.enhanceDataEntry)window.enhanceDataEntry({querySelectorAll:sel=>/^input/.test(sel)?list:[]});}catch(_){}}};
     new MutationObserver(muts=>{for(const m of muts) for(const n of m.addedNodes) if(n.nodeType===1) pending.add(n);if(pending.size&&!scheduled){scheduled=true;setTimeout(flush,16);}}).observe(document.body,{childList:true,subtree:true});
     // كل نافذة حوار: دور وعنوان مرتبط، وعند فتحها ينتقل التركيز إليها (كان لا ينتقل)
     const modals=[...document.querySelectorAll('[id$="-modal"]')];
@@ -7736,7 +7754,7 @@ window.verifyBackupFile=async function(input) {
                     </div>
                     <div class="border border-slate-200 rounded-2xl p-4 space-y-3"><p class="font-black text-slate-800 text-sm">معلومات ملف البنك</p>
                         <div class="grid grid-cols-2 gap-3">
-                            <div><label class="block text-[11px] font-bold text-slate-500 mb-1">الفترة (شهر الراتب)</label><input type="month" id="bf-month" value="${bankFileMonth || document.getElementById('crx-month-select')?.value || thisMonthStr()}" onchange="bankFileMonth=this.value; bankFileCache=null" class="${inp}"></div>
+                            <div><label class="block text-[11px] font-bold text-slate-500 mb-1">الفترة (شهر الراتب)</label><select id="bf-month" onchange="bankFileMonth=this.value; bankFileCache=null" class="${inp}">${window.hrMonthOptions(bankFileMonth || document.getElementById('crx-month-select')?.value || thisMonthStr())}</select></div>
                             <div><label class="block text-[11px] font-bold text-slate-500 mb-1">تاريخ الدفع</label><input type="date" id="bf-paydate" value="${HRIntegrity.today()}" class="${inp}"></div>
                         </div>
                         <div><label class="block text-[11px] font-bold text-slate-500 mb-1">نوع الحساب البنكي</label><div class="grid grid-cols-2 gap-2"><span class="text-center py-2 rounded-xl bg-brand text-brand-ink text-xs font-extrabold">IBAN</span><span class="text-center py-2 rounded-xl border border-slate-200 text-slate-400 text-xs font-extrabold" title="قريباً">بطاقة راتب</span></div></div>
@@ -10265,7 +10283,7 @@ window.verifyBackupFile=async function(input) {
             const n = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const btn = (label, icon, fn, cls) => `<button onclick="${fn}" class="px-4 py-2 rounded-full text-xs font-extrabold ${cls}"><i class="fas ${icon} ml-1"></i>${label}</button>`;
             box.innerHTML = `<div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                    <div><p class="text-[11px] font-bold flex items-center gap-2" style="color: rgb(var(--s-500))">الغياب والخصم — <input type="month" value="${month}" onchange="window.setSalaryMonth(this.value)" class="border rounded-lg px-2 py-0.5 text-[11px] font-bold"></p><h3 class="text-lg font-black" style="color: rgb(var(--s-900))">${recs.length} سجل خصم معتمد</h3></div>
+                    <div><p class="text-[11px] font-bold flex items-center gap-2" style="color: rgb(var(--s-500))">الغياب والخصم — <select onchange="window.setSalaryMonth(this.value)" class="border rounded-lg px-2 py-0.5 text-[11px] font-bold">${window.hrMonthOptions(month)}</select></p><h3 class="text-lg font-black" style="color: rgb(var(--s-900))">${recs.length} سجل خصم معتمد</h3></div>
                     <div class="flex flex-wrap gap-2">
                         ${btn('احتساب من البصمة', 'fa-fingerprint', 'window.syncAbsenceFromFingerprint()', 'bg-slate-900 text-white')}
                         <label class="px-4 py-2 rounded-full text-xs font-extrabold bg-slate-100 text-slate-700 cursor-pointer"><i class="fas fa-file-import ml-1"></i>استيراد ملف جهاز البصمة<input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="window.importFingerprintLog(this)"></label>
@@ -13419,7 +13437,7 @@ window.verifyBackupFile=async function(input) {
                         <select id="ent-mult" onchange="window.entPreviewCalc()" class="border rounded-lg p-1.5 text-xs font-bold bg-white"><option value="2">× 2 (ضعف)</option><option value="1.5">× 1.5</option></select>
                         <span class="text-[10px] font-bold text-slate-500 w-full">النظام (م107): كل ساعات العمل في العطل الأسبوعية والأعياد والعطل الرسمية (مثل اليوم الوطني ويوم التأسيس) تُعد ساعات إضافية بأجر الساعة + 50% من الأساسي. المضاعفة ميزة إضافية اختيارية حسب سياسة المنشأة.</span></div></div>`
                   + entF('وصف العمل الإضافي', `<input id="ent-desc" class="${entInp}">`, 'md:col-span-6')
-                  + entF('يُصرف في راتب شهر', `<input type="month" id="ent-month" value="${nextMonthStr()}" class="${entInp}">`)
+                  + entF('يُصرف في راتب شهر', `<select id="ent-month" class="${entInp}">${window.hrMonthOptions(nextMonthStr())}</select>`)
                   + `<label class="md:col-span-3 flex items-center gap-2 text-xs font-bold text-slate-700 mt-5"><input type="checkbox" id="ent-payroll" checked class="w-4 h-4"> إضافته لمسير الرواتب وملف البنك</label>`
                   + `<div id="ent-calc" class="md:col-span-12"></div>`;
             } else if (entType === 'assignment') {
@@ -13431,7 +13449,7 @@ window.verifyBackupFile=async function(input) {
                   + entF('بدل التكليف اليومي (ريال)', `<input type="number" step="0.01" min="0" id="ent-daily" dir="ltr" oninput="window.entPreviewCalc()" class="${entInp}">`)
                   + entF('وسيلة النقل', `<select id="ent-transport" onchange="window.entTransportChanged()" class="${entInp}"><option>بدون</option><option>سيارة المنشأة</option><option>سيارة خاصة</option><option>طيران</option><option>حافلة / قطار</option><option>أخرى</option></select>`)
                   + `<div class="md:col-span-3 hidden" id="ent-tamount-wrap"><label class="block text-xs font-bold text-slate-700 mb-1">مبلغ وسيلة النقل (ريال)</label><input type="number" step="0.01" min="0" id="ent-tamount" dir="ltr" oninput="window.entPreviewCalc()" class="${entInp}"></div>`
-                  + entF('يُصرف في راتب شهر', `<input type="month" id="ent-month" value="${nextMonthStr()}" class="${entInp}">`)
+                  + entF('يُصرف في راتب شهر', `<select id="ent-month" class="${entInp}">${window.hrMonthOptions(nextMonthStr())}</select>`)
                   + `<label class="md:col-span-3 flex items-center gap-2 text-xs font-bold text-slate-700 mt-5"><input type="checkbox" id="ent-payroll" class="w-4 h-4"> إضافة المبلغ لمسير الرواتب</label>`
                   + `<div id="ent-calc" class="md:col-span-12"></div>`;
             } else {
@@ -13440,7 +13458,7 @@ window.verifyBackupFile=async function(input) {
                 const net = emp ? Number(((emp.financials?.total || 0) - (emp.financials?.gosi || 0)).toFixed(2)) : '';
                 if (isBatch) {
                     f = entMultiHtml('المبلغ لكل موظف = صافي راتبه لشهر الراتب المحدد (بعد التأمينات والإضافات والاستقطاعات المسجلة).')
-                      + entF('عن راتب شهر', `<input type="month" id="ent-month" value="${thisMonthStr()}" oninput="window.entPreviewCalc()" class="${entInp}">`)
+                      + entF('عن راتب شهر', `<select id="ent-month" oninput="window.entPreviewCalc()" class="${entInp}">${window.hrMonthOptions(thisMonthStr())}</select>`)
                       + entF('طريقة التسليم', `<select id="ent-method" class="${entInp}"><option>نقداً</option><option>تحويل بنكي</option><option>شيك</option></select>`)
                       + entF('تاريخ التسليم', `<input type="date" id="ent-from" value="${today10()}" class="${entInp}">`)
                       + entF('البيان', `<input id="ent-desc" placeholder="راتب شهر" class="${entInp}">`)
@@ -13451,7 +13469,7 @@ window.verifyBackupFile=async function(input) {
                       + entF('طريقة التسليم', `<select id="ent-method" class="${entInp}"><option>نقداً</option><option>تحويل بنكي</option><option>شيك</option></select>`)
                       + entF('تاريخ التسليم', `<input type="date" id="ent-from" value="${today10()}" class="${entInp}">`)
                       + (sub === 'سلفة' ? entF('عدد أقساط السداد', `<input type="number" min="1" id="ent-inst" value="1" class="${entInp}">`)
-                          + entF('أول قسط في شهر', `<input type="month" id="ent-month" value="${nextMonthStr()}" class="${entInp}">`)
+                          + entF('أول قسط في شهر', `<select id="ent-month" class="${entInp}">${window.hrMonthOptions(nextMonthStr())}</select>`)
                           + `<label class="md:col-span-6 flex items-center gap-2 text-xs font-bold text-slate-700 mt-5"><input type="checkbox" id="ent-payroll" checked class="w-4 h-4"> تسجيلها في "إدارة التسديدات" لتُخصم أقساطها تلقائياً من الراتب</label>` : '')
                       + entF('البيان', `<input id="ent-desc" placeholder="${escapeHtml(sub)}" class="${entInp}">`, 'md:col-span-12')
                       + `<div id="ent-calc" class="md:col-span-12"></div>`;
@@ -14191,7 +14209,7 @@ window.verifyBackupFile=async function(input) {
                     <div><p class="text-[11px] font-bold" style="color: rgb(var(--s-500))">هيكل الراتب الثابت</p><h3 class="text-lg font-black" style="color: rgb(var(--s-900))">${escapeHtml(emp.name || '')}</h3></div>
                     <label class="flex items-center gap-1.5 text-[11px] font-extrabold cursor-pointer" style="color: rgb(var(--s-600))"><input type="checkbox" id="ss-newgosi" ${f.isNewGosi ? 'checked' : ''} onchange="window.salStructRecalc()" class="w-4 h-4"> النظام الجديد: تحقق من سجل الاشتراكات قبل 3 يوليو 2024</label>
                 </div>
-                <label class="block text-xs mb-3">شهر سريان هيكل الراتب<input type="month" id="ss-effective-month" min="${HRIntegrity.today().slice(0,7)}" value="${HRIntegrity.today().slice(0,7)}" onchange="window.salStructRecalc()" class="border rounded-lg p-2 mr-2"></label><div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label class="block text-xs mb-3">شهر سريان هيكل الراتب<select id="ss-effective-month" onchange="window.salStructRecalc()" class="border rounded-lg p-2 mr-2">${window.hrMonthOptions(HRIntegrity.today().slice(0,7), { min: HRIntegrity.today().slice(0,7), back: 0, fwd: 24, asc: true })}</select></label><div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div class="md:col-span-2"><label class="block text-[11px] font-bold mb-1" style="color: rgb(var(--s-500))">إجمالي الراتب الشهري (توزيع تلقائي)</label>
                         <input type="number" step="0.01" dir="ltr" id="ss-total" value="${f.total || ''}" oninput="window.salStructRecalc()" onkeydown="if(event.key==='Enter')window.saveSalaryStructure()" class="${inp} text-lg" style="${st}"></div>
                     <div><label class="block text-[11px] font-bold mb-1" style="color: rgb(var(--s-500))">بدلات أخرى (ثابتة شهرياً)</label>
@@ -14258,7 +14276,7 @@ window.verifyBackupFile=async function(input) {
                     <p class="text-[11px] font-extrabold"><i class="fas ${icon} ml-1"></i>${label}</p><p class="text-lg font-black mt-0.5">${n(sum(l, r => r.p.net))}</p><p class="text-[10px] font-bold opacity-70">${l.length} موظف</p></button>`; };
             const warn = rows.filter(r => r.method !== 'cash' && !ibanValid(r.iban)).length;
             box.innerHTML = integrityPayrollBanner(month)+`<div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-                    <div><p class="text-[11px] font-bold flex items-center gap-2" style="color: rgb(var(--s-500))">مسير الرواتب — <input type="month" value="${month}" onchange="window.setSalaryMonth(this.value)" class="border rounded-lg px-2 py-0.5 text-[11px] font-bold"></p><h3 class="text-lg font-black" style="color: rgb(var(--s-900))">${all.length} موظف · صافي ${n(sum(all, r => r.p.net))} ريال</h3></div>
+                    <div><p class="text-[11px] font-bold flex items-center gap-2" style="color: rgb(var(--s-500))">مسير الرواتب — <select onchange="window.setSalaryMonth(this.value)" class="border rounded-lg px-2 py-0.5 text-[11px] font-bold">${window.hrMonthOptions(month)}</select></p><h3 class="text-lg font-black" style="color: rgb(var(--s-900))">${all.length} موظف · صافي ${n(sum(all, r => r.p.net))} ريال</h3></div>
                     <div class="flex flex-wrap gap-2">
                         <button onclick="window.exportPayrollByMethod('all3')" class="px-4 py-2 rounded-full text-xs font-black bg-emerald-600 text-white"><i class="fas fa-file-excel ml-1"></i>تصدير 3 ملفات (حسب الصنف)</button>
                         ${payrollTab !== 'all' ? `<button onclick="window.exportPayrollByMethod('${payrollTab}')" class="px-4 py-2 rounded-full text-xs font-black bg-slate-900 text-white"><i class="fas fa-file-excel ml-1"></i>تصدير هذا الصنف</button>` : ''}
@@ -17911,8 +17929,8 @@ window.verifyBackupFile=async function(input) {
             const cd = emp.clearanceData || {}, end = document.getElementById('cls-last-day')?.value || cd.lastDay;
             const check = contractEOS(emp, end, window.hrSettlementWage(emp, end), reasonByKey(getClearanceReason(emp)).eos, serviceDeductionsFrom(hrRequests, emp.id));
             if (check.error) return window.showToast(check.error, 'warning');
-            const nums = [...document.querySelectorAll('#details-modal input[id^="cls-"][type="number"]')];
-            if (nums.some(el => !Number.isFinite(Number(el.value)) || Number(el.value) < 0)) return window.showToast('تحقق من المبالغ والأيام في التصفية؛ لا تقبل القيم السالبة', 'warning');
+            const nums = [...document.querySelectorAll('#details-modal input[id^="cls-"][inputmode="decimal"], #details-modal input[id^="cls-"][type="number"]')];
+            if (nums.some(el => !Number.isFinite(Number(toLatinDigits(el.value) || 0)) || Number(toLatinDigits(el.value) || 0) < 0)) return window.showToast('تحقق من المبالغ والأيام في التصفية؛ لا تقبل القيم السالبة', 'warning');
             try { fillSettlementFields(emp, comp); } catch (err) { return window.showToast(err.message || 'تعذر حساب التصفية', 'warning'); }
             const container = document.getElementById('settlement-pdf-container'); container.classList.remove('hidden');
             const content = document.getElementById('settlement-pdf-content');
@@ -18136,7 +18154,7 @@ window.verifyBackupFile=async function(input) {
             if (!salarySelectedEmpId) { window.showToast('اختر موظفاً أولاً', 'warning'); return; }
             document.getElementById('salary-adj-form').reset();
             const monthSel = document.getElementById('crx-month-select');
-            document.getElementById('sa-month').value = monthSel.value || currentSalaryMonthKey();
+            window.hrSetMonth(document.getElementById('sa-month'), monthSel.value || currentSalaryMonthKey());
             document.getElementById('salary-adj-modal').classList.remove('hidden');
         };
 
@@ -19149,18 +19167,30 @@ if (typeof module !== 'undefined') module.exports = HRContactCore;
   }
   window.hrKpiInit = kpiInit;
   function kpiRender() {
-    const card = q$('d-kpi-card'); if (!card) return; const emp = employees.find(e => e.id === KP.empId), overall = window.hrKpiOverall(KP.rows, KP.period), I = 'border border-slate-300 rounded-lg p-1.5 text-xs font-bold bg-white';
-    const head = `<div class="flex flex-wrap items-center justify-between gap-2 mb-3 border-b pb-2"><div><h4 class="font-black text-slate-800 text-sm"><i class="fas fa-bullseye ml-1 text-slate-400"></i>مؤشرات الأداء</h4><p class="text-[10px] font-bold text-slate-500 mt-0.5">مقاييس قابلة للقياس تُقارن بحدّ مقبول لمعرفة هل يسير الموظف نحو أهدافه بالاتجاه الصحيح.</p></div><div class="flex flex-wrap items-center gap-2"><label class="text-[10px] font-extrabold text-slate-500">الفترة <input type="month" id="kpi-period" value="${E(KP.period)}" class="${I}"></label>${overall !== null ? `<span id="kpi-overall" class="px-3 py-1 rounded-full text-xs font-black ${overall >= 100 ? 'bg-emerald-100 text-emerald-800' : overall >= 80 ? 'bg-amber-100 text-amber-900' : 'bg-red-100 text-red-800'}">الإجمالي ${overall}%</span>` : ''}<button type="button" id="kpi-add" class="px-3 py-1.5 rounded-full bg-slate-900 text-white text-[11px] font-extrabold"><i class="fas fa-plus ml-1"></i>إضافة مؤشر</button></div></div>`;
+    const card = q$('d-kpi-card'); if (!card) return; const overall = window.hrKpiOverall(KP.rows, KP.period), COL = { met: '#15803d', near: '#b45309', late: '#b91c1c', none: '#94a3b8' }, I = 'border border-slate-300 rounded-xl px-2.5 py-2 text-xs font-bold bg-white';
+    const head = `<div class="flex flex-wrap items-start justify-between gap-3 mb-3 border-b pb-3"><div class="min-w-0"><h4 class="font-black text-slate-800 text-sm"><i class="fas fa-bullseye ml-1 text-slate-400" aria-hidden="true"></i>مؤشرات الأداء</h4><p class="text-[11px] font-bold text-slate-500 mt-0.5 leading-relaxed">مقاييس قابلة للقياس تُقارن بحدّ مقبول لمعرفة هل يسير الموظف نحو أهدافه بالاتجاه الصحيح.</p></div>
+      <div class="flex flex-wrap items-center gap-2"><label class="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-500">الفترة <select id="kpi-period" class="${I}">${window.hrMonthOptions(KP.period)}</select></label>${overall !== null ? `<span id="kpi-overall" title="متوسط تحقق المؤشرات مرجَّحاً بأوزانها" class="px-3 py-1.5 rounded-full text-xs font-black ${overall >= 100 ? 'bg-emerald-100 text-emerald-800' : overall >= 80 ? 'bg-amber-100 text-amber-900' : 'bg-red-100 text-red-800'}">الإجمالي ${overall}%</span>` : ''}<button type="button" id="kpi-add" class="px-3.5 py-2 rounded-full bg-slate-900 text-white text-[11px] font-extrabold"><i class="fas fa-plus ml-1" aria-hidden="true"></i>إضافة مؤشر</button></div></div>`;
+    const num = (n, u) => `<bdi dir="ltr" class="font-black">${E(n)}${u === '%' ? '%' : ''}</bdi>${u && u !== '%' ? ' ' + E(u) : ''}`;
+    const item = k => { const r = window.hrKpiScore(k, KP.period), st = ST[r.status], v = k.readings?.[KP.period] ?? '', col = COL[r.status], pct = r.pct, w = pct === null ? 0 : Math.max(0, Math.min(100, pct)), unit = E(k.unit || ''), dirTxt = k.direction === 'max' ? 'لا يزيد عن' : 'لا يقل عن';
+      const cap = pct === null ? 'أدخل القراءة لحساب التحقق' : (k.direction === 'max' ? `القراءة ${num(v, k.unit)} مقابل حدّ أقصى ${num(k.target, k.unit)}` : `${num(v, '')} من ${num(k.target, k.unit)}`);
+      return `<article class="rounded-2xl border border-slate-200 bg-white p-3.5" data-kpi="${E(k.id)}" aria-label="مؤشر ${E(k.name)}">
+        <div class="flex items-start justify-between gap-3"><div class="min-w-0"><h5 class="text-xs font-black text-slate-900 leading-relaxed">${E(k.name)}</h5>
+          <p class="text-[11px] font-bold text-slate-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"><span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">${E(KPI_CATS[k.category] || KPI_CATS.other)}</span><span>الهدف: ${dirTxt} ${num(k.target, k.unit)}</span></p>
+          ${k.description ? `<p class="text-[11px] font-semibold text-slate-500 mt-1.5 leading-relaxed">${E(k.description)}</p>` : ''}</div>
+          <span data-kpi-status="${r.status}" class="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-black ${st[1]}">${st[0]}${r.pct !== null ? ' · ' + r.pct + '%' : ''}</span></div>
+        <div class="kpi-row mt-3 pt-3 border-t border-slate-100">
+          <label class="block text-[10px] font-extrabold text-slate-500"><span class="block mb-1">القراءة الفعلية${unit ? ' (' + unit + ')' : ''}</span><input type="text" inputmode="decimal" autocomplete="off" dir="ltr" lang="en" value="${E(v)}" placeholder="0" data-kpi-read="${E(k.id)}" aria-label="القراءة الفعلية لمؤشر ${E(k.name)}" class="${I} w-full text-center" style="text-align:center"></label>
+          <div class="min-w-0"><p class="text-[11px] font-extrabold mb-1.5 truncate" style="color:${col}">${cap}</p><div class="h-2.5 rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(w)}" aria-label="نسبة تحقق ${E(k.name)}"><div style="height:100%;width:${w}%;background:${col};border-radius:9999px"></div></div></div>
+          <div class="flex items-center gap-1.5 sm:justify-end"><button type="button" data-kpi-edit="${E(k.id)}" class="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-[11px] font-extrabold"><i class="fas fa-pen ml-1" aria-hidden="true"></i>تعديل</button><button type="button" data-kpi-del="${E(k.id)}" class="px-3 py-1.5 rounded-full border border-red-200 text-red-700 hover:bg-red-50 text-[11px] font-extrabold"><i class="fas fa-trash ml-1" aria-hidden="true"></i>حذف</button></div></div></article>`; };
     let body;
     if (KP.error === 'missing') body = '<p class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs font-bold text-amber-900">شغّل ملف <code dir="ltr">migration_employee_kpis.sql</code> في Supabase لتفعيل مؤشرات الأداء.</p>';
     else if (KP.error) body = `<p class="rounded-xl bg-red-50 border border-red-200 p-3 text-xs font-bold text-red-800">${E(KP.error)}</p>`;
     else if (!KP.rows.length) body = '<p class="rounded-xl bg-slate-50 border border-slate-200 p-4 text-xs font-bold text-slate-500 text-center">لا مؤشرات لهذا الموظف بعد. أضف مؤشراً من قالب جاهز (كمية العمل، جودة العمل، الالتزام) أو أنشئ مؤشراً مخصصاً مرتبطاً بهدف الوظيفة.</p>';
-    else body = `<div class="space-y-2">${KP.rows.map(k => { const r = window.hrKpiScore(k, KP.period), st = ST[r.status], v = k.readings?.[KP.period] ?? ''; return `<div class="rounded-2xl border border-slate-200 p-3" data-kpi="${E(k.id)}"><div class="flex flex-wrap items-center justify-between gap-2"><div class="min-w-0"><p class="text-xs font-black text-slate-900">${E(k.name)} <span class="text-[10px] font-bold text-slate-500">· ${E(KPI_CATS[k.category] || KPI_CATS.other)}</span></p><p class="text-[10px] font-bold text-slate-500">${k.direction === 'max' ? 'لا يزيد عن' : 'لا يقل عن'} <b dir="ltr">${E(k.target)}</b> ${E(k.unit || '')}${k.description ? ' — ' + E(k.description) : ''}</p></div><span class="px-2.5 py-0.5 rounded-full text-[10px] font-black ${st[1]}" data-kpi-status>${st[0]}${r.pct !== null ? ' · ' + r.pct + '%' : ''}</span></div>
-        <div class="flex flex-wrap items-center gap-2 mt-2"><label class="text-[10px] font-extrabold text-slate-500">القراءة الفعلية <input type="number" step="any" min="0" value="${E(v)}" data-kpi-read="${E(k.id)}" dir="ltr" class="${I} w-24"></label><div class="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden" style="min-width:80px" aria-hidden="true"><div style="height:100%;width:${r.pct === null ? 0 : Math.min(100, r.pct)}%;background:${r.status === 'met' ? '#15803d' : r.status === 'near' ? '#b45309' : '#b91c1c'}"></div></div><button type="button" data-kpi-edit="${E(k.id)}" class="px-2.5 py-1 rounded-full bg-slate-100 text-[10px] font-extrabold">تعديل</button><button type="button" data-kpi-del="${E(k.id)}" class="px-2.5 py-1 rounded-full bg-red-50 text-red-700 text-[10px] font-extrabold">حذف</button></div></div>`; }).join('')}</div>`;
+    else body = `<div class="space-y-2.5">${KP.rows.map(item).join('')}</div>`;
     card.innerHTML = head + body;
     q$('kpi-period').addEventListener('change', e => { KP.period = e.target.value || thisMonthStr(); kpiRender(); }); q$('kpi-add').addEventListener('click', () => kpiForm());
     card.querySelectorAll('[data-kpi-edit]').forEach(b => b.addEventListener('click', () => kpiForm(KP.rows.find(k => k.id === b.dataset.kpiEdit)))); card.querySelectorAll('[data-kpi-del]').forEach(b => b.addEventListener('click', () => kpiDelete(b.dataset.kpiDel)));
-    card.querySelectorAll('[data-kpi-read]').forEach(i => i.addEventListener('change', () => kpiReading(i.dataset.kpiRead, i.value)));
+    card.querySelectorAll('[data-kpi-read]').forEach(i => { i.addEventListener('input', () => { const c = toLatinDigits(i.value).replace(/[٫,،]/g, '.').replace(/[^0-9.]/g, ''); if (c !== i.value) i.value = c; }); i.addEventListener('change', () => kpiReading(i.dataset.kpiRead, i.value)); });
   }
   async function kpiReading(id, raw) {
     const k = KP.rows.find(x => x.id === id); if (!k) return; const readings = { ...(k.readings || {}) }; const v = toLatinDigits(String(raw)).trim(); if (v === '') delete readings[KP.period]; else { const n = Number(v); if (!Number.isFinite(n) || n < 0) return window.showToast('القراءة يجب أن تكون رقماً غير سالب', 'warning'); readings[KP.period] = n; }
@@ -19405,7 +19435,7 @@ window.HRInsurance = (function () {
     const body = `<div class="rounded-2xl bg-slate-50 border border-slate-200 p-3 mb-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] font-bold text-slate-700"><span class="font-black text-slate-900 text-xs">${E(e.name)}</span><span>${E(e.nationality || '—')}</span><span id="ins-contract"></span></div><div id="ins-meta-note"></div>
       <div class="space-y-3" id="ins-form">
       <section class="rounded-2xl border border-slate-200 bg-white p-3.5"><h4 class="text-xs font-black text-slate-900 mb-2">1) شهر الاشتراك وفئة المشترك</h4><div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        <label class="text-[11px] font-bold text-slate-700 block">شهر الاشتراك<input id="ins-month" type="month" value="${month0}" class="${contractInput} mt-1"></label>
+        <label class="text-[11px] font-bold text-slate-700 block">شهر الاشتراك<select id="ins-month" class="${contractInput} mt-1">${window.hrMonthOptions(month0)}</select></label>
         <label class="text-[11px] font-bold text-slate-700 block">فئة المشترك والنظام المنطبق<select id="ins-cat" class="${contractInput} mt-1"><option value="">— حدد الفئة —</option>${cats}</select></label>
         <p id="ins-cat-note" class="sm:col-span-2 text-[10px] font-bold text-slate-500"></p></div></section>
       <section class="rounded-2xl border border-slate-200 bg-white p-3.5"><h4 class="text-xs font-black text-slate-900 mb-2">2) حالة الشمول</h4>
@@ -19881,6 +19911,7 @@ window.HRInsurance = (function () {
 </script>
 
 <script id="hr-perf-late">
+(function () { const el = document.getElementById('sa-month'); if (el && !el.options.length) el.innerHTML = window.hrMonthOptions(HRIntegrity.today().slice(0, 7)); })();
 (function () {
     const PDF = ['generateTasksCompletionPDF', 'entDownloadPdf', 'entPrintSummaryOnly', 'offerDownloadPdf', 'printEosResult', 'idcSavePdf'], XLS = ['exportBankFile', 'exportPayrollByMethod', 'downloadSalaryTemplate', 'importSalaries', 'exportReportToExcel', 'exportCustomReport', 'downloadEmptyEmployeeTemplate', 'exportActiveEmployeesData', 'exportTerminatedEmployeesData', 'exportDepartmentsData', 'importDepartmentsFromExcel', 'importExcelFile', 'exportAbsenceTemplate', 'importAbsenceSheet', 'importFingerprintLog'];
     const wrap = (n, lib) => { const f = window[n]; if (typeof f !== 'function' || f.__lib) return; const w = async function () { if (!(lib === 'xlsx' ? window.XLSX : window.html2pdf)) { try { await window.hrEnsureLib(lib); } catch (e) { window.showToast('تعذّر تحميل أداة ' + (lib === 'xlsx' ? 'Excel' : 'PDF') + ' (' + (e.message || e) + '). تحقق من الاتصال ثم أعد المحاولة', 'error'); return; } } return f.apply(this, arguments); }; w.__lib = 1; window[n] = w; };
