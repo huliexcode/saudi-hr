@@ -14305,6 +14305,7 @@ window.verifyBackupFile=async function(input) {
                     <tr style="background: rgb(var(--s-50))" class="font-black"><td></td><td>الإجمالي (${rows.length})</td><td></td><td></td><td>${n(sum(rows, r => r.p.basic))}</td><td>${n(sum(rows, r => r.p.housing))}</td><td>${n(sum(rows, r => r.p.transport))}</td><td>${n(sum(rows, r => r.other))}</td><td>${n(sum(rows, r => r.p.addT))}</td><td>${n(sum(rows, r => r.p.gosi))}</td><td>${n(sum(rows, r => r.p.dedT))}</td><td>${n(sum(rows, r => r.p.net))}</td></tr>
                     </tbody></table></div>
                 <p class="text-[10px] font-bold mt-3" style="color: rgb(var(--s-400))">لنقل عدة موظفين: حدّدهم بالمربعات ثم اختر الصنف من الشريط الأسود. أو غيّر "طريقة الصرف" لكل موظف من القائمة. ملف البنك (WPS) يشمل صنف حماية الأجور فقط.</p>`;
+            try { if (window.hrInsPayrollHook) window.hrInsPayrollHook(box, month, all); } catch (_) {}
         }
         window.exportPayrollRegister = function () { return window.exportPayrollByMethod('all3'); };
 
@@ -20092,6 +20093,108 @@ window.HRInsurance = (function () {
     const w = async function (id) { const g0 = $('ss-gosi-evidence') && $('ss-gosi-evidence').value, l0 = $('ss-leave-evidence') && $('ss-leave-evidence').value; const r = await f.apply(this, arguments);
       try { const e = employees.find(x => x.id === id); if (e) { const ok = name === 'integrityVerifyGosi' ? (e.gosiVerified && e.gosiEvidence === g0) : ((e.leaveOpeningBalance || {}).evidence === l0); if (ok) { const g = $('ss-gosi-box'), l = $('ss-leave-box'); if (g) g.outerHTML = window.hrSsGosiBox(e); if (l) l.outerHTML = window.hrSsLeaveBox(e); } } } catch (_) {} return r; };
     w.__ssr = 1; window[name] = w; });
+})();
+</script>
+
+<script id="hr-ins-platform">
+/* تطبيق التأمينات من المنصة جماعياً من سجل المسير: الموظف المسجّل بعقد تأتي تأميناته من بيان شهري معتمد، وبلا بيان تُعرض 0 ويُمنع الصرف.
+   هنا تُحسب الحصص بمحرك HRInsurance (فئة المشترك + قاعدة مؤرخة + الأجر الخاضع الأساسي+السكن بحد 45,000)، وتُراجع في نافذة واحدة، ثم تُعتمد بمرجع «تقدير المنصة»
+   (value_source = platform_estimate) لتُطابَق لاحقاً بكشف التأمينات من «بيان الشهر». الاعتماد بإقرار صريح وبصلاحية مالية، والخادم يفرض RLS.
+   كما تُوصَف خانة «الاستقطاعات» بمصدر كل مبلغ، وتُنبَّه الأقساط القادمة. */
+(function () {
+  'use strict';
+  const E = s => escapeHtml(String(s ?? '')), $ = id => document.getElementById(id), I = () => window.HRInsurance;
+  const fmt = n => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const MF = new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const monthLabel = v => /^\d{4}-\d{2}$/.test(v || '') ? MF.format(new Date(Date.UTC(+v.slice(0, 4), +v.slice(5, 7) - 1, 1))) : String(v || '');
+  const ROLE = () => (window.hrViewerGuard && window.hrViewerGuard.role) || (typeof myRole !== 'undefined' ? myRole : null);
+  const canFinance = () => ['owner', 'admin', 'hr', 'accountant'].includes(ROLE());
+  const MISSING = /يلزم بيان تأمينات شهري معتمد/, PREFIX = 'تقدير المنصة';
+  const needs = r => !!(r && r.p && !r.p.closed && (r.p.errors || []).some(x => MISSING.test(x)));
+  const toast = (m, t) => window.showToast(m, t);
+  const ex = m => { try { const r = explainError(String(m)); return typeof r === 'string' ? r : ((r && (r.problem || r.title)) || String(m)); } catch (_) { return String(m); } };
+  function financialsFor(e, month) { try { return HRIntegrity.compensation(e, month).financials || {}; } catch (_) { return e.financials || {}; } }
+  function factorFor(e, month) { try { const isNew = !!(e.financials && e.financials.isNewGosi), end = typeof employmentEnd === 'function' ? employmentEnd(e) : null; return HRIntegrity.gosiFactor(e.startDate, end, month, isNew); } catch (_) { return 1; } }
+  const rulesOverride = () => (typeof policySettings !== 'undefined' && policySettings && policySettings.insuranceRules) || [];
+  const estimateFor = (e, month, cat) => I().estimate({ category: cat || null, month, financials: financialsFor(e, month), factor: factorFor(e, month), rules: rulesOverride() });
+  let ST = null;
+
+  // ---------- 1) النافذة ----------
+  const catOpts = sel => '<option value="">— حدد الفئة —</option>' + Object.entries(I().CATEGORIES).map(([k, v]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${E(v.label)}</option>`).join('');
+  function itemHtml(it) {
+    const e = it.e, est = it.est, ok = est && est.status === 'ok';
+    return `<div class="rounded-2xl border ${it.checked ? 'border-emerald-300 bg-emerald-50/40' : 'border-slate-200 bg-white'} p-3" data-emp="${E(e.id)}"><div class="flex items-start gap-2.5">
+      <input type="checkbox" class="ins-pl-cb mt-1 w-4 h-4" aria-label="اعتماد ${E(e.name)}" ${it.checked ? 'checked' : ''} ${ok ? '' : 'disabled'}>
+      <div class="min-w-0 flex-1"><p class="text-xs font-black text-slate-900">${E(e.name || '')} <span class="text-[10px] font-bold text-slate-400">${E(e.empNumber || '')}</span></p>
+        <div class="mt-1.5 flex flex-wrap items-center gap-2"><select class="ins-pl-cat border rounded-lg p-1.5 text-[11px] font-bold bg-white" aria-label="فئة المشترك: ${E(e.name)}">${catOpts(it.cat)}</select><span class="text-[10px] font-bold text-slate-500">${E(it.reason || '')}</span></div>
+        ${ok ? `<p class="mt-1.5 text-[11px] font-bold text-slate-700">الأجر الخاضع <b dir="ltr">${fmt(est.wage.taxable)}</b> · نسبة الموظف <b dir="ltr">${est.empRate}%</b> · حصة الموظف <b dir="ltr" class="text-red-700">${fmt(est.employee)}</b> · حصة المنشأة <b dir="ltr">${fmt(est.company)}</b></p><p class="text-[10px] font-bold text-slate-400">القاعدة: <span dir="ltr">${E(est.rule.id)}</span>${est.factor < 1 ? ' · جزء الشهر ' + E(est.factor) : ''}${est.wage.capped ? ' · الأجر بالحد الأقصى' : ''}</p>` : `<p class="mt-1.5 text-[11px] font-bold text-red-700">${E(est ? est.message : 'يلزم تحديد فئة الاشتراك')}</p>`}</div></div></div>`;
+  }
+  function renderList() {
+    const box = $('ins-pl-list'); if (!box) return; box.innerHTML = ST.items.map(itemHtml).join('');
+    const on = ST.items.filter(i => i.checked && i.est && i.est.status === 'ok'), emp = on.reduce((s, i) => s + i.est.employee, 0), co = on.reduce((s, i) => s + i.est.company, 0);
+    const sum = $('ins-pl-sum'); if (sum) sum.innerHTML = on.length ? `المحدد: <b>${on.length}</b> موظف · إجمالي خصم الموظفين <b dir="ltr" class="text-red-700">${fmt(emp)}</b> ريال · حصة المنشأة <b dir="ltr">${fmt(co)}</b> ريال` : 'لا موظف محدد.';
+  }
+  window.hrInsApplyPlatform = function (month) {
+    if (!canFinance()) return toast('هذا الإجراء يتطلب صلاحية مالية', 'warning');
+    month = month || (document.getElementById('crx-month-select') || {}).value || thisMonthStr();
+    const rows = payrollRows(month).filter(needs); if (!rows.length) return toast('لا موظفين بحاجة إلى بيان تأمينات لهذا الشهر');
+    ST = { month, items: rows.map(r => { const sg = I().suggestCategory(r.e), est = estimateFor(r.e, month, sg.category); return { e: r.e, cat: sg.category || '', reason: sg.reason, est, checked: est.status === 'ok' }; }) };
+    const body = `<div id="ins-pl-box"><div class="rounded-2xl bg-amber-50 border border-amber-200 p-3 mb-3 text-[11px] font-bold text-amber-900 leading-relaxed">قيم <b>تقديرية</b> تحسبها المنصة من الأجر الخاضع (الأساسي + السكن، بحد أقصى 45,000) ونسب مؤرخة لفئة المشترك. النسب «قاعدة المنصة الحالية — تحتاج مراجعة نظامية». تُعتمد بمرجع «${PREFIX}» وتُطابَق لاحقاً بكشف التأمينات الرسمي من «بيان الشهر» لكل موظف.</div>
+      <div id="ins-pl-list" class="space-y-2"></div>
+      <label class="flex items-start gap-2 mt-3 text-[11px] font-extrabold text-slate-800"><input type="checkbox" id="ins-pl-ack" class="mt-0.5 w-4 h-4"> راجعتُ الفئات والمبالغ أعلاه وأقرّ باعتمادها كتقدير للمنصة لشهر ${E(monthLabel(month))}.</label><p id="ins-pl-sum" class="mt-2 text-[11px] font-bold text-slate-700" aria-live="polite"></p></div>`;
+    window.openPolModal('تطبيق التأمينات من المنصة — ' + monthLabel(month), body, async () => apply(), 'اعتماد المحدد'); renderList();
+  };
+  document.addEventListener('change', ev => { const t = ev.target; if (!ST || !t || !t.closest) return; const row = t.closest('#ins-pl-box [data-emp]'); if (!row) return; const it = ST.items.find(x => x.e.id === row.dataset.emp); if (!it) return;
+    if (t.classList.contains('ins-pl-cat')) { it.cat = t.value; it.est = estimateFor(it.e, ST.month, it.cat); it.checked = it.est.status === 'ok'; it.reason = it.cat ? '' : 'يلزم تحديد فئة الاشتراك'; renderList(); }
+    else if (t.classList.contains('ins-pl-cb')) { it.checked = t.checked; renderList(); } });
+
+  // ---------- 2) الاعتماد ----------
+  async function metaAvailable() { try { const r = await supabaseClient.from('hr_insurance_statements').select('id').limit(1); return !r.error; } catch (_) { return false; } }
+  async function apply() {
+    const ack = $('ins-pl-ack'); if (!ack || !ack.checked) { toast('أكّد مراجعة الفئات والمبالغ أولاً', 'warning'); return false; }
+    try { integrityRequireFinance(); } catch (x) { toast(x.message, 'error'); return false; }
+    const month = ST.month, picked = ST.items.filter(i => i.checked && i.est && i.est.status === 'ok'); if (!picked.length) { toast('لم تحدد موظفاً جاهزاً للاعتماد', 'warning'); return false; }
+    const rows = [], skipped = [];
+    for (const it of picked) { const ref = `${PREFIX} — القاعدة ${it.est.rule.id} — ${monthLabel(month)}`, s = { category: it.cat, coverage: 'covered', employee: it.est.employee, company: it.est.company, reference: ref, value_source: 'platform_estimate' }, v = I().validate(s, it.est, ROLE()); if (v.canApprove) rows.push({ it, s }); else skipped.push([it.e.name, v.blockers[0]]); }
+    if (!rows.length) { toast('لا يمكن الاعتماد: ' + skipped[0][1], 'warning'); return false; }
+    if (typeof contractSaving !== 'undefined' && contractSaving) { toast('انتظر انتهاء الحفظ', 'warning'); return false; }
+    const metaOk = await metaAvailable();
+    if (metaOk) { const meta = rows.map(({ it, s }) => ({ company_id: activeCompanyId, employee_id: it.e.id, month, status: 'approved', category: it.cat, coverage: 'covered', rule_id: it.est.rule.id, branches: it.est.rows.map(r => ({ key: r.key, label: r.label, empRate: r.empRate, coRate: r.coRate })), wage_base: it.est.wage.taxable, wage_components: it.est.wage.parts, period_factor: it.est.factor, employee_share: s.employee, company_share: s.company,
+        estimate: { employee: it.est.employee, company: it.est.company, wage: it.est.wage.taxable, empRate: it.est.empRate, coRate: it.est.coRate, rule_id: it.est.rule.id, at: new Date().toISOString() }, value_source: 'platform_estimate', reference: s.reference, exclusion_reason: '', exclusion_evidence: '', zero_reason: '', zero_reference: '', difference: null, difference_reason: '', updated_by: typeof currentUser !== 'undefined' && currentUser ? currentUser.id : null }));
+      const r = await supabaseClient.from('hr_insurance_statements').upsert(meta, { onConflict: 'employee_id,month' }); if (r.error) { toast('تعذر حفظ تفاصيل التقدير: ' + ex(r.error.message), 'error'); return false; } }
+    let ok = 0; const failed = [];
+    if (typeof contractSaving !== 'undefined') contractSaving = true;
+    try {
+      for (const { it, s } of rows) {
+        const prev = (it.e.contractMonths || []).filter(x => x.month === month); if (prev.length > 1) { failed.push([it.e.name, 'يوجد أكثر من سجل لهذا الشهر؛ راجع «بيان الشهر»']); continue; }
+        const p = prev[0], payload = { employee_id: it.e.id, month, gosi_employee: s.employee, gosi_company: s.company, evidence: s.reference, eos_wage: p ? p.eos_wage : 0, eos_evidence: p ? p.eos_evidence : '', unpaid_wage: p ? p.unpaid_wage : 0, unpaid_evidence: p ? p.unpaid_evidence : '', status: 'approved' };
+        try { const r = await (p ? supabaseClient.from('hr_contract_months').update(payload).eq('id', p.id).eq('company_id', activeCompanyId) : supabaseClient.from('hr_contract_months').insert({ ...payload, company_id: activeCompanyId })); if (r.error) throw r.error; ok++; } catch (x) { failed.push([it.e.name, ex(x.message || x)]); }
+      }
+    } finally { if (typeof contractSaving !== 'undefined') contractSaving = false; }
+    integrityInvalidate(); try { await loadIntegrityData(); } catch (_) {}
+    toast(`اعتُمدت التأمينات (تقدير المنصة) لـ ${ok} موظف${metaOk ? '' : ' — تفاصيل التقدير لم تُحفظ: شغّل migration_insurance_statements.sql'}`, ok ? 'success' : 'warning');
+    [...skipped, ...failed].slice(0, 3).forEach(([n, m]) => toast(`${n}: ${m}`, 'warning'));
+    if (ok && window.setSalaryTab) window.setSalaryTab('payroll'); return ok > 0;
+  }
+
+  // ---------- 3) واجهة سجل المسير ----------
+  const estStmt = (e, month) => (e.contractMonths || []).find(x => x.month === month && String(x.evidence || '').startsWith(PREFIX));
+  window.hrInsPayrollHook = function (box, month, rows) {
+    try {
+      const list = rows.filter(needs);
+      if (list.length) { const can = canFinance(), b = document.createElement('div'); b.id = 'ins-pl-banner'; b.className = 'flex flex-wrap items-center gap-2 mb-3 p-3 rounded-2xl bg-amber-50 border border-amber-200';
+        b.innerHTML = `<p class="text-[11px] font-black text-amber-900 flex-1 min-w-[16rem] leading-relaxed"><i class="fas fa-shield-halved ml-1" aria-hidden="true"></i><b>${list.length}</b> موظف بلا بيان تأمينات معتمد لشهر ${E(monthLabel(month))}: تُعرض تأميناتهم 0 ويُمنع إقفال المسير وتصدير الصرف حتى اعتماد البيان.</p>
+          <button type="button" id="ins-pl-open" ${can ? '' : 'disabled'} class="px-4 py-2 rounded-full bg-slate-900 text-white text-[11px] font-extrabold ${can ? '' : 'opacity-50'}"><i class="fas fa-wand-magic-sparkles ml-1" aria-hidden="true"></i>تطبيق التأمينات من المنصة</button>${can ? '' : '<span class="text-[10px] font-bold text-slate-500">يتطلب صلاحية مالية</span>'}`;
+        const tbl = box.querySelector('.overflow-x-auto'); if (tbl) tbl.parentNode.insertBefore(b, tbl); else box.prepend(b); const btn = b.querySelector('#ins-pl-open'); if (btn) btn.addEventListener('click', () => window.hrInsApplyPlatform(month)); }
+      box.querySelectorAll('tbody tr').forEach(tr => { const cb = tr.querySelector('.pay-sel'); if (!cb) return; const r = rows.find(x => x.e.id === cb.value); if (!r) return; const cells = tr.children;
+        const st = estStmt(r.e, month); if (st && cells[1]) { const c = document.createElement('button'); c.type = 'button'; c.className = 'block mt-1 px-2 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-800 text-[10px] font-extrabold'; c.textContent = 'تأمينات: تقدير المنصة — طابقه بالكشف'; c.addEventListener('click', ev => { ev.stopPropagation(); window.openContractMonth && window.openContractMonth(r.e.id); }); cells[1].appendChild(c); if (cells[9]) cells[9].title = st.evidence; }
+        if (cells[10]) { const lines = (r.p.deds || []).map(d => `${d.label}: ${fmt(d.amount)}`); let next = ''; try { next = (hrOps || []).filter(o => o.employee_id === r.e.id && o.module === 'fin_repay' && o.effective_month > month && !['stopped', 'cancelled', 'rejected'].includes(o.status)).map(o => `قسط قادم يبدأ ${o.effective_month}: ${fmt(repayInstallmentForMonth(o, o.effective_month))}`)[0] || ''; } catch (_) {}
+          let rej = []; try { rej = (hrOps || []).filter(o => o.employee_id === r.e.id && OPS_MODULES[o.module] && OPS_MODULES[o.module].payroll && ['rejected', 'cancelled'].includes(o.data && o.data.flow && o.data.flow.state) && (o.module === 'fin_repay' ? o.effective_month >= month : o.effective_month === month)).map(o => `${OPS_MODULES[o.module].title} #${o.ref_no || ''}`); } catch (_) {}
+          cells[10].title = (lines.length ? 'استقطاعات الشهر — ' + lines.join('، ') : 'لا استقطاعات مستحقة في هذا الشهر (سلف، غياب، جزاءات، إجازات غير مدفوعة)') + (next ? ' · ' + next : '') + (rej.length ? ' · حركات مرفوضة في مسار الاعتماد لا تُخصم: ' + rej.join('، ') : '');
+          if (next) { const m = document.createElement('div'); m.className = 'text-[9px] font-bold text-slate-400 mt-0.5'; m.textContent = next; cells[10].appendChild(m); }
+          if (rej.length) { const m = document.createElement('div'); m.className = 'text-[9px] font-extrabold text-amber-700 mt-0.5'; m.textContent = rej.length + ' حركة مرفوضة لا تُخصم'; m.title = rej.join('، '); cells[10].appendChild(m); } } });
+    } catch (_) {}
+  };
 })();
 </script>
 
