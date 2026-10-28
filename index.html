@@ -1188,6 +1188,8 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
 .kpi-row{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 16px;align-items:end}
 @media (min-width:640px){.kpi-row{grid-template-columns:8.5rem minmax(0,1fr) auto}}
 .kpi-row input[data-kpi-read]{max-width:100%}
+/* حقول مراجع هيكل الراتب: تتكيف مع عرض البطاقة نفسها (عمودها ضيّق حتى على الشاشة العريضة) لا مع عرض الشاشة */
+.ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(12.5rem,1fr));gap:8px}
 /* جدول رصيد الإجازة: رؤوسه لا تتكسّر حرفاً حرفاً على الجوال (يتمرّر أفقياً بدل ذلك) */
 #d-leave-card table{min-width:27rem}
 #d-leave-card th,#d-leave-card td{white-space:nowrap;padding-inline:8px}
@@ -14217,7 +14219,7 @@ window.verifyBackupFile=async function(input) {
                         <input type="number" step="0.01" dir="ltr" id="ss-other" value="${other || ''}" oninput="window.salStructRecalc()" onkeydown="if(event.key==='Enter')window.saveSalaryStructure()" class="${inp}" style="${st}"></div>
                     <div><label class="block text-[11px] font-bold mb-1" style="color: rgb(var(--s-500))">الجنسية</label><input disabled value="${escapeHtml(emp.nationality || '—')}" class="${inp}" style="${st}"></div>
                 </div>
-                <div class="mt-3 p-3 border rounded-xl"><p class="text-xs font-bold">التغييرات تسري من الشهر الذي تحدده أعلاه. للشهور الماضية يلزم سجل أجر مؤرخ موثق.</p><label class="block text-xs mt-2">مرجع بيان التأمينات الذي يثبت النظام والشمول<input id="ss-gosi-evidence" value="${escapeHtml(emp.gosiEvidence||'')}" class="w-full border rounded-lg p-2 mt-1"></label><button type="button" onclick="window.integrityVerifyGosi('${emp.id}')" class="border rounded-lg px-3 py-2 mt-2 text-xs">${emp.gosiVerified?'تحديث إثبات التأمينات':'تأكيد مطابقة النظام مع البيان'}</button></div><div class="mt-3 p-3 border rounded-xl"><label class="block text-xs">الرصيد الافتتاحي للإجازات في 1 يناير ${HRIntegrity.today().slice(0,4)}<input type="number" min="0" step="0.01" id="ss-leave-opening" value="${emp.leaveOpeningBalance?.year===Number(HRIntegrity.today().slice(0,4))?emp.leaveOpeningBalance.days:''}" class="w-full border p-2 rounded-lg"></label><label class="block text-xs mt-2">مرجع كشف الرصيد المرحّل<input id="ss-leave-evidence" value="${escapeHtml(emp.leaveOpeningBalance?.evidence||'')}" class="w-full border p-2 rounded-lg"></label><button type="button" onclick="window.integritySaveLeaveOpening('${emp.id}')" class="border rounded-lg px-3 py-2 mt-2 text-xs">اعتماد الرصيد الافتتاحي</button></div><div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4" id="ss-breakdown"></div>
+                ${window.hrSsGosiBox(emp)}${window.hrSsLeaveBox(emp)}<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4" id="ss-breakdown"></div>
                 <div class="mt-3">${extraAmountHtml(emp)}</div>
                 <div class="flex flex-wrap items-center justify-between gap-2 mt-4">
                     <p class="text-[10px] font-bold" style="color: rgb(var(--s-400))"><i class="fas fa-keyboard ml-1"></i>↑↓ للتنقل بين الموظفين، Enter للحفظ والانتقال للتالي</p>
@@ -20003,5 +20005,95 @@ window.HRInsurance = (function () {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) run(false); });
 })();
 </script>
+<script id="hr-ss-refs">
+/* مراجع هيكل الراتب بخيارات من المنصة بدل الكتابة الحرة:
+   1) إثبات التأمينات: مصدر البيان + شهر البيان (قائمة بأسماء ميلادية، وتُعلَّم الأشهر المعتمدة في المنصة) + رقم اختياري.
+   2) الرصيد الافتتاحي للإجازات: «المحسوب من المنصة» (دفتر الرصيد حتى 31 ديسمبر من السنة السابقة) أو «صفر» أو «من كشف خارجي»، مع مرجع الكشف وتاريخه.
+   المرجع المكتوب يُركَّب تلقائياً في حقل مخفي بالمعرّف نفسه (ss-gosi-evidence / ss-leave-evidence)، فدوال الاعتماد وقاعدة البيانات كما هي. */
+(function () {
+  'use strict';
+  const E = s => escapeHtml(String(s ?? '')), $ = id => document.getElementById(id);
+  const MF = new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const monthLabel = v => /^\d{4}-\d{2}$/.test(v || '') ? MF.format(new Date(Date.UTC(+v.slice(0, 4), +v.slice(5, 7) - 1, 1))) : '';
+  const today = () => HRIntegrity.today(), year = () => Number(today().slice(0, 4));
+  const prevMonth = () => { const t = today(); return new Date(Date.UTC(+t.slice(0, 4), +t.slice(5, 7) - 2, 1)).toISOString().slice(0, 7); };
+  const latin = s => toLatinDigits(String(s || '')).replace(/[٫,،]/g, '.');
+  const markMonths = (html, set) => html.replace(/<option value="(\d{4}-\d{2})"([^>]*)>([^<]*)<\/option>/g, (m, v, a, t) => set.has(v) ? `<option value="${v}"${a}>${t} ✓ معتمد في المنصة</option>` : m);
+  const sel = 'w-full border rounded-lg p-2 bg-white', lab = 'block text-xs', cap = 'block mb-1 font-bold';
+
+  // ---------- 1) التأمينات ----------
+  const GOSI_PLATFORM = ['platform', 'بيان معتمد داخل المنصة (بيان الشهر والتأمينات)'];
+  const GOSI_SRC = [['portal', 'كشف اشتراكات من منصة التأمينات الاجتماعية (حساب المنشأة)'], ['cert', 'شهادة اشتراك أو بيان موظف صادر من التأمينات'], ['mudad', 'ملف الأجور المرفوع (مدد) للشهر نفسه'], ['other', 'بيان آخر (أدخل رقمه)']];
+  const gosiLabel = k => (k === 'platform' ? GOSI_PLATFORM[1] : (GOSI_SRC.find(x => x[0] === k) || [])[1]) || '';
+  const gosiText = (k, m, n, keep) => k === 'keep' ? String(keep || '') : (k === 'other' && !String(n || '').trim() ? '' : `${gosiLabel(k)} — ${monthLabel(m)}${String(n || '').trim() ? ' — رقم ' + String(n).trim() : ''}`);
+  const gosiPreview = (k, t) => t ? `سيُحفظ المرجع: «${E(t)}»` : (k === 'other' ? 'أدخل رقم البيان ليُحفظ المرجع.' : '');
+  const platformMonths = e => [...new Set((e.contractMonths || []).map(x => x && x.month).filter(m => /^\d{4}-\d{2}$/.test(m || '')))].sort();
+  window.hrSsGosiBox = function (emp) {
+    const pm = platformMonths(emp), set = new Set(pm), keep = emp.gosiVerified && emp.gosiEvidence ? String(emp.gosiEvidence) : '', def = pm.length ? pm[pm.length - 1] : prevMonth();
+    const srcs = (pm.length ? [GOSI_PLATFORM] : []).concat(GOSI_SRC), first = keep ? 'keep' : srcs[0][0], text = gosiText(first, def, '', keep);
+    const opts = (keep ? '<option value="keep">الإبقاء على المرجع الحالي</option>' : '') + srcs.map(([k, t]) => `<option value="${k}">${E(t)}</option>`).join('');
+    return `<div id="ss-gosi-box" class="mt-3 p-3 border rounded-xl" data-keep="${E(keep)}"><p class="text-xs font-bold">التغييرات تسري من الشهر الذي تحدده أعلاه. للشهور الماضية يلزم سجل أجر مؤرخ موثق.</p>
+      ${keep ? `<p class="mt-2 text-[11px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5"><i class="fas fa-circle-check ml-1" aria-hidden="true"></i>المرجع المعتمد حالياً: «${E(keep)}»</p>` : ''}
+      <div class="ss-grid mt-2">
+        <label class="${lab}"><span class="${cap}">مصدر بيان التأمينات الذي يثبت النظام والشمول</span><select id="ss-gosi-src" class="${sel}">${opts}</select></label>
+        <label class="${lab}"><span class="${cap}">شهر البيان</span><select id="ss-gosi-month" class="${sel}" ${first === 'keep' ? 'disabled' : ''}>${markMonths(window.hrMonthOptions(def, { back: 24, fwd: 0 }), set)}</select></label>
+        <label class="${lab}"><span class="${cap}">رقم البيان <span id="ss-gosi-req" class="text-slate-400 font-semibold">(اختياري)</span></span><input id="ss-gosi-num" type="text" dir="ltr" autocomplete="off" maxlength="40" class="${sel}" ${first === 'keep' ? 'disabled' : ''}></label></div>
+      <input type="hidden" id="ss-gosi-evidence" value="${E(text)}"><p id="ss-gosi-preview" class="mt-2 text-[11px] font-bold text-slate-600" aria-live="polite">${gosiPreview(first, text)}</p>
+      <button type="button" onclick="window.integrityVerifyGosi('${E(emp.id)}')" class="border rounded-lg px-3 py-2 mt-2 text-xs">${emp.gosiVerified ? 'تحديث إثبات التأمينات' : 'تأكيد مطابقة النظام مع البيان'}</button></div>`;
+  };
+  function gosiSync(box) {
+    const k = $('ss-gosi-src').value, m = $('ss-gosi-month'), n = $('ss-gosi-num'), keep = k === 'keep'; m.disabled = keep; n.disabled = keep;
+    const req = $('ss-gosi-req'); if (req) { req.textContent = k === 'other' ? '(مطلوب)' : '(اختياري)'; req.className = k === 'other' ? 'text-red-700 font-extrabold' : 'text-slate-400 font-semibold'; }
+    const t = gosiText(k, m.value, n.value, box.dataset.keep); $('ss-gosi-evidence').value = t; $('ss-gosi-preview').innerHTML = gosiPreview(k, t);
+  }
+
+  // ---------- 2) الرصيد الافتتاحي ----------
+  const LV_MODES = [['platform', 'المحسوب من المنصة'], ['zero', 'لا رصيد مرحّل (صفر)'], ['manual', 'من كشف خارجي (أدخل الأيام)']];
+  const LV_SRC = { platform: ['حساب المنصة من طلبات الإجازة المعتمدة والاستحقاق حسب العقود'], zero: ['لا رصيد مرحّل: استُنفد الرصيد كاملاً', 'لا رصيد مرحّل: سياسة المنشأة لا ترحّل الرصيد', 'لا رصيد مرحّل: بدأ العمل مع بداية السنة'], manual: ['كشف إجازات من النظام السابق', 'سجل الإجازات الورقي أو جدول الحضور', 'نماذج طلبات الإجازة الموقعة', 'اتفاق مكتوب مع الموظف', 'مرجع آخر (أدخل رقمه)'] };
+  const OTHER = 'مرجع آخر (أدخل رقمه)';
+  function suggestion(emp) {
+    const y = year(), start = String(emp.startDate || emp.start_date || '').slice(0, 10); if (!start || start >= y + '-01-01') return { needed: false, days: 0, raw: 0, err: '' };
+    let raw = 0, err = ''; try { const r = HRLeaveLedger.ledger(emp, typeof hrRequests !== 'undefined' ? hrRequests : [], (y - 1) + '-12-31'); raw = r.balance; if (r.errors && r.errors.length) err = r.errors[0]; } catch (e) { err = e.message || ''; }
+    return { needed: true, days: Math.round(Math.max(0, raw) * 100) / 100, raw, err };
+  }
+  const srcOpts = (mode, selected) => LV_SRC[mode].map(t => `<option value="${E(t)}"${t === selected ? ' selected' : ''}>${E(t)}</option>`).join('');
+  const leaveText = (src, m, n) => (src === OTHER && !String(n || '').trim()) ? '' : `${src} — حتى ${monthLabel(m)}${String(n || '').trim() ? ' — رقم ' + String(n).trim() : ''}`;
+  window.hrSsLeaveBox = function (emp) {
+    const y = year(), sg = suggestion(emp), o = emp.leaveOpeningBalance || emp.leave_opening_balance || {}, saved = o && Number(o.year) === y && o.evidence ? o : null, def = (y - 1) + '-12';
+    let mode = sg.needed ? 'platform' : 'zero', days = sg.needed ? sg.days : 0, srcSel = '';
+    if (saved) { const d = Number(saved.days), pre = String(saved.evidence).split(' — ')[0]; mode = LV_SRC.platform.includes(pre) && Math.abs(d - sg.days) < 0.01 ? 'platform' : (d === 0 ? 'zero' : 'manual'); days = d; srcSel = [].concat(...Object.values(LV_SRC)).includes(pre) ? pre : ''; }
+    if (!LV_SRC[mode].includes(srcSel)) srcSel = LV_SRC[mode][0];
+    const text = leaveText(srcSel, def, ''), ro = mode !== 'manual';
+    return `<div id="ss-leave-box" class="mt-3 p-3 border rounded-xl" data-sug="${sg.days}" data-year="${y}"><p class="text-xs font-bold">الرصيد الافتتاحي للإجازات في 1 يناير ${y}</p>
+      ${saved ? `<p class="mt-2 text-[11px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5"><i class="fas fa-circle-check ml-1" aria-hidden="true"></i>معتمد حالياً: <span dir="ltr">${E(saved.days)}</span> يوماً — «${E(saved.evidence)}»</p>` : ''}
+      ${sg.needed ? `<p class="mt-2 text-[11px] font-bold text-sky-900 bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5">اقتراح المنصة: <b dir="ltr">${sg.days}</b> يوماً — الرصيد التراكمي حتى 31 ديسمبر ${y - 1} من الاستحقاق حسب العقود وطلبات الإجازة السنوية المعتمدة.${sg.raw < 0 ? ' (المحسوب سالب لأن المستخدم يفوق المستحق؛ يُقترح صفر.)' : ''}${sg.err ? ' ملاحظة: ' + E(sg.err) : ''}</p>` : `<p class="mt-2 text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">لا يلزم رصيد مرحّل: بدأ الموظف العمل في ${y}.</p>`}
+      <div class="ss-grid mt-2">
+        <label class="${lab}"><span class="${cap}">مصدر الرصيد</span><select id="ss-leave-mode" class="${sel}">${LV_MODES.map(([k, t]) => `<option value="${k}"${k === mode ? ' selected' : ''}${k === 'platform' && !sg.needed ? ' disabled' : ''}>${t}</option>`).join('')}</select></label>
+        <label class="${lab}"><span class="${cap}">عدد الأيام</span><input id="ss-leave-opening" type="text" inputmode="decimal" dir="ltr" autocomplete="off" value="${E(days)}" ${ro ? 'readonly' : ''} class="${sel} ${ro ? 'bg-slate-50' : ''}"></label>
+        <label class="${lab}"><span class="${cap}">مرجع كشف الرصيد المرحّل</span><select id="ss-leave-src" class="${sel}">${srcOpts(mode, srcSel)}</select></label>
+        <label class="${lab}"><span class="${cap}">تاريخ الكشف (شهر)</span><select id="ss-leave-month" class="${sel}" ${mode === 'platform' ? 'disabled' : ''}>${window.hrMonthOptions(def, { back: 36, fwd: 1 })}</select></label>
+        <label class="${lab}" style="grid-column:1/-1"><span class="${cap}">رقم المرجع <span id="ss-leave-req" class="text-slate-400 font-semibold">(اختياري)</span></span><input id="ss-leave-num" type="text" dir="ltr" autocomplete="off" maxlength="40" class="${sel}"></label></div>
+      <input type="hidden" id="ss-leave-evidence" value="${E(text)}"><p id="ss-leave-preview" class="mt-2 text-[11px] font-bold text-slate-600" aria-live="polite">سيُحفظ: <b dir="ltr">${E(days)}</b> يوماً — «${E(text)}»</p>
+      <button type="button" onclick="window.integritySaveLeaveOpening('${E(emp.id)}')" class="border rounded-lg px-3 py-2 mt-2 text-xs">اعتماد الرصيد الافتتاحي</button></div>`;
+  };
+  function leaveSync(box, t) {
+    const mode = $('ss-leave-mode').value, d = $('ss-leave-opening'), src = $('ss-leave-src'), m = $('ss-leave-month'), n = $('ss-leave-num');
+    if (t && t.id === 'ss-leave-mode') { src.innerHTML = srcOpts(mode, LV_SRC[mode][0]); m.value = box.dataset.year - 1 + '-12'; n.value = ''; if (mode === 'platform') d.value = box.dataset.sug; else if (mode === 'zero') d.value = '0'; else d.value = ''; }
+    d.readOnly = mode !== 'manual'; d.classList.toggle('bg-slate-50', mode !== 'manual'); m.disabled = mode === 'platform'; if (mode === 'platform') m.value = box.dataset.year - 1 + '-12';
+    if (t && t.id === 'ss-leave-opening' && mode === 'manual') { const c = latin(d.value).replace(/[^0-9.]/g, ''); if (c !== d.value) d.value = c; }
+    const other = src.value === OTHER, req = $('ss-leave-req'); if (req) { req.textContent = other ? '(مطلوب)' : '(اختياري)'; req.className = other ? 'text-red-700 font-extrabold' : 'text-slate-400 font-semibold'; }
+    let text = leaveText(src.value, m.value, n.value); if (mode === 'manual' && String(d.value).trim() === '') text = '';   // الأيام فارغة: لا مرجع فيُرفض الحفظ برسالة واضحة
+    $('ss-leave-evidence').value = text; $('ss-leave-preview').innerHTML = text ? `سيُحفظ: <b dir="ltr">${E(d.value || 0)}</b> يوماً — «${E(text)}»` : (mode === 'manual' && String(d.value).trim() === '' ? 'أدخل عدد الأيام من الكشف.' : (src.value === OTHER ? 'أدخل رقم المرجع ليُحفظ.' : ''));
+  }
+  const handler = ev => { const t = ev.target; if (!t || !t.closest) return; const g = t.closest('#ss-gosi-box'), l = t.closest('#ss-leave-box'); if (g) gosiSync(g); else if (l) leaveSync(l, t); };
+  document.addEventListener('input', handler, true); document.addEventListener('change', handler, true);
+  // بعد نجاح الحفظ تُعاد رسم القسمين ليظهر «المعتمد حالياً»؛ وعند الفشل تبقى اختيارات المستخدم كما هي
+  ['integritySaveLeaveOpening', 'integrityVerifyGosi'].forEach(name => { const f = window[name]; if (typeof f !== 'function' || f.__ssr) return;
+    const w = async function (id) { const g0 = $('ss-gosi-evidence') && $('ss-gosi-evidence').value, l0 = $('ss-leave-evidence') && $('ss-leave-evidence').value; const r = await f.apply(this, arguments);
+      try { const e = employees.find(x => x.id === id); if (e) { const ok = name === 'integrityVerifyGosi' ? (e.gosiVerified && e.gosiEvidence === g0) : ((e.leaveOpeningBalance || {}).evidence === l0); if (ok) { const g = $('ss-gosi-box'), l = $('ss-leave-box'); if (g) g.outerHTML = window.hrSsGosiBox(e); if (l) l.outerHTML = window.hrSsLeaveBox(e); } } } catch (_) {} return r; };
+    w.__ssr = 1; window[name] = w; });
+})();
+</script>
+
 </body>
 </html>
