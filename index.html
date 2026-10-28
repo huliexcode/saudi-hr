@@ -2945,8 +2945,9 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
                         <h4 class="font-black text-slate-900 text-base flex items-center gap-2">
                             <i class="fas fa-folder-open text-amber-500"></i> مستندات الموظف المرفوعة
                         </h4>
-                        <span id="d-portal-docs-count" class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-[11px] font-extrabold">0 / 0</span>
+                        <div class="flex items-center gap-2 flex-wrap"><button type="button" id="d-doc-autolink" onclick="window.toggleDocTaskAutoLink()" aria-pressed="true" class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-extrabold"><i class="fas fa-link ml-1" aria-hidden="true"></i>الربط التلقائي: مفعّل</button><span id="d-portal-docs-count" class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-[11px] font-extrabold">0 / 0</span></div>
                     </div>
+                    <p id="d-doc-autolink-note" class="text-[11px] font-bold text-slate-500 -mt-2 mb-3 leading-relaxed">رفع الموظف لمستند يُنجز مهمته في الخط الزمني تلقائياً. «التحقق من صحة المستندات» و«اعتماد اكتمال الإلحاق» تبقيان يدويتين.</p>
                     <div id="d-portal-docs-list" class="grid grid-cols-1 md:grid-cols-2 gap-2.5"></div>
                 </div>
 
@@ -15661,6 +15662,7 @@ window.verifyBackupFile=async function(input) {
             const byKey = {};
             (data || []).forEach(d => { byKey[d.doc_key] = d; });
             employeeDocsCache.set(emp.id, new Set(Object.keys(byKey)));
+            { const added = docAutoSyncEmployee(emp, new Set(Object.keys(byKey)), false); if (added.length) { try { renderTimelineNodes(emp); renderTable(); renderStats(); } catch (_) {} } renderDocAutoToggle(); }
             renderOnboardingReadiness(emp);
             if (count) count.innerText = `${(data || []).length} / ${portalDocsData.length}`;
 
@@ -16314,7 +16316,7 @@ window.verifyBackupFile=async function(input) {
                             ${checked ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-amber-50 hover:border-amber-200'}">
                         <input type="checkbox" class="stage-task-cb w-4 h-4 rounded accent-emerald-600 shrink-0"
                                ${checked ? 'checked' : ''} onchange="window.toggleStageTask(${stage.id}, ${idx})">
-                        <span class="${checked ? 'line-through opacity-70' : ''}">${escapeHtml(task)}</span>
+                        <span class="${checked ? 'line-through opacity-70' : ''}">${escapeHtml(task)}</span>${(() => { const dk = linkedDocFor(task); if (!dk) return ''; const has = (employeeDocsCache.get(emp.id) || new Set()).has(dk), on = docAutoOn(); return `<span data-doc-link="${dk}" class="mr-auto shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${has ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}"><i class="fas ${has ? 'fa-paperclip' : 'fa-link'}" aria-hidden="true"></i>${has ? 'من مستند الموظف' : (on ? 'تلقائي عند رفع «' + escapeHtml(docLabelOf(dk)) + '»' : 'مرتبطة بمستند')}</span>`; })()}
                     </label>`;
             }).join('');
 
@@ -16335,6 +16337,69 @@ window.verifyBackupFile=async function(input) {
 
         const persistOnboardingProgress = (empId, updates) => queueEmployeePatch(empId, updates);
 
+        // ====================================================================
+        // الربط التلقائي بين المستندات المرفوعة ومهام الإلحاق: رفع الموظف لمستند يُنجز مهمته في الخط الزمني.
+        // أحادي الاتجاه (يُنجز ولا يُلغي). «التحقق من صحة المستندات» و«اعتماد اكتمال الإلحاق» تبقيان يدويتين.
+        // إلغاء مهمة مرتبطة يدوياً يُسجَّل بعلامة __no_auto__ داخل completed_tasks فلا تُعاد تلقائياً (مشتركة بين المستخدمين، بلا عمود جديد).
+        // المستندات بلا مهمة مقابلة (الصورة الشخصية، شهادات الخبرة، الشهادة الصحية) لا تغيّر شيئاً.
+        // ====================================================================
+        const DOC_TASK_LINKS = { id_card: 'رفع صورة الهوية الوطنية أو الإقامة', qualification: 'رفع المؤهل العلمي', cv: 'رفع السيرة الذاتية', signed_offer: 'توقيع العرض الوظيفي المبدئي', signed_contract: 'توقيع العقد إلكترونياً', iban_cert: 'فتح الحساب البنكي وتسجيل الآيبان', custody_receipt: 'تسليم العهد والأصول', start_record: 'توقيع محضر المباشرة', national_address: 'تحديث العنوان الوطني' };
+        const NO_AUTO = '__no_auto__:';
+        window.hrDocTaskLinks = DOC_TASK_LINKS;
+        const docAutoOn = () => !policySettings || policySettings.docTaskAutoLink !== false;
+        const docLabelOf = key => (portalDocsData.find(d => d.key === key) || {}).label || key;
+        const linkedDocFor = task => Object.keys(DOC_TASK_LINKS).find(k => DOC_TASK_LINKS[k] === task) || null;
+        const docAutoEligible = e => !!e && !e.isArchived && !e.is_archived && !e.isTerminated && !e.terminationRecorded;
+        const docViewer = () => !!(window.hrIsViewer && window.hrIsViewer());
+        function docAutoPlan(emp, keys) {
+            const done = Array.isArray(emp.completedTasks) ? emp.completedTasks : [], out = [];
+            for (const k of keys) { const t = DOC_TASK_LINKS[k]; if (t && !done.includes(t) && !done.includes(NO_AUTO + t) && !out.includes(t)) out.push(t); }
+            return out;
+        }
+        function docAutoApply(emp, tasks) {
+            if (!tasks.length) return false;
+            const done = (Array.isArray(emp.completedTasks) ? emp.completedTasks : []).concat(tasks); emp.completedTasks = done;
+            const { progress, currentStage } = computeOnboardingProgress(emp); emp.progress = progress; emp.currentStage = currentStage;
+            persistOnboardingProgress(emp.id, { completed_tasks: done, progress, current_stage: currentStage });
+            return true;
+        }
+        function docAutoSyncEmployee(emp, keys, quiet) {
+            if (!docAutoOn() || docViewer() || !docAutoEligible(emp)) return [];
+            const tasks = docAutoPlan(emp, keys); if (!docAutoApply(emp, tasks)) return [];
+            if (!quiet) window.showToast(tasks.length === 1 ? `رفع الموظف مستنداً: أُنجزت تلقائياً مهمة «${tasks[0]}»` : `رفع الموظف مستندات: أُنجزت تلقائياً ${tasks.length} مهام في الخط الزمني`);
+            return tasks;
+        }
+        let docSyncAt = 0, docSyncBusy = false;
+        // مزامنة كل موظفي المنشأة باستعلام واحد لكل 200 موظف (دون فتح ملف كل موظف)، وبحد أدنى 60 ثانية بين المرات
+        window.hrDocsAutoSyncAll = async function (force) {
+            if (docSyncBusy || !docAutoOn() || !activeCompanyId || docViewer()) return 0;
+            if (!force && Date.now() - docSyncAt < 60000) return 0;
+            docSyncBusy = true; docSyncAt = Date.now(); const revision = companyRevision; let n = 0, emps = 0;
+            try {
+                const list = employees.filter(docAutoEligible), byEmp = new Map(); let refreshOpen = false;
+                for (let i = 0; i < list.length; i += 200) {
+                    const { data, error } = await supabaseClient.from('employee_documents').select('employee_id, doc_key').in('employee_id', list.slice(i, i + 200).map(e => e.id)); if (error) throw error;
+                    (data || []).forEach(r => { if (!byEmp.has(r.employee_id)) byEmp.set(r.employee_id, new Set()); byEmp.get(r.employee_id).add(r.doc_key); });
+                }
+                if (revision !== companyRevision) return 0;
+                for (const e of list) { const keys = byEmp.get(e.id); if (!keys) continue; const prev = employeeDocsCache.get(e.id); if (e.id === selectedEmployeeId && (!prev || prev.size !== keys.size)) refreshOpen = true; employeeDocsCache.set(e.id, keys); const t = docAutoSyncEmployee(e, keys, true); if (t.length) { n += t.length; emps++; } }
+                if (refreshOpen) { const cur = employees.find(x => x.id === selectedEmployeeId); if (cur) renderEmployeeDocs(cur); }   // ملف مفتوح رفع صاحبه مستنداً للتو: تتحدث قائمة المستندات
+                if (n) { try { renderTable(); renderStats(); } catch (_) {} const cur = employees.find(x => x.id === selectedEmployeeId); if (cur) { try { renderTimelineNodes(cur); } catch (_) {} } window.showToast(`حُدّثت ${n} مهمة إلحاق تلقائياً من مستندات رفعها ${emps} موظف`); }
+            } catch (_) { /* الجدول غير موجود أو لا صلاحية: لا إزعاج */ } finally { docSyncBusy = false; }
+            return n;
+        };
+        function renderDocAutoToggle() {
+            const b = document.getElementById('d-doc-autolink'); if (!b) return; const on = docAutoOn();
+            b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.className = 'px-3 py-1 rounded-full border text-[11px] font-extrabold ' + (on ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-300');
+            b.innerHTML = `<i class="fas ${on ? 'fa-link' : 'fa-link-slash'} ml-1" aria-hidden="true"></i>الربط التلقائي: ${on ? 'مفعّل' : 'معطّل'}`;
+        }
+        window.toggleDocTaskAutoLink = async function () {
+            const next = !docAutoOn(), settings = { ...(policySettings || {}), docTaskAutoLink: next };
+            try { await persistPolicySettings(getActiveCompany(), settings); applyPolicySettings(settings); } catch (err) { return window.showToast(err.message || 'تعذر الحفظ', 'error'); }
+            renderDocAutoToggle(); window.showToast(next ? 'فُعّل الربط التلقائي: رفع المستند يُنجز مهمته' : 'عُطّل الربط التلقائي: تبقى المهام يدوية');
+            if (next) { const emp = employees.find(e => e.id === selectedEmployeeId); if (emp) renderEmployeeDocs(emp); window.hrDocsAutoSyncAll(true); }
+        };
+
         window.toggleStageTask = function(stageId, taskIdx) {
             const emp = employees.find(e => e.id === selectedEmployeeId); if (!emp) return;
             const stage = stagesData.find(st => st.id === stageId); if (!stage) return;
@@ -16343,7 +16408,9 @@ window.verifyBackupFile=async function(input) {
             const done = Array.isArray(emp.completedTasks) ? emp.completedTasks.slice() : [];
             const at = done.indexOf(task);
             const wasComplete = onboardingDoneCount(emp) === TOTAL_ONBOARDING_TASKS;
-            if (at >= 0) done.splice(at, 1); else done.push(task);
+            const mark = NO_AUTO + task, lk = linkedDocFor(task);
+            if (at >= 0) { done.splice(at, 1); if (lk && (employeeDocsCache.get(emp.id) || new Set()).has(lk) && !done.includes(mark)) done.push(mark); }   // إلغاء مهمة مرتبطة بمستند موجود: لا تُعاد تلقائياً
+            else { done.push(task); const mi = done.indexOf(mark); if (mi >= 0) done.splice(mi, 1); }
             emp.completedTasks = done;
 
             const { progress, currentStage } = computeOnboardingProgress(emp);
@@ -19926,6 +19993,14 @@ window.HRInsurance = (function () {
 (function () {
     const box = document.getElementById('ask-knowledge');
     if (box && 'IntersectionObserver' in window) new IntersectionObserver(es => { if (es.some(e => e.isIntersecting) && window.__kbPending) { try { window.renderAskKnowledge && window.renderAskKnowledge(); } catch (_) {} } }).observe(box);
+})();
+</script>
+<script id="hr-doc-autosync">
+/* مزامنة المستندات المرفوعة بمهام الإلحاق لكل الموظفين: مرة بعد تحميل الموظفين لكل منشأة، ثم عند عودة المستخدم للتبويب (بحد أدنى 60 ثانية). */
+(function () {
+    let seenCo = null; const run = force => { try { if (!activeCompanyId || !employees.length || !window.hrDocsAutoSyncAll) return; window.hrDocsAutoSyncAll(force); } catch (_) {} };
+    setInterval(() => { try { if (document.hidden) return; if (activeCompanyId && activeCompanyId !== seenCo && employees.length) { seenCo = activeCompanyId; run(true); } } catch (_) {} }, 3000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) run(false); });
 })();
 </script>
 </body>
