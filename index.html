@@ -1248,6 +1248,27 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
 .kpi-row{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 16px;align-items:end}
 @media (min-width:640px){.kpi-row{grid-template-columns:8.5rem minmax(0,1fr) auto}}
 .kpi-row input[data-kpi-read]{max-width:100%}
+/* سجل المسير: الاسم بسطر واحد، والأرقام لا تلتف، وحشوة أضيق لاستغلال العرض، وعمود الاسم يثبت عند التمرير الأفقي */
+#view-salary #crx-payroll-card table.crx-table{width:100%;border-collapse:separate;border-spacing:0}
+#view-salary #crx-payroll-card table.crx-table th,#view-salary #crx-payroll-card table.crx-table td{padding:.6rem .55rem;white-space:nowrap;vertical-align:middle}
+#view-salary #crx-payroll-card table.crx-table td{font-variant-numeric:tabular-nums}
+#view-salary #crx-payroll-card .pay-name{white-space:nowrap;font-weight:900;font-size:.82rem}
+#view-salary #crx-payroll-card .pay-sub{white-space:nowrap}
+#view-salary #crx-payroll-card .pay-msg{display:block;white-space:normal;max-width:17rem;line-height:1.5;margin-top:2px}
+#view-salary #crx-payroll-card td.pay-name-cell{min-width:13rem}
+#view-salary #crx-payroll-card table.crx-table select{max-width:7.4rem;padding:.3rem .4rem;font-size:.72rem}
+#view-salary #crx-payroll-card .pay-bank{display:block;text-align:right;font-size:.7rem;font-weight:800;color:rgb(var(--s-700,51 65 85))}
+#view-salary #crx-payroll-card .pay-bank + br{display:none}
+#view-salary #crx-payroll-card .pay-bank,#view-salary #crx-payroll-card .pay-iban{line-height:1.25}
+#view-salary #crx-payroll-card .pay-iban{display:block;text-align:right;direction:ltr;unicode-bidi:plaintext;font-size:.66rem;letter-spacing:.01em}
+#view-salary #crx-payroll-card table.crx-table th{font-size:.64rem;padding-inline:.4rem}
+#view-salary #crx-payroll-card table.crx-table td{padding-inline:.4rem}
+#view-salary #crx-payroll-card .pay-chip{display:inline-block;white-space:nowrap;margin-top:3px;padding:1px 8px;border-radius:9999px;font-size:10px;font-weight:800;line-height:1.5}
+#view-salary #crx-payroll-card .pay-note{display:block;white-space:nowrap;font-size:9px;font-weight:700;margin-top:1px}
+#view-salary #crx-payroll-card table.crx-table th:nth-child(1),#view-salary #crx-payroll-card table.crx-table td:nth-child(1){position:sticky;right:0;z-index:2;background:#fff;width:2.4rem;min-width:2.4rem;padding-inline:.5rem}
+#view-salary #crx-payroll-card table.crx-table th:nth-child(2),#view-salary #crx-payroll-card table.crx-table td:nth-child(2){position:sticky;right:2.4rem;z-index:2;background:#fff;box-shadow:-6px 0 8px -6px rgba(0,0,0,.12)}
+#view-salary #crx-payroll-card table.crx-table thead th:nth-child(1),#view-salary #crx-payroll-card table.crx-table thead th:nth-child(2){background:rgb(var(--s-50))}
+#view-salary #crx-payroll-card table.crx-table tr:last-child td:nth-child(1),#view-salary #crx-payroll-card table.crx-table tr:last-child td:nth-child(2){background:rgb(var(--s-50))}
 /* حقول مراجع هيكل الراتب: تتكيف مع عرض البطاقة نفسها (عمودها ضيّق حتى على الشاشة العريضة) لا مع عرض الشاشة */
 .ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(12.5rem,1fr));gap:8px}
 /* جدول رصيد الإجازة: رؤوسه لا تتكسّر حرفاً حرفاً على الجوال (يتمرّر أفقياً بدل ذلك) */
@@ -14368,9 +14389,9 @@ window.verifyBackupFile=async function(input) {
                     <thead style="background: rgb(var(--s-50))"><tr><th class="w-8"><input type="checkbox" onchange="window.payToggleAll(this.checked)" title="تحديد الكل" class="w-4 h-4"></th><th>الموظف</th><th>طريقة الصرف</th><th>البنك / الآيبان</th><th>الأساسي</th><th>السكن</th><th>النقل</th><th>أخرى</th><th>الإضافات</th><th>التأمينات</th><th>الاستقطاعات</th><th>الصافي</th></tr></thead>
                     <tbody>${rows.map(r => `<tr>
                         <td><input type="checkbox" class="pay-sel w-4 h-4" value="${r.e.id}" ${paySelected.has(r.e.id) ? 'checked' : ''} onchange="window.payToggle('${r.e.id}', this.checked)"></td>
-                        <td class="font-black cursor-pointer" onclick="window.selectSalaryEmployee('${r.e.id}'); window.setSalaryTab('structure')">${escapeHtml(r.e.name || '')}<br><span class="text-[10px] font-bold text-slate-400">${escapeHtml(r.e.empNumber || '')} · استحقاق ${r.p.service.payDays}/30 يوم</span>${payrollValidation(r.p).length ? `<br><span class="text-[10px] text-red-600">${escapeHtml(payrollValidation(r.p).join('، '))}</span>` : ''}</td>
+                        <td class="pay-name-cell font-black cursor-pointer" onclick="window.selectSalaryEmployee('${r.e.id}'); window.setSalaryTab('structure')"><span class="pay-name">${escapeHtml(r.e.name || '')}</span><br><span class="pay-sub text-[10px] font-bold text-slate-400">${escapeHtml(r.e.empNumber || '')} · استحقاق ${r.p.service.payDays}/30 يوم</span>${payrollValidation(r.p).length ? `<span class="pay-msg text-[10px] text-red-600">${escapeHtml(payrollValidation(r.p).join('، '))}</span>` : ''}</td>
                         <td><select onchange="window.setPayMethod('${r.e.id}', this.value)" class="border rounded-lg px-2 py-1 text-[11px] font-extrabold bg-white">${PAY_METHODS.map(p => `<option value="${p[0]}" ${r.method === p[0] ? 'selected' : ''}>${p[1]}</option>`).join('')}</select></td>
-                        <td class="text-[10px] font-bold ${r.method !== 'cash' && !ibanValid(r.iban) ? 'text-red-600' : 'text-slate-500'}" dir="ltr">${r.method === 'cash' ? '—' : escapeHtml((r.bank?.[0] || r.e.bank || '') + ' ' + (r.iban || 'بلا آيبان'))}</td>
+                        <td class="text-[10px] font-bold ${r.method !== 'cash' && !ibanValid(r.iban) ? 'text-red-600' : 'text-slate-500'}" dir="ltr">${r.method === 'cash' ? '—' : '<span class="pay-bank">' + escapeHtml(r.bank?.[0] || r.e.bank || '') + '</span><br><span class="pay-iban">' + escapeHtml(r.iban || 'بلا آيبان') + '</span>'}</td>
                         <td>${n(r.p.basic)}</td><td>${n(r.p.housing)}</td><td>${n(r.p.transport)}</td><td>${n(r.other)}</td>
                         <td style="color: rgb(var(--em-700))">${n(r.p.addT)}</td><td style="color: rgb(var(--rd-700))">${n(r.p.gosi)}</td><td style="color: rgb(var(--rd-700))">${n(r.p.dedT)}</td><td class="font-black">${n(r.p.net)}</td></tr>`).join('')}
                     <tr style="background: rgb(var(--s-50))" class="font-black"><td></td><td>الإجمالي (${rows.length})</td><td></td><td></td><td>${n(sum(rows, r => r.p.basic))}</td><td>${n(sum(rows, r => r.p.housing))}</td><td>${n(sum(rows, r => r.p.transport))}</td><td>${n(sum(rows, r => r.other))}</td><td>${n(sum(rows, r => r.p.addT))}</td><td>${n(sum(rows, r => r.p.gosi))}</td><td>${n(sum(rows, r => r.p.dedT))}</td><td>${n(sum(rows, r => r.p.net))}</td></tr>
@@ -20259,12 +20280,12 @@ window.HRInsurance = (function () {
           <button type="button" id="ins-pl-open" ${can ? '' : 'disabled'} class="px-4 py-2 rounded-full bg-slate-900 text-white text-[11px] font-extrabold ${can ? '' : 'opacity-50'}"><i class="fas fa-wand-magic-sparkles ml-1" aria-hidden="true"></i>تطبيق التأمينات من المنصة</button>${can ? '' : '<span class="text-[10px] font-bold text-slate-500">يتطلب صلاحية مالية</span>'}`;
         const tbl = box.querySelector('.overflow-x-auto'); if (tbl) tbl.parentNode.insertBefore(b, tbl); else box.prepend(b); const btn = b.querySelector('#ins-pl-open'); if (btn) btn.addEventListener('click', () => window.hrInsApplyPlatform(month)); }
       box.querySelectorAll('tbody tr').forEach(tr => { const cb = tr.querySelector('.pay-sel'); if (!cb) return; const r = rows.find(x => x.e.id === cb.value); if (!r) return; const cells = tr.children;
-        const st = estStmt(r.e, month); if (st && cells[1]) { const c = document.createElement('button'); c.type = 'button'; c.className = 'block mt-1 px-2 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-800 text-[10px] font-extrabold'; c.textContent = 'تأمينات: تقدير المنصة — طابقه بالكشف'; c.addEventListener('click', ev => { ev.stopPropagation(); window.openContractMonth && window.openContractMonth(r.e.id); }); cells[1].appendChild(c); if (cells[9]) cells[9].title = st.evidence; }
+        const st = estStmt(r.e, month); if (st && cells[1]) { const c = document.createElement('button'); c.type = 'button'; c.className = 'pay-chip bg-sky-50 border border-sky-200 text-sky-800'; c.textContent = 'تقدير المنصة'; c.title = 'تأمينات بتقدير المنصة — اضغط لمطابقتها بكشف التأمينات الرسمي'; c.addEventListener('click', ev => { ev.stopPropagation(); window.openContractMonth && window.openContractMonth(r.e.id); }); cells[1].appendChild(c); if (cells[9]) cells[9].title = st.evidence; }
         if (cells[10]) { const lines = (r.p.deds || []).map(d => `${d.label}: ${fmt(d.amount)}`); let next = ''; try { next = (hrOps || []).filter(o => o.employee_id === r.e.id && o.module === 'fin_repay' && o.effective_month > month && !['stopped', 'cancelled', 'rejected'].includes(o.status)).map(o => `قسط قادم يبدأ ${o.effective_month}: ${fmt(repayInstallmentForMonth(o, o.effective_month))}`)[0] || ''; } catch (_) {}
           let rej = []; try { rej = (hrOps || []).filter(o => o.employee_id === r.e.id && OPS_MODULES[o.module] && OPS_MODULES[o.module].payroll && ['rejected', 'cancelled'].includes(o.data && o.data.flow && o.data.flow.state) && (o.module === 'fin_repay' ? o.effective_month >= month : o.effective_month === month)).map(o => `${OPS_MODULES[o.module].title} #${o.ref_no || ''}`); } catch (_) {}
           cells[10].title = (lines.length ? 'استقطاعات الشهر — ' + lines.join('، ') : 'لا استقطاعات مستحقة في هذا الشهر (سلف، غياب، جزاءات، إجازات غير مدفوعة)') + (next ? ' · ' + next : '') + (rej.length ? ' · حركات مرفوضة في مسار الاعتماد لا تُخصم: ' + rej.join('، ') : '');
-          if (next) { const m = document.createElement('div'); m.className = 'text-[9px] font-bold text-slate-400 mt-0.5'; m.textContent = next; cells[10].appendChild(m); }
-          if (rej.length) { const m = document.createElement('div'); m.className = 'text-[9px] font-extrabold text-amber-700 mt-0.5'; m.textContent = rej.length + ' حركة مرفوضة لا تُخصم'; m.title = rej.join('، '); cells[10].appendChild(m); } } });
+          if (next) { const m = document.createElement('div'); m.className = 'pay-note text-slate-400'; m.textContent = next.replace('قسط قادم يبدأ ', 'قسط '); cells[10].appendChild(m); }
+          if (rej.length) { const m = document.createElement('div'); m.className = 'pay-note text-amber-700'; m.textContent = rej.length + ' مرفوضة'; m.title = rej.join('، '); cells[10].appendChild(m); } } });
     } catch (_) {}
   };
 })();
