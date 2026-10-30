@@ -1248,6 +1248,12 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
 .kpi-row{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 16px;align-items:end}
 @media (min-width:640px){.kpi-row{grid-template-columns:8.5rem minmax(0,1fr) auto}}
 .kpi-row input[data-kpi-read]{max-width:100%}
+/* شارة حالة التأمينات تحت اسم الموظف: أخضر داخل التأمينات، أحمر خارجها، كهرماني بانتظار البيان */
+.pay-gosi{display:inline-block;white-space:nowrap;padding:0 7px;margin-left:5px;border-radius:9999px;font-size:10px;font-weight:900;line-height:1.7;border:1px solid transparent;vertical-align:middle}
+.pay-gosi::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;margin-left:4px;background:currentColor;vertical-align:middle}
+.pay-gosi-in{background:#ecfdf5;color:#047857;border-color:#a7f3d0}
+.pay-gosi-out{background:#fef2f2;color:#b91c1c;border-color:#fecaca}
+.pay-gosi-wait{background:#fffbeb;color:#92400e;border-color:#fde68a}
 /* سجل المسير: الاسم بسطر واحد، والأرقام لا تلتف، وحشوة أضيق لاستغلال العرض، وعمود الاسم يثبت عند التمرير الأفقي */
 #view-salary #crx-payroll-card table.crx-table{width:100%;border-collapse:separate;border-spacing:0}
 #view-salary #crx-payroll-card table.crx-table th,#view-salary #crx-payroll-card table.crx-table td{padding:.6rem .55rem;white-space:nowrap;vertical-align:middle}
@@ -7747,6 +7753,18 @@ window.verifyBackupFile=async function(input) {
                 emp.isTerminated = !end || end < todayUTC();
             }
         }
+        // حالة التأمينات تحت اسم الموظف: أخضر «في التأمينات» / أحمر «خارج التأمينات» / كهرماني «بانتظار بيان التأمينات» (لا نعرض «خارج» لمن لم يُعتمد بيانه بعد)
+        function gosiState(e, month, p) {
+            let st = ''; try { st = String((HRIntegrity.compensation(e, month) || {}).gosiStatus || e.gosiStatus || ''); } catch (_) { st = String(e.gosiStatus || ''); }
+            const stmts = (e.contractMonths || []).filter(x => x.month === month && x.status === 'approved');
+            if (p && p.closed) { const inn = Number(p.gosi) > 0 || Number(p.companyGosi) > 0; return { kind: inn ? 'in' : 'out', text: inn ? 'في التأمينات' : 'خارج التأمينات', tip: 'حسب مسير الشهر المقفل' }; }
+            if (p && (p.errors || []).some(x => /يلزم بيان تأمينات شهري معتمد/.test(x))) return { kind: 'wait', text: 'بانتظار البيان', tip: 'لا يوجد بيان تأمينات معتمد لهذا الشهر: تُعرض التأمينات 0 حتى اعتماده (ليس خارج التأمينات بالضرورة)' };
+            if (stmts.length === 1) { const x = stmts[0], inn = Number(x.gosi_employee) > 0 || Number(x.gosi_company) > 0; return { kind: inn ? 'in' : 'out', text: inn ? 'في التأمينات' : 'خارج التأمينات', tip: 'حسب بيان التأمينات الشهري المعتمد: ' + (x.evidence || '') }; }
+            if (/خارج/.test(st)) return { kind: 'out', text: 'خارج التأمينات', tip: 'حسب ملف الموظف: ' + st + (/^سعودي/.test(st) ? ' — الأصل أن السعودي في القطاع الخاص مسجّل في التأمينات؛ تحقق من حساب المنشأة لدى المؤسسة' : '') };
+            if (/بالتأمينات/.test(st)) return { kind: 'in', text: 'في التأمينات', tip: 'حسب ملف الموظف: ' + st };
+            return { kind: 'wait', text: 'غير محددة', tip: 'حالة التأمينات غير محددة: حدّد «الانتساب للتأمينات» في ملف الموظف' };
+        }
+        const gosiBadge = (e, month, p) => { const g = gosiState(e, month, p); return `<span class="pay-gosi pay-gosi-${g.kind}" data-gosi="${g.kind}" title="${escapeHtml(g.tip)}">${g.text}</span>`; };
         function payrollValidation(p) {
     const amounts=['basic','housing','transport','other','total','gosi','addT','dedT','net'];
     return [...new Set([...(p.errors||[]),...(!amounts.every(k=>Number.isFinite(p[k]))?['قيم المسير غير عددية']:[]),
@@ -14389,7 +14407,7 @@ window.verifyBackupFile=async function(input) {
                     <thead style="background: rgb(var(--s-50))"><tr><th class="w-8"><input type="checkbox" onchange="window.payToggleAll(this.checked)" title="تحديد الكل" class="w-4 h-4"></th><th>الموظف</th><th>طريقة الصرف</th><th>البنك / الآيبان</th><th>الأساسي</th><th>السكن</th><th>النقل</th><th>أخرى</th><th>الإضافات</th><th>التأمينات</th><th>الاستقطاعات</th><th>الصافي</th></tr></thead>
                     <tbody>${rows.map(r => `<tr>
                         <td><input type="checkbox" class="pay-sel w-4 h-4" value="${r.e.id}" ${paySelected.has(r.e.id) ? 'checked' : ''} onchange="window.payToggle('${r.e.id}', this.checked)"></td>
-                        <td class="pay-name-cell font-black cursor-pointer" onclick="window.selectSalaryEmployee('${r.e.id}'); window.setSalaryTab('structure')"><span class="pay-name">${escapeHtml(r.e.name || '')}</span><br><span class="pay-sub text-[10px] font-bold text-slate-400">${escapeHtml(r.e.empNumber || '')} · استحقاق ${r.p.service.payDays}/30 يوم</span>${payrollValidation(r.p).length ? `<span class="pay-msg text-[10px] text-red-600">${escapeHtml(payrollValidation(r.p).join('، '))}</span>` : ''}</td>
+                        <td class="pay-name-cell font-black cursor-pointer" onclick="window.selectSalaryEmployee('${r.e.id}'); window.setSalaryTab('structure')"><span class="pay-name">${escapeHtml(r.e.name || '')}</span><br><span class="pay-sub text-[10px] font-bold text-slate-400" title="أيام الاستحقاق في الشهر: ${r.p.service.payDays} من 30">${gosiBadge(r.e, month, r.p)}${escapeHtml(r.e.empNumber || '')} · ${r.p.service.payDays}/30 يوم</span>${payrollValidation(r.p).length ? `<span class="pay-msg text-[10px] text-red-600">${escapeHtml(payrollValidation(r.p).join('، '))}</span>` : ''}</td>
                         <td><select onchange="window.setPayMethod('${r.e.id}', this.value)" class="border rounded-lg px-2 py-1 text-[11px] font-extrabold bg-white">${PAY_METHODS.map(p => `<option value="${p[0]}" ${r.method === p[0] ? 'selected' : ''}>${p[1]}</option>`).join('')}</select></td>
                         <td class="text-[10px] font-bold ${r.method !== 'cash' && !ibanValid(r.iban) ? 'text-red-600' : 'text-slate-500'}" dir="ltr">${r.method === 'cash' ? '—' : '<span class="pay-bank">' + escapeHtml(r.bank?.[0] || r.e.bank || '') + '</span><br><span class="pay-iban">' + escapeHtml(r.iban || 'بلا آيبان') + '</span>'}</td>
                         <td>${n(r.p.basic)}</td><td>${n(r.p.housing)}</td><td>${n(r.p.transport)}</td><td>${n(r.other)}</td>
@@ -18226,6 +18244,7 @@ window.verifyBackupFile=async function(input) {
                         <div class="min-w-0 flex-1">
                             <p class="text-xs font-black truncate" style="color: rgb(var(--s-900))">${escapeHtml(emp.name || '—')}</p>
                             <p class="text-[10px] font-bold truncate" style="color: rgb(var(--s-500))">${escapeHtml(emp.jobTitle || '—')}</p>
+                            <p class="mt-0.5">${gosiBadge(emp, (document.getElementById('crx-month-select') || {}).value || thisMonthStr(), null)}</p>
                         </div>
                     </div>
                     <div class="mt-2.5">
@@ -20288,6 +20307,128 @@ window.HRInsurance = (function () {
           if (rej.length) { const m = document.createElement('div'); m.className = 'pay-note text-amber-700'; m.textContent = rej.length + ' مرفوضة'; m.title = rej.join('، '); cells[10].appendChild(m); } } });
     } catch (_) {}
   };
+})();
+</script>
+
+<style id="hr-mobile">
+/* ===== التوافق مع الجوال والأجهزة اللوحية (أقل من 1024px) ===== */
+/* 1) ارتفاع القشرة: 100vh في متصفح الجوال أطول من المساحة المرئية فيضيع أسفل كل شاشة خلف شريط المتصفح */
+@supports (height:100dvh){ body.h-screen{height:100dvh} .min-h-screen{min-height:100dvh} }
+/* 2) أشرطة التمرير المخصصة تُبقي أشرطة سميكة دائمة على أندرويد؛ في اللمس نعتمد المؤشر الخفيف الأصلي */
+@media (pointer:coarse){ *{scrollbar-width:none} ::-webkit-scrollbar{display:none;width:0;height:0} }
+.hr-switch{display:none}
+#hr-sheet-scrim{display:none}
+.hr-sc-hint{display:none}
+@media (max-width:1023px){
+  /* 3) حقول الإدخال 16px (يمنع تكبير iOS عند التركيز) وبارتفاع مريح */
+  :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([type=hidden]){font-size:16px;min-height:44px}
+  textarea{min-height:88px}
+  #view-salary #crx-payroll-card table.crx-table select{font-size:16px;max-width:9rem}
+  /* 4) أصغر خط مقروء */
+  [class*="text-[8px]"],[class*="text-[9px]"],[class*="text-[10px]"]{font-size:11px}
+  .pay-gosi,.status-chip,.lang-badge,.ov-avatar,.crx-chip{font-size:11px}
+  #header-subtitle{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.45}
+  /* 5) أهداف اللمس */
+  div[onclick]:not(.modal-overlay),label.cursor-pointer,.cursor-pointer:is(div,li){min-height:40px}
+  button[class*="w-6"],button[class*="w-7"],button[class*="h-6"],button[class*="h-7"]{min-width:36px;min-height:36px}
+  /* القاعدة القديمة تستثني أي زر يحوي «w-» (حتى shadow-)؛ هذه تغطي كل الأزرار، والأيقونات المربعة 40px */
+  button,[role="button"],.hc-trigger{min-height:40px}
+  button[class*=" w-6"],button[class*=" w-7"],button[class*=" w-8"],button[class*=" w-9"],button[class*=" h-6"],button[class*=" h-7"],button[class*=" h-8"],button[class*=" h-9"],button[class^="w-"],button[class^="h-"]{min-width:40px !important;min-height:40px !important}   /* !important: قاعدة قديمة «#details-modal *{min-width:0}» بمحدد معرّف تتغلب عليها */
+  .hc-trigger,.hc-modal-trigger{min-height:36px !important;display:inline-flex;align-items:center;justify-content:center}
+  button[class*="py-0.5"],button[class*="py-1"],.status-chip{min-height:36px;min-width:36px}
+  svg text[font-size="9"],svg text[font-size="8"]{font-size:10.5px}
+  input[type=checkbox],input[type=radio]{width:20px;height:20px}
+  /* 6) الجداول: تتمرر أفقياً داخل حاويتها بدل أن تُقصّ */
+  :is(div,section):has(> table){overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  .hr-sc-hint{display:flex;align-items:center;justify-content:center;gap:6px;margin:0 0 6px;padding:5px 10px;border-radius:9999px;background:rgb(var(--s-100,241 245 249));color:rgb(var(--s-600,71 85 105));font-size:11px;font-weight:800}
+  /* 7) قوائم الأقسام الطويلة تصبح لوحة سفلية: زر القسم الحالي في أعلى الصفحة والمحتوى مباشرة تحته */
+  .hr-switch{display:flex;align-items:center;gap:10px;width:100%;min-height:54px;padding:8px 12px;border-radius:18px;background:#fff;border:1px solid rgb(var(--s-200,226 232 240));box-shadow:0 1px 3px rgba(15,23,42,.06);text-align:right;color:rgb(var(--s-900,15 23 42))}
+  .hr-switch .hr-sw-ico{display:flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;border-radius:12px;background:#f1f5f9;background:color-mix(in srgb,var(--c-brand,#d4b52e) 22%,#fff);font-size:14px}
+  .hr-switch .hr-sw-txt{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.35}
+  .hr-switch small{font-size:11px;font-weight:700;color:rgb(var(--s-500,100 116 139))}
+  .hr-switch b{font-size:14px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hr-switch .hr-sw-chev{flex:none;font-size:12px;color:rgb(var(--s-500,100 116 139));transition:transform .2s}
+  .hr-switch[aria-expanded="true"] .hr-sw-chev{transform:rotate(180deg)}
+  .hr-sheet{position:fixed !important;inset:auto 0 0 0 !important;z-index:70;max-height:78dvh !important;max-height:78vh;overflow-y:auto !important;border-radius:24px 24px 0 0 !important;margin:0 !important;padding:22px 10px calc(16px + env(safe-area-inset-bottom)) !important;background:#fff;box-shadow:0 -16px 48px rgba(15,23,42,.28) !important;overscroll-behavior:contain;transform:translateY(105%);visibility:hidden;transition:transform .26s cubic-bezier(.2,.8,.2,1),visibility 0s .26s}
+  .hr-sheet::before{content:'';display:block;width:44px;height:5px;border-radius:9999px;background:#cbd5e1;margin:-10px auto 12px}
+  .hr-sheet.hr-open{transform:none;visibility:visible;transition:transform .26s cubic-bezier(.2,.8,.2,1)}
+  .hr-sheet .pol-nav-item{min-height:48px;font-size:14px}
+  .hr-sheet #crx-employee-list{max-height:calc(78dvh - 170px)}
+  #hr-sheet-scrim{display:block;position:fixed;inset:0;z-index:69;background:rgba(15,23,42,.5);opacity:0;pointer-events:none;transition:opacity .22s;touch-action:none}
+  #hr-sheet-scrim.on{opacity:1;pointer-events:auto}
+  /* 8) الزر العائم لا يغطي أزرار الصفحة أثناء التمرير */
+  #ask-fab{bottom:calc(1.25rem + env(safe-area-inset-bottom));transition:transform .25s ease,opacity .25s ease}
+  #ask-fab.hr-fab-hide{transform:translateY(calc(100% + 32px));opacity:0;pointer-events:none}
+}
+@media (prefers-reduced-motion:reduce){ .hr-sheet,#hr-sheet-scrim,#ask-fab,.hr-switch .hr-sw-chev{transition:none !important} }
+</style>
+<script id="hr-mobile-js">
+/* سلوك الجوال: لوحة سفلية لقوائم الأقسام الطويلة (العمليات والسياسات والإعدادات وموظفو الرواتب)، تلميح لجداول عريضة، وإخفاء الزر العائم أثناء التمرير للأسفل. */
+(function () {
+  'use strict';
+  const mq = window.matchMedia('(max-width:1023px)');
+  const CFG = [
+    { sel: '#ops-nav', item: '.pol-nav-item', act: '.pol-nav-item.active', title: 'أقسام العمليات', hint: 'القسم الحالي' },
+    { sel: '#pol-nav', item: '.pol-nav-item', act: '.pol-nav-item.active', title: 'أقسام السياسات', hint: 'القسم الحالي' },
+    { sel: '#settings-nav', item: '.pol-nav-item', act: '.pol-nav-item.active', title: 'أقسام الإعدادات', hint: 'القسم الحالي' },
+    { sel: '#crx-emp-col', item: '.crx-emp-row', act: '.crx-emp-row.active', name: 'p', title: 'اختر الموظف', hint: 'الموظف — اضغط للتغيير', icon: 'fa-user' }
+  ];
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let openNav = null, openCfg = null, lastTrigger = null, scrim = null;
+  const cfgOf = nav => CFG.find(c => nav.matches(c.sel));
+  function current(nav, cfg) { const a = nav.querySelector(cfg.act); if (!a) return { text: '—', icon: cfg.icon || 'fa-layer-group' }; const n = cfg.name ? a.querySelector(cfg.name) : a, i = a.querySelector('i.fas, i.far, i.fab'); return { text: (n ? n.textContent : a.textContent).replace(/\s+/g, ' ').trim() || '—', icon: cfg.icon || (i ? [...i.classList].find(c => /^fa-/.test(c) && c !== 'fa-fw') : '') || 'fa-layer-group' }; }
+  function build(nav, cfg) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'hr-switch'; b.setAttribute('aria-haspopup', 'dialog'); b.setAttribute('aria-expanded', 'false'); b.dataset.for = nav.id;
+    b.innerHTML = '<span class="hr-sw-ico"><i class="fas fa-layer-group" aria-hidden="true"></i></span><span class="hr-sw-txt"><small></small><b></b></span><i class="fas fa-chevron-down hr-sw-chev" aria-hidden="true"></i>'; b.querySelector('small').textContent = cfg.hint; return b;
+  }
+  function sync(nav, cfg, t) { const c = current(nav, cfg), b = t.querySelector('b'), ic = t.querySelector('.hr-sw-ico i'); if (b.textContent !== c.text) b.textContent = c.text; const cls = 'fas ' + c.icon; if (ic.className !== cls) ic.className = cls; }
+  function scan() {
+    CFG.forEach(cfg => { const nav = document.querySelector(cfg.sel); if (!nav) return; nav.classList.add('hr-sheet');
+      let t = nav.previousElementSibling; if (!t || !t.classList.contains('hr-switch')) { t = build(nav, cfg); nav.parentNode.insertBefore(t, nav); } sync(nav, cfg, t); });
+    scanTables();
+  }
+  function ensureScrim() { if (scrim) return scrim; scrim = document.createElement('div'); scrim.id = 'hr-sheet-scrim'; scrim.setAttribute('aria-hidden', 'true'); document.body.appendChild(scrim); return scrim; }
+  function open(trigger) {
+    const nav = document.getElementById(trigger.dataset.for); if (!nav) return; if (openNav) close(true); const cfg = cfgOf(nav); ensureScrim();
+    openNav = nav; openCfg = cfg; lastTrigger = trigger; nav.classList.add('hr-open'); nav.setAttribute('role', 'dialog'); nav.setAttribute('aria-modal', 'true'); nav.setAttribute('aria-label', cfg.title); trigger.setAttribute('aria-expanded', 'true'); scrim.classList.add('on');
+    setTimeout(() => { const a = nav.querySelector(cfg.act) || nav.querySelector('button, input'); if (a) { try { a.scrollIntoView({ block: 'center' }); a.focus({ preventScroll: true }); } catch (_) {} } }, 60);
+  }
+  function close(silent) {
+    if (!openNav) return; const nav = openNav; nav.classList.remove('hr-open'); nav.removeAttribute('role'); nav.removeAttribute('aria-modal'); nav.removeAttribute('aria-label'); nav.style.transform = ''; nav.style.transition = '';
+    if (lastTrigger) { lastTrigger.setAttribute('aria-expanded', 'false'); if (!silent) try { lastTrigger.focus({ preventScroll: true }); } catch (_) {} } if (scrim) scrim.classList.remove('on'); openNav = null; openCfg = null;
+  }
+  window.hrCloseSheet = close;
+  document.addEventListener('click', ev => {
+    const tr = ev.target.closest && ev.target.closest('.hr-switch'); if (tr) { if (tr.getAttribute('aria-expanded') === 'true') close(); else open(tr); return; }
+    if (ev.target && ev.target.id === 'hr-sheet-scrim') { close(); return; }
+    // مسار الحدث يُحسب عند الإطلاق: القائمة تُعاد رسمها أثناء النقر فيصبح الهدف منفصلاً عن الصفحة قبل وصول الحدث إلى هنا
+    if (openNav) { const path = ev.composedPath ? ev.composedPath() : []; if (path.includes(openNav) && path.some(el => el.matches && el.matches(openCfg.item))) setTimeout(close, 80); }
+  });
+  document.addEventListener('keydown', ev => {
+    if (!openNav) return; if (ev.key === 'Escape') { ev.preventDefault(); close(); return; }
+    if (ev.key === 'Tab') { const f = [...openNav.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')].filter(x => !x.disabled && x.offsetParent !== null); if (!f.length) return; const first = f[0], last = f[f.length - 1]; if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); } else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); } else if (!openNav.contains(document.activeElement)) { ev.preventDefault(); first.focus(); } }
+  });
+  mq.addEventListener('change', e => { if (!e.matches) close(true); });
+  // السحب لأسفل لإغلاق اللوحة
+  let y0 = null, dy = 0;
+  document.addEventListener('touchstart', e => { if (!openNav || !openNav.contains(e.target) || openNav.scrollTop > 0) { y0 = null; return; } y0 = e.touches[0].clientY; dy = 0; }, { passive: true });
+  document.addEventListener('touchmove', e => { if (y0 === null || !openNav) return; dy = e.touches[0].clientY - y0; if (dy > 0) { openNav.style.transition = 'none'; openNav.style.transform = 'translateY(' + dy + 'px)'; } }, { passive: true });
+  document.addEventListener('touchend', () => { if (y0 === null || !openNav) return; const n = openNav; n.style.transition = ''; n.style.transform = ''; if (dy > 90) close(); y0 = null; dy = 0; });
+  // تلميح الجداول العريضة
+  const seen = new WeakSet();
+  function scanTables() {
+    if (!mq.matches) return;
+    document.querySelectorAll('table').forEach(tb => { const w = tb.parentElement; if (!w || seen.has(w)) return; if (w.scrollWidth <= w.clientWidth + 8 || !/(auto|scroll)/.test(getComputedStyle(w).overflowX)) return; seen.add(w);
+      const h = document.createElement('p'); h.className = 'hr-sc-hint'; h.setAttribute('role', 'note'); h.innerHTML = '<i class="fas fa-arrows-left-right" aria-hidden="true"></i>اسحب الجدول جانباً لعرض باقي الأعمدة'; w.parentNode.insertBefore(h, w);
+      const gone = () => { h.remove(); w.removeEventListener('scroll', gone); }; w.addEventListener('scroll', gone, { passive: true }); });
+  }
+  // الزر العائم: يختفي أثناء التمرير للأسفل ويعود عند الصعود
+  const last = new WeakMap();
+  document.addEventListener('scroll', e => { if (!mq.matches) return; const t = e.target, el = t === document ? document.scrollingElement : t; if (!el || el.scrollTop === undefined) return; const y = el.scrollTop, p = last.has(el) ? last.get(el) : 0, d = y - p; last.set(el, y); const f = document.getElementById('ask-fab'); if (!f) return;
+    if (d > 6) f.classList.add('hr-fab-hide'); else if (d < -6 || y < 40) f.classList.remove('hr-fab-hide'); }, true);
+  let pending = false; const run = () => { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; try { scan(); } catch (_) {} }); };
+  new MutationObserver(muts => { if (muts.some(m => m.addedNodes.length || m.type === 'attributes')) run(); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  run();
 })();
 </script>
 
