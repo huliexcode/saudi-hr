@@ -15,7 +15,15 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=Cairo:wght@400;600;700;900&family=Almarai:wght@400;700;800&family=Noto+Naskh+Arabic:wght@400;600;700&family=Amiri:wght@400;700&display=swap" media="print" onload="this.media='all'">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-    <script id="hr-upload-guard">
+    <script id="hr-sri">
+/* SRI للمكتبات الخارجية: القيم تُملأ بسكربت deploy/make_sri.sh (تنزيل كل رابط محدد النسخة وحساب sha384). خريطة فارغة = بلا تغيير في السلوك. */
+window.HR_SRI = {
+/* HR_SRI_BEGIN */
+/* HR_SRI_END */
+};
+window.hrSriApply = function (el, url) { try { const h = window.HR_SRI && window.HR_SRI[url || el.src]; if (h) { el.integrity = h; el.crossOrigin = 'anonymous'; } } catch (_) {} return el; };
+</script>
+<script id="hr-upload-guard">
 /* حد موحد 5 ميجابايت لكل ملف يُرفع (واجهة + خادم)، وفحص النوع بمحتوى الملف لا باسمه، وتصغير الصور الكبيرة تلقائياً حيث يلزم (مستندات الموظف وصورته).
    حارس مركزي على كل حقول الملفات في المنصة: أي ملف أكبر من الحد يُرفض قبل معالجه، إلا الحقول الموسومة data-hr-shrink (تُصغَّر صورها) وdata-hr-nolimit (استعادة النسخ الاحتياطية). */
 const HR_MAX_UPLOAD_BYTES = 5 * 1024 * 1024, HR_MAX_UPLOAD_MB = 5;
@@ -107,7 +115,7 @@ const HR_MAX_UPLOAD_BYTES = 5 * 1024 * 1024, HR_MAX_UPLOAD_MB = 5;
             if (new Set(pw).size < 5 || /^(.)\1+$/.test(pw) || ['1234567890', '0123456789', '9876543210', '12345678910', '1q2w3e4r5t', 'password1', 'password123', 'qwerty12345', 'abcdefghij1', 'saudi12345', 'saudihr123'].includes(low)) return 'كلمة المرور شائعة وسهلة التخمين؛ اختر غيرها';
             if (local.length >= 4 && low.includes(local)) return 'لا تضمّن بريدك الإلكتروني في كلمة المرور';
             return ''; };
-        window.hrEnsureLib = n => { if (ready(n)) return Promise.resolve(); if (P[n] && P[n].__ok) delete P[n]; return (P[n] || (P[n] = new Promise((res, rej) => { const s = document.createElement('script'); s.src = LIBS[n]; s.async = true; s.onload = () => { if (P[n]) P[n].__ok = true; res(); }; s.onerror = () => { delete P[n]; s.remove(); rej(new Error('تعذّر تحميل المكتبة ' + n)); }; document.head.appendChild(s); }))); };   // إن زالت المكتبة بعد تحميلها يُعاد تحميلها
+        window.hrEnsureLib = n => { if (ready(n)) return Promise.resolve(); if (P[n] && P[n].__ok) delete P[n]; return (P[n] || (P[n] = new Promise((res, rej) => { const s = document.createElement('script'); s.src = LIBS[n]; window.hrSriApply(s, LIBS[n]); s.async = true; s.onload = () => { if (P[n]) P[n].__ok = true; res(); }; s.onerror = () => { delete P[n]; s.remove(); rej(new Error('تعذّر تحميل المكتبة ' + n)); }; document.head.appendChild(s); }))); };   // إن زالت المكتبة بعد تحميلها يُعاد تحميلها
         const PDF = /\b(idcSavePdf|entPdfBlob|entPrintSummaryOnly|entDownloadPdf|offerDownloadPdf|generateTasksCompletionPDF|generateSettlementPDF|printEosResult)\b/;
         const XLS = /\b(exportBankFile|exportAbsenceTemplate|importAbsenceSheet|importFingerprintLog|exportPayrollByMethod|downloadSalaryTemplate|importSalaries|impDownloadTemplate|impRead|impLoadSheet|impExportExcel|exportReportToExcel|exportCustomReport|downloadEmptyEmployeeTemplate|exportActiveEmployeesData|exportTerminatedEmployeesData|exportDepartmentsData|importDepartmentsFromExcel|importExcelFile)\b/;
         const need = a => PDF.test(a) ? 'html2pdf' : XLS.test(a) ? 'xlsx' : null;
@@ -1248,6 +1256,10 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
 .kpi-row{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 16px;align-items:end}
 @media (min-width:640px){.kpi-row{grid-template-columns:8.5rem minmax(0,1fr) auto}}
 .kpi-row input[data-kpi-read]{max-width:100%}
+/* شارة رصيد الإجازة تحت المسمى في جدول الموظفين */
+.hr-num{direction:ltr;unicode-bidi:isolate;display:inline-block}
+.hr-leave-pill{display:inline-flex;align-items:center;gap:4px;padding:0 8px;border-radius:9999px;font-size:11px;font-weight:800;line-height:1.7;background:#e0f2fe;color:#075985;border:1px solid #bae6fd;white-space:nowrap}
+.hr-leave-pill.neg{background:#fef2f2;color:#b91c1c;border-color:#fecaca}
 /* شارة حالة التأمينات تحت اسم الموظف: أخضر داخل التأمينات، أحمر خارجها، كهرماني بانتظار البيان */
 .pay-gosi{display:inline-block;white-space:nowrap;padding:0 7px;margin-left:5px;border-radius:9999px;font-size:10px;font-weight:900;line-height:1.7;border:1px solid transparent;vertical-align:middle}
 .pay-gosi::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;margin-left:4px;background:currentColor;vertical-align:middle}
@@ -1312,6 +1324,7 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
                 <p class="text-[11px] font-bold text-slate-500">البريد</p><p id="trial-email" dir="ltr" class="text-sm font-black text-slate-900 text-left select-all break-all"></p>
                 <p class="text-[11px] font-bold text-slate-500 pt-1">كلمة المرور</p><p id="trial-pw" dir="ltr" class="text-sm font-black text-slate-900 text-left select-all"></p>
             </div>
+            <div class="mt-3 rounded-2xl bg-amber-50 border border-amber-200 p-3 text-right"><p class="text-[11px] font-black text-amber-900 mb-1.5">حدود التجربة (14 يوماً)</p><ul class="text-[11px] font-bold text-amber-900 space-y-1"><li>• حتى 20 موظفاً</li><li>• دون دعوة مستخدمين أو منشآت إضافية</li><li>• دون روابط بوابة الموظفين أو إقفال المسير أو رسائل خارجية</li><li>• تتوقف المساحة بعد 14 يوماً ويعود كل شيء بالترقية</li></ul></div>
             <p class="text-[10px] font-bold text-amber-700 mt-2">احفظ هذه البيانات — لن تظهر مرة أخرى.</p>
             <div class="grid grid-cols-2 gap-2 mt-4">
                 <button onclick="window.copyTrial()" class="py-3 rounded-full bg-slate-100 text-slate-800 text-xs font-extrabold"><i class="fas fa-copy ml-1"></i>نسخ البيانات</button>
@@ -1437,6 +1450,7 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
                     </p>
                     <div id="portal-ess-pending" class="hidden mb-5 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold leading-relaxed"></div>
                     <div id="portal-company-docs" class="hidden mb-5 p-4 rounded-2xl bg-slate-50 border border-slate-200"></div>
+                    <div id="portal-leave-card" class="hidden mb-5"></div>
                     <div id="portal-offer-card" class="hidden mb-5"></div>
                     <div id="portal-profile-card" class="hidden mb-5"></div>
                     <div id="portal-docs-list" class="space-y-6"></div>
@@ -2623,7 +2637,8 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
                     </div>
 
                     <!-- إدارة الأقسام/الإدارات — الأساس البنيوي للهيكل التنظيمي والرقم الوظيفي التلقائي -->
-                    <div class="bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm" data-set-title="الأقسام الإدارية">
+                    <div id="sec-center" data-set-title="الأمان والتحقق بخطوتين" data-set-icon="fa-shield-halved" class="bg-white rounded-3xl border border-slate-200/80 p-6 md:p-8 shadow-sm"></div>
+        <div class="bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm" data-set-title="الأقسام الإدارية">
                         <div class="flex justify-between items-center mb-6 border-b pb-4">
                             <h3 class="text-xl font-black text-slate-900 flex items-center gap-3">
                                 <span class="w-10 h-10 bg-brand text-brand-ink rounded-2xl flex items-center justify-center text-lg"><i class="fas fa-sitemap"></i></span>
@@ -2987,6 +3002,7 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
                         <div class="flex items-center gap-2">
                             <h3 class="text-2xl font-black text-slate-900" id="d-name">اسم الموظف</h3>
                             <span id="d-status-badge" class="px-3 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800">نشط</span>
+                            <button type="button" id="d-leave-chip" class="hidden px-3 py-0.5 rounded-full text-xs font-extrabold bg-sky-100 text-sky-800" title="رصيد الإجازة السنوية المتاح اليوم — اضغط لعرض التفصيل" onclick="document.getElementById('d-leave-card')?.scrollIntoView({behavior:'smooth',block:'center'})"></button>
                         </div>
                         <p class="text-xs text-slate-500 font-bold" id="d-job">المسمى الوظيفي</p>
                     </div>
@@ -4371,6 +4387,7 @@ window.verifyBackupFile=async function(input) {
         };
 
         async function bootstrapAfterLogin(user) {
+            if (window.hrMfaGate && !(await window.hrMfaGate(user))) return;   // التحقق بخطوتين لمن فعّله
             currentUser = user;
             document.getElementById('auth-screen')?.classList.add('hidden');
             const emailDisplay = document.getElementById('user-email-display');
@@ -5400,10 +5417,14 @@ window.verifyBackupFile=async function(input) {
                         </button>
                     </div>`;
                 }).join('');
+                const upN = docs.filter(d => uploaded[d.key]).length, ratio = Math.round(100 * upN / docs.length), fullSt = upN === docs.length;
+                const firstOpen = stagesData.find(s => (byStage[s.id] || []).some(d => !uploaded[d.key])), isCurSt = !fullSt && firstOpen && firstOpen.id === stage.id;
+                const sb = fullSt ? HEALTH_DONE : (isCurSt ? healthBand(ratio) : null);
                 return `<div>
                     <div class="flex items-center gap-2 mb-2.5">
-                        <span class="w-6 h-6 rounded-full bg-brand text-brand-ink flex items-center justify-center text-[10px] font-extrabold">${stage.id}</span>
+                        <span class="w-6 h-6 rounded-full ${sb ? '' : 'bg-brand text-brand-ink'} flex items-center justify-center text-[10px] font-extrabold" ${sb ? `data-stage-health="${ratio}" style="background:${sb.bg};color:${sb.fg}" title="${escapeHtml(sb.label)} — ${upN} من ${docs.length} مستندات"` : ''}>${fullSt ? '✓' : stage.id}</span>
                         <h3 class="text-sm font-black text-slate-900">${escapeHtml(stage.title)}</h3>
+                        <span class="text-[10px] font-bold ${fullSt ? 'text-emerald-600' : 'text-slate-400'} mr-auto">${upN}/${docs.length}</span>
                     </div>
                     <div class="space-y-2.5">${rows}</div>
                 </div>`;
@@ -5458,6 +5479,7 @@ window.verifyBackupFile=async function(input) {
                     const res = await portalVerify(last4);
                     if (!res?.ok) {
                         if (res?.error === 'invalid_link') { showPortalStep('invalid'); return; }
+                        if (res?.locked) return portalVerifyError(String(res.error || 'تم إيقاف المحاولات مؤقتاً؛ أعد المحاولة لاحقاً'));
                         return portalVerifyError('الأرقام غير مطابقة، تأكد من آخر أربعة أرقام في هويتك');
                     }
                     portalState.last4 = last4;
@@ -5517,8 +5539,30 @@ window.verifyBackupFile=async function(input) {
     const contractDays=comp.annual_leave_days??comp.annualLeaveDays??21;
     const cv=v=>{const d=toGregorianDate(v);return d?HRCore.iso(d):v;};
     const own=(requests||[]).map(r=>({...r,employee_id:emp.id,date_from:cv(r.date_from),date_to:cv(r.date_to||r.date_from)}));
-    const ce={...emp,start_date:cv(emp.start_date||emp.startDate)};return HRContracts.leave(ce,own)||HRIntegrity.leaveBalance(ce,own,contractDays);
+    const ce={...emp,start_date:cv(emp.start_date||emp.startDate)};
+    // الرقم نفسه الذي تعرضه المنصة للإدارة: دفتر الرصيد التراكمي منذ المباشرة (استحقاق يومي تلقائي من العقود أو المادة 109)
+    try { if (window.HRLeaveLedger && ce.start_date) { const r = window.HRLeaveLedger.compute({ ...ce, startDate: ce.start_date }, own); if (!r.notStarted && !(r.errors || []).some(x => /المباشرة/.test(x))) return { ...r, entitled: r.annualNow, errors: [] }; } } catch (_) {}
+    return HRContracts.leave(ce,own)||HRIntegrity.leaveBalance(ce,own,contractDays);
 }
+        // بطاقة رصيد الإجازة في صفحة الموظف: الرصيد المتاح الآن، المستحق والمستخدم، معدل الزيادة الشهري، وتفصيل كل شهر منذ المباشرة
+        function portalLeaveHtml(emp, reqs) {
+            const fm = n => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), r = essLeaveBalance(emp, reqs), started = emp.start_date && String(emp.start_date).slice(0, 10) <= HRIntegrity.today();
+            if (!emp.start_date) return '<p class="text-xs font-bold text-slate-500">لم يُسجَّل تاريخ مباشرتك بعد؛ يبدأ حساب رصيد الإجازة من تاريخ المباشرة.</p>';
+            if (!started || r.notStarted) return `<p class="text-xs font-bold text-slate-500">يبدأ استحقاق إجازتك السنوية من تاريخ مباشرتك <b dir="ltr">${escapeHtml(String(emp.start_date).slice(0, 10))}</b>.</p>`;
+            if (r.accrued === undefined) return `<p class="text-3xl font-black text-emerald-700" dir="ltr">${fm(r.balance)}</p><p class="text-xs font-bold text-slate-500">يوم متاح</p>`;
+            const lbl = window.hrLeaveMonthLabel || (m => m), neg = r.balance < 0;
+            return `<div class="flex items-end gap-2"><span id="pl-balance" class="text-3xl font-black ${neg ? 'text-red-700' : 'text-emerald-700'}" dir="ltr">${fm(r.balance)}</span><span class="text-sm font-extrabold text-slate-600 pb-1">يوم متاح اليوم</span></div>
+              <div class="grid grid-cols-3 gap-2 mt-3 text-center"><div class="rounded-2xl bg-slate-50 border border-slate-200 p-2"><p class="text-[10px] font-bold text-slate-500">المستحق منذ المباشرة</p><p class="font-black text-slate-900" dir="ltr">${fm(r.accrued)}</p></div><div class="rounded-2xl bg-slate-50 border border-slate-200 p-2"><p class="text-[10px] font-bold text-slate-500">المستخدم</p><p class="font-black text-slate-900" dir="ltr">${r.used}</p></div><div class="rounded-2xl bg-slate-50 border border-slate-200 p-2"><p class="text-[10px] font-bold text-slate-500">إجازات قادمة معتمدة</p><p class="font-black text-slate-900" dir="ltr">${r.scheduled || 0}</p></div></div>
+              ${r.perMonth ? `<p id="pl-rate" class="mt-3 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-900"><i class="fas fa-arrow-trend-up ml-1" aria-hidden="true"></i>يزيد رصيدك تلقائياً بمعدل <b class="hr-num">+${fm(r.perMonth)}</b> يوم كل شهر (${r.annualNow} يوماً في السنة)${r.monthEnd ? ` — رصيدك المتوقع في ${escapeHtml(r.monthEnd.date)}: <b dir="ltr">${fm(r.monthEnd.balance)}</b> يوم` : ''}${r.fifthAhead ? ` — يرتفع إلى 30 يوماً (2.5 يوم شهرياً) من <b dir="ltr">${escapeHtml(r.fifthDate)}</b>` : ''}.</p>` : ''}
+              ${(r.months || []).length ? `<details id="pl-months" class="mt-3"><summary class="cursor-pointer text-xs font-black text-slate-700">التفصيل الشهري منذ المباشرة (${window.hrMonthsAr(r.months.length)})</summary><div class="overflow-x-auto max-h-60 overflow-y-auto mt-2"><table class="w-full text-[11px] font-bold text-slate-700"><thead><tr class="text-slate-500"><th class="text-right font-extrabold">الشهر</th><th>استحقاق الشهر</th><th>المستخدم</th><th>الرصيد</th></tr></thead><tbody>${[...r.months].reverse().map(m => `<tr class="border-t border-slate-100"><td class="py-1.5 pl-3 font-extrabold">${escapeHtml(lbl(m.month))}</td><td class="px-2"><span class="hr-num">+${fm(m.accrued)}</span></td><td dir="ltr" class="px-2">${m.used || ''}</td><td dir="ltr" class="px-2 font-black ${m.cumulative < 0 ? 'text-red-700' : ''}">${fm(m.cumulative)}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
+              ${(r.errors || []).length ? `<p class="mt-2 text-[11px] font-bold text-amber-800">${escapeHtml(r.errors[0])}</p>` : ''}
+              <p class="mt-3 text-[10px] font-bold text-slate-400">حساب تلقائي من تاريخ مباشرتك حتى اليوم (المادة 109: 21 يوماً و30 بعد 5 سنوات خدمة، أو أعلى بحسب العقد) ناقص إجازاتك السنوية المعتمدة؛ وهو الرقم نفسه لدى الموارد البشرية.</p>`;
+        }
+        function renderPortalLeave(emp, reqs) {
+            const host = document.getElementById('portal-leave-card'); if (!host) return; if (!emp || emp.is_terminated) { host.classList.add('hidden'); return; }
+            host.innerHTML = `<div class="rounded-3xl border border-slate-200 bg-white p-4"><div class="flex items-center justify-between gap-2 mb-2"><h3 class="text-sm font-black text-slate-900"><i class="fas fa-umbrella-beach ml-1 text-sky-600" aria-hidden="true"></i>رصيد إجازتي السنوية</h3><span class="text-[10px] font-bold text-slate-500">حتى <b dir="ltr">${escapeHtml(HRIntegrity.today())}</b></span></div>${portalLeaveHtml(emp, reqs)}</div>`; host.classList.remove('hidden');
+        }
+        window.renderPortalLeave = renderPortalLeave;
 
         async function essRpc(fn, extra) {
             const { data, error } = await supabaseClient.rpc(fn, { p_token: portalState.token, p_last4: portalState.last4, ...(extra || {}) });
@@ -5534,7 +5578,7 @@ window.verifyBackupFile=async function(input) {
                 try {const ct=await essRpc('hr_portal_contracts');res.employee.contracts=ct.contracts;res.employee.contractMonths=ct.months;res.employee.contractsRequired=ct.required;res.employee.contractDataError='';}catch(err){res.employee.contracts=[];res.employee.contractsRequired=true;res.employee.contractDataError='تعذر تحميل العقود؛ الحسابات تحتاج مراجعة';}
                 applyPolicySettings(res.company?.policy_settings || {}); // سياسات المنشأة تنعكس على البوابة
                 renderPortalCompanyDocs(res.company?.policy_settings?.companyDocs);
-                try { renderPortalOffer(res.employee, res.company); renderPortalProfile(res.employee); renderPortalLoginCard(); } catch (_) {}
+                try { renderPortalOffer(res.employee, res.company); renderPortalProfile(res.employee); renderPortalLoginCard(); renderPortalLeave(res.employee, res.requests); } catch (_) {}
                 try { applySavedPlatformTheme(); } catch (_) {}   // ألوان المنشأة ومناسبتها في رابط الموظف أيضاً
                 document.getElementById('ask-fab')?.classList.remove('hidden');   // "اسألني" متاح للموظف من رابطه
                 (res.documents || []).forEach(d => { portalState.docs[d.doc_key] = portalState.docs[d.doc_key] || d; });
@@ -5609,6 +5653,7 @@ window.verifyBackupFile=async function(input) {
                 const punchHtml = punchBtn + (todayRec?.check_out ? '' : '<p id="ess-geo-status" class="text-[11px] font-bold mt-2 text-slate-500"></p>');
                 setTimeout(() => window.essCheckGeo?.(), 50);
                 box.innerHTML = `
+                    ${essCard('رصيد إجازتي السنوية', `<div id="ess-leave-body">${portalLeaveHtml(emp, reqs)}</div>`)}
                     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
                         ${essKpi('رصيد الإجازة السنوية', `${leave.errors?.length?'غير معتمد':leave.balance} يوم`, 'fa-umbrella-beach', 'bg-sky-50 text-sky-600')}
                         ${essKpi('طلبات قيد المراجعة', reqs.filter(r => r.status === 'pending').length, 'fa-hourglass-half', 'bg-amber-50 text-amber-600')}
@@ -7690,6 +7735,27 @@ window.verifyBackupFile=async function(input) {
             }
             return errors;
         }
+        // لون المرحلة الحالية: 60% تقدم مهام المرحلة + 40% اكتمال بيانات الموظف (الحقول والمستندات الإلزامية): أحمر ← برتقالي ← كهرماني ← أخضر فاتح، وأخضر عند اكتمال المرحلة
+        const HEALTH_BANDS = [
+            { max: 25, bg: '#dc2626', fg: '#ffffff', ring: 'rgba(220,38,38,.35)', label: 'متأخرة: تحتاج إجراء' },
+            { max: 50, bg: '#ea580c', fg: '#ffffff', ring: 'rgba(234,88,12,.35)', label: 'ناقصة' },
+            { max: 75, bg: '#f59e0b', fg: '#1f2937', ring: 'rgba(245,158,11,.4)', label: 'قيد الإنجاز' },
+            { max: 101, bg: '#84cc16', fg: '#1a2e05', ring: 'rgba(132,204,22,.4)', label: 'قريبة من الاكتمال' }
+        ];
+        const HEALTH_DONE = { bg: '#10b981', fg: '#ffffff', ring: 'rgba(16,185,129,.35)', label: 'مكتملة' };
+        const healthBand = score => HEALTH_BANDS.find(b => score < b.max) || HEALTH_BANDS[HEALTH_BANDS.length - 1];
+        window.hrHealthBand = healthBand;
+        function onboardingDataPct(emp) {
+            const r = onboardingReadiness(emp), keys = (policySettings.onboardingRequiredFields || ['name', 'nid', 'startDate', 'jobTitle', 'bank', 'iban']).filter(k => !(['bank', 'iban'].includes(k) && empPayMethod(emp) === 'cash')), docs = policySettings.onboardingRequiredDocs || [];
+            const total = keys.length + (r.docsLoaded ? docs.length : 0), miss = r.missing.length + (r.docsLoaded ? r.missingDocs.length : 0);
+            return total ? Math.max(0, Math.round(100 * (total - miss) / total)) : 100;
+        }
+        function stageHealth(emp, stage) {
+            const done = stageTasksDone(emp, stage), total = stage.tasks.length, taskPct = total ? Math.round(100 * done / total) : 100, dataPct = onboardingDataPct(emp), score = Math.round(taskPct * 0.6 + dataPct * 0.4);
+            const full = total > 0 && done === total, band = full ? HEALTH_DONE : healthBand(score);
+            return { done, total, taskPct, dataPct, score, full, bg: band.bg, fg: band.fg, ring: band.ring, label: band.label };
+        }
+        window.hrStageHealth = stageHealth;
         function onboardingReadiness(emp) {
             const labels = { name: 'الاسم', nid: 'الهوية', startDate: 'المباشرة', jobTitle: 'المسمى', bank: 'البنك', iban: 'الآيبان', workEmail: 'البريد الرسمي' };
             const keys = policySettings.onboardingRequiredFields || ['name', 'nid', 'startDate', 'jobTitle', 'bank', 'iban'];
@@ -8206,7 +8272,8 @@ window.verifyBackupFile=async function(input) {
                     const data = await response.json().catch(() => ({}));
                     if (!response.ok || !data.email || !data.password || !Number.isFinite(Date.parse(data.trial_ends_at))) {
                         const code = response.status === 429 ? 'TRIAL-LIMIT' : 'TRIAL-' + (response.status || 'SERVICE');
-                        throw new Error(response.status === 429 ? 'محاولات كثيرة؛ أعد المحاولة لاحقاً. المرجع: ' + code : 'تعذر تجهيز التجربة حالياً. تواصل مع الدعم. المرجع: ' + code);
+                        const ref = (data && data.ref) || code;
+                        throw new Error(data && data.error && response.status < 500 ? data.error + ' المرجع: ' + ref : response.status === 429 ? 'محاولات كثيرة؛ أعد المحاولة لاحقاً. المرجع: ' + code : 'تعذر تجهيز التجربة حالياً. تواصل مع الدعم. المرجع: ' + ref);
                     }
                     try { sessionStorage.removeItem('hr_trial_request'); } catch (_) {}
                     return data;
@@ -8247,12 +8314,13 @@ window.verifyBackupFile=async function(input) {
         };
         window.renderTrialBar = function () {
             const bar = document.getElementById('trial-bar'), comp = getActiveCompany(); if (!bar) return;
-            if (!comp?.trialEndsAt) { bar.classList.add('hidden'); return; }
+            if (!comp?.trialEndsAt) { bar.classList.add('hidden'); const x = document.getElementById('hr-trial-expired'); if (x) x.remove(); return; }
             const left = Math.ceil((new Date(comp.trialEndsAt) - Date.now()) / 864e5), expired = left <= 0;
             bar.classList.remove('hidden');
             bar.className = `mb-4 px-4 py-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold ${expired ? 'bg-red-50 text-red-700 border border-red-200' : left <= 3 ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-brand text-brand-ink'}`;
-            bar.innerHTML = `<span><i class="fas ${expired ? 'fa-lock' : 'fa-hourglass-half'} ml-1"></i>${expired ? 'انتهت التجربة المجانية — بياناتك محفوظة ومتاحة للقراءة، وتعود قابلة للتعديل بعد الترقية' : `تجربة مجانية — متبقٍ ${left} ${left === 1 ? 'يوم' : left === 2 ? 'يومان' : left <= 10 ? 'أيام' : 'يوماً'}`}</span>
-                <button onclick="window.openUpgrade()" class="px-4 py-1.5 rounded-full ${expired || left <= 3 ? 'bg-brand text-brand-ink' : 'bg-white text-slate-900'} text-[11px] font-black">ترقية الاشتراك</button>`;
+            bar.innerHTML = `<span><i class="fas ${expired ? 'fa-lock' : 'fa-hourglass-half'} ml-1"></i>${expired ? 'انتهت التجربة المجانية — توقفت المساحة التجريبية وبياناتك محفوظة وتعود فور الترقية' : `تجربة مجانية — متبقٍ ${left} ${left === 1 ? 'يوم' : left === 2 ? 'يومان' : left <= 10 ? 'أيام' : 'يوماً'}`}</span>
+                <span class="flex items-center gap-2">${expired ? '' : '<button type="button" onclick="window.openTrialLimits()" class="px-3 py-1.5 rounded-full border border-current text-[11px] font-black opacity-80">حدود التجربة</button>'}<button onclick="window.openUpgrade()" class="px-4 py-1.5 rounded-full ${expired || left <= 3 ? 'bg-brand text-brand-ink' : 'bg-white text-slate-900'} text-[11px] font-black">ترقية الاشتراك</button></span>`;
+            if (expired) { try { window.hrTrialExpired(); } catch (_) {} } else { const x = document.getElementById('hr-trial-expired'); if (x) x.remove(); }
         };
         window.openUpgrade = function () {
             const comp = getActiveCompany() || {}, msg = encodeURIComponent(`أرغب بترقية اشتراك منصة سعودي HR\nالمنشأة: ${comp.nameAr || ''}\nالحساب: ${currentUser?.email || ''}`);
@@ -8567,6 +8635,7 @@ window.verifyBackupFile=async function(input) {
                 const script = document.createElement('script');
                 const timer = setTimeout(() => reject(new Error('تعذر تحميل رمز البطاقة خلال الوقت المحدد؛ أعد المحاولة بعد التحقق من الاتصال')), 12000);
                 script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+                window.hrSriApply(script, script.src);
                 script.onload = () => { clearTimeout(timer); window.QRCode ? resolve() : reject(new Error('تعذر تجهيز رمز البطاقة')); };
                 script.onerror = () => { clearTimeout(timer); reject(new Error('تعذر تحميل رمز البطاقة؛ تحقق من الاتصال وأعد المحاولة')); };
                 document.head.appendChild(script);
@@ -9397,7 +9466,7 @@ window.verifyBackupFile=async function(input) {
             if (error) return window.showToast('تعذر الحذف: ' + error.message, 'error'); window.renderAskKnowledge(); window.showToast('تم حذف المرجع'); }); };
 
         // ---------- استخراج النص من الملفات ----------
-        const loadScriptOnce = src => new Promise((res, rej) => { if (document.querySelector(`script[src="${src}"]`)) return res(); const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('تعذر تحميل مكتبة القراءة')); document.head.appendChild(s); });
+        const loadScriptOnce = src => new Promise((res, rej) => { if (document.querySelector(`script[src="${src}"]`)) return res(); const s = document.createElement('script'); s.src = src; window.hrSriApply(s, src); s.onload = res; s.onerror = () => rej(new Error('تعذر تحميل مكتبة القراءة')); document.head.appendChild(s); });
         async function extractText(file) {
             const ext = (file.name.split('.').pop() || '').toLowerCase();
             if (['txt', 'md', 'csv', 'json'].includes(ext)) return file.text();
@@ -10458,7 +10527,7 @@ window.verifyBackupFile=async function(input) {
             const blockOf = h => { let el = h; while (el.parentElement && el.parentElement !== form && el.parentElement !== content) el = el.parentElement; return el; };
             if (form && form.firstElementChild) blocks.push({ el: form.firstElementChild, title: 'بيانات المنشأة', icon: 'fa-building' });
             const icons = { 'الأختام': 'fa-stamp', 'الحماية': 'fa-lock', 'مستندات': 'fa-folder-open', 'ألوان': 'fa-palette', 'أقسام': 'fa-table-columns', 'حجم': 'fa-up-right-and-down-left-from-center', 'الأوراق': 'fa-file-lines', 'هوية': 'fa-signature', 'النسخ': 'fa-cloud-arrow-down', 'الأقسام الإدارية': 'fa-sitemap' };
-            content.querySelectorAll('[data-set-title]').forEach(el => { if (!blocks.some(b => b.el === el)) blocks.push({ el, title: el.dataset.setTitle, icon: 'fa-sitemap', outside: true }); });
+            content.querySelectorAll('[data-set-title]').forEach(el => { if (!blocks.some(b => b.el === el)) blocks.push({ el, title: el.dataset.setTitle, icon: el.dataset.setIcon || 'fa-sitemap', outside: true }); });
             content.querySelectorAll('h3, h4').forEach(h => {
                 if (h.closest('[data-set-title]')) return;
                 const title = h.textContent.replace(/\s+/g, ' ').trim(); if (!title || /إعدادات المنشأة الحالية/.test(title)) return;
@@ -10482,6 +10551,7 @@ window.verifyBackupFile=async function(input) {
             // زر "إضافة منشأة جديدة" يظهر في قسم بيانات المنشأة فقط
             const nb = document.getElementById('comp-new-btn'); if (nb) nb.classList.toggle('hidden', settingsSection !== blocks[0]?.key);
             try { window.renderExtraSigners(); } catch (_) {}
+            try { const sc = document.getElementById('sec-center'); if (sc && sc.dataset.setSec === settingsSection && window.hrSecRender) window.hrSecRender(); } catch (_) {}
         }
         window.setSettingsSection = function (k) { settingsSection = k; buildSettingsNav(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
         window.buildSettingsNav = buildSettingsNav;
@@ -14583,6 +14653,8 @@ window.verifyBackupFile=async function(input) {
               Object.entries(bySec).forEach(([k, n]) => push('high', 'fa-circle-exclamation', `${n} عملية جديدة في ${secName[k] || k} بانتظار تحديد الحالة`, `window.switchView('${k}')`)); }
             { let last = ''; try { last = localStorage.getItem('lastBackup_' + (activeCompanyId || '')) || ''; } catch (_) {}
               if (!last || Date.now() - new Date(last) > 7 * 864e5) push('mid', 'fa-cloud-arrow-down', last ? 'مرّ أكثر من أسبوع على آخر نسخة احتياطية' : 'لم تُنشأ نسخة احتياطية للبيانات بعد', `window.switchView('settings')`); }
+            (window.hrSecAlerts || []).forEach(a => push(a.level, a.icon, a.text, 'window.goSecurity()'));
+            try { if (window.hrSecEnsure) window.hrSecEnsure(); } catch (_) {}
             const order = { high: 0, mid: 1, low: 2 };
             return alerts.sort((a, b) => order[a.level] - order[b.level]);
         }
@@ -15435,9 +15507,9 @@ window.verifyBackupFile=async function(input) {
                 tagsHtml += `<button onclick="event.stopPropagation(); window.toggleTagMenu(event, '${emp.id}')" class="inline-flex items-center justify-center w-6 h-5 rounded-md bg-slate-200 hover:bg-blue-600 hover:text-white text-slate-600 text-xs font-bold transition shadow-sm">+</button>`;
                 tr.innerHTML = `
                     <td class="p-4" onclick="event.stopPropagation()"><input type="checkbox" class="emp-select w-4 h-4 cursor-pointer" value="${emp.id}" ${window.bulkSelectedSet?.has(emp.id) ? 'checked' : ''} onchange="window.toggleEmpSelect('${emp.id}', this.checked)"></td>
-                    <td class="p-4"><div class="flex items-center gap-3"><button type="button" onclick="window.empPhotoClick(event, '${emp.id}')" aria-label="صورة ${escapeHtml(emp.name || '')} — اضغط لرفعها أو تغييرها" title="اضغط لرفع صورة الموظف" class="relative shrink-0 w-10 h-10 rounded-full bg-brand text-brand-ink flex items-center justify-center font-black focus:outline-none focus-visible:ring-2 focus-visible:ring-black"><span class="w-full h-full rounded-full overflow-hidden flex items-center justify-center">${window.empAvatarHtml(emp)}</span><span class="absolute -bottom-1 -left-1 w-[18px] h-[18px] rounded-full bg-white border border-slate-300 text-slate-700 flex items-center justify-center text-[8px] shadow" aria-hidden="true"><i class="fas fa-camera"></i></span></button><div><button type="button" data-emp-menu-btn="${emp.id}" aria-haspopup="menu" onclick="window.openEmpMenu(event, '${emp.id}')" title="قائمة التنفيذ" class="font-extrabold text-slate-900 text-sm text-right hover:underline underline-offset-4 decoration-dotted focus:outline-none focus-visible:ring-2 focus-visible:ring-black rounded">${escapeHtml(emp.name)} <i class="fas fa-caret-down text-[10px] text-slate-500"></i></button><div class="text-[11px] text-slate-500 font-bold">${emp.empNumber ? `<span class="font-mono text-slate-700 bg-slate-100 px-1.5 rounded" dir="ltr">${escapeHtml(emp.empNumber)}</span> · ` : ''}${escapeHtml(emp.jobTitle)} ${emp.specialty ? ' - '+escapeHtml(emp.specialty) : ''}</div>${emp.isUnderNotice ? `<div class="mt-1"><span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-black" data-notice-badge>إنهاء مجدول — آخر يوم عمل ${escapeHtml(String(emp.clearanceData?.lastDay || '').slice(0, 10))}</span></div>` : ''}</div></div></td>
+                    <td class="p-4"><div class="flex items-center gap-3"><button type="button" onclick="window.empPhotoClick(event, '${emp.id}')" aria-label="صورة ${escapeHtml(emp.name || '')} — اضغط لرفعها أو تغييرها" title="اضغط لرفع صورة الموظف" class="relative shrink-0 w-10 h-10 rounded-full bg-brand text-brand-ink flex items-center justify-center font-black focus:outline-none focus-visible:ring-2 focus-visible:ring-black"><span class="w-full h-full rounded-full overflow-hidden flex items-center justify-center">${window.empAvatarHtml(emp)}</span><span class="absolute -bottom-1 -left-1 w-[18px] h-[18px] rounded-full bg-white border border-slate-300 text-slate-700 flex items-center justify-center text-[8px] shadow" aria-hidden="true"><i class="fas fa-camera"></i></span></button><div><button type="button" data-emp-menu-btn="${emp.id}" aria-haspopup="menu" onclick="window.openEmpMenu(event, '${emp.id}')" title="قائمة التنفيذ" class="font-extrabold text-slate-900 text-sm text-right hover:underline underline-offset-4 decoration-dotted focus:outline-none focus-visible:ring-2 focus-visible:ring-black rounded">${escapeHtml(emp.name)} <i class="fas fa-caret-down text-[10px] text-slate-500"></i></button><div class="text-[11px] text-slate-500 font-bold">${emp.empNumber ? `<span class="font-mono text-slate-700 bg-slate-100 px-1.5 rounded" dir="ltr">${escapeHtml(emp.empNumber)}</span> · ` : ''}${escapeHtml(emp.jobTitle)} ${emp.specialty ? ' - '+escapeHtml(emp.specialty) : ''}</div>${window.hrLeavePill ? window.hrLeavePill(emp) : ''}${emp.isUnderNotice ? `<div class="mt-1"><span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-black" data-notice-badge>إنهاء مجدول — آخر يوم عمل ${escapeHtml(String(emp.clearanceData?.lastDay || '').slice(0, 10))}</span></div>` : ''}</div></div></td>
                     <td class="p-4 font-mono font-bold text-xs">${escapeHtml(emp.nid)}</td>
-                    <td class="p-4"><span class="px-3 py-1 rounded-full text-xs font-black" style="background:${stageColor(emp.currentStage)};color:${readableInk(stageColor(emp.currentStage))}">المرحلة ${Number(emp.currentStage) || 0}</span></td>
+                    <td class="p-4">${(() => { const st = stagesData.find(x => x.id === Number(emp.currentStage)); if (!st) return `<span class="px-3 py-1 rounded-full text-xs font-black" style="background:${stageColor(emp.currentStage)};color:${readableInk(stageColor(emp.currentStage))}">المرحلة ${Number(emp.currentStage) || 0}</span>`; const h = stageHealth(emp, st); return `<span class="px-3 py-1 rounded-full text-xs font-black" data-stage-badge="${st.id}" data-health="${h.score}" style="background:${h.bg};color:${h.fg}" title="${escapeHtml(h.label)} — الجاهزية ${h.score}% (المهام ${h.done}/${h.total}، البيانات ${h.dataPct}%)">المرحلة ${st.id}</span>`; })()}</td>
                     <td class="p-4"><div class="flex flex-wrap gap-1 items-center">${tagsHtml}</div></td>
                     <td class="p-4"><div class="flex items-center gap-2"><div class="w-full bg-slate-200 rounded-full h-2"><div class="h-2 rounded-full timeline-gradient" style="width: ${Number(emp.progress) || 0}%"></div></div><span class="text-xs font-black text-slate-800">${Number(emp.progress) || 0}%</span></div></td>
                     <td class="p-4 text-center"><button onclick="window.openEmployeeDetails('${emp.id}')" class="text-xs font-extrabold text-black px-4 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-full shadow-sm">إدارة <i class="fas fa-chevron-left text-[10px] ml-1"></i></button></td>
@@ -16369,15 +16441,19 @@ window.verifyBackupFile=async function(input) {
         function renderTimelineNodes(emp) {
             const container = document.getElementById('timeline-nodes-container');
             const bar = document.getElementById('d-timeline-bar');
-            const { progress } = computeOnboardingProgress(emp);
+            const { progress, currentStage } = computeOnboardingProgress(emp);
+            const curStage = stagesData.find(s => s.id === Number(currentStage)), curH = curStage ? stageHealth(emp, curStage) : null;
             const txt = document.getElementById('d-progress-text');
-            if (txt) txt.innerText = `${progress}% من مهام القائمة`;
+            if (txt) txt.innerText = `${progress}% من مهام القائمة` + (curH ? ` · جاهزية البيانات ${curH.dataPct}%` : '');
             renderOnboardingReadiness(emp);
-            if (bar) bar.style.width = `${progress}%`;
+            if (bar) { bar.style.width = `${progress}%`; if (curH) { bar.style.backgroundImage = 'none'; bar.style.backgroundColor = curH.bg; } }
             updateTasksCertButton(emp);
             if (!container) return;
             container.innerHTML = '';
+            { let lg = document.getElementById('d-stage-legend'); if (!lg) { lg = document.createElement('div'); lg.id = 'd-stage-legend'; lg.className = 'mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-slate-500'; container.insertAdjacentElement('afterend', lg); }
+              lg.innerHTML = '<span>لون المرحلة الحالية = 60% تقدم مهامها + 40% اكتمال بيانات الموظف:</span>' + HEALTH_BANDS.map(b => `<span class="inline-flex items-center gap-1"><i class="inline-block w-2.5 h-2.5 rounded-full" style="background:${b.bg}"></i>${b.label}</span>`).join('') + `<span class="inline-flex items-center gap-1"><i class="inline-block w-2.5 h-2.5 rounded-full" style="background:${HEALTH_DONE.bg}"></i>${HEALTH_DONE.label}</span>`; }
 
+            const isCurLabel = st => !!curH && st.id === Number(currentStage) && stageTasksDone(emp, st) < st.tasks.length;
             stagesData.forEach(stage => {
                 const doneN = stageTasksDone(emp, stage);
                 const full = doneN === stage.tasks.length;
@@ -16394,8 +16470,10 @@ window.verifyBackupFile=async function(input) {
                 node.setAttribute('role', 'button');
                 node.setAttribute('tabindex', '0');
                 node.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-                node.setAttribute('aria-label', `المرحلة ${stage.id}: ${stage.title} — أُنجز ${doneN} من ${stage.tasks.length}`);
-                node.innerHTML = `<div class="${circleClass} group-hover:scale-110">${full ? '\u2713' : stage.id}</div>
+                node.setAttribute('aria-label', `المرحلة ${stage.id}: ${stage.title} — أُنجز ${doneN} من ${stage.tasks.length}` + (isCurLabel(stage) ? ` — المرحلة الحالية: ${curH.label}، الجاهزية ${curH.score}% (البيانات ${curH.dataPct}%)` : ''));
+                const isCur = !full && curH && stage.id === Number(currentStage), hh = isCur ? curH : null;
+                node.dataset.stage = String(stage.id); if (hh) { node.dataset.health = String(hh.score); }
+                node.innerHTML = `<div class="${circleClass} group-hover:scale-110" ${hh ? `data-current="1" data-health="${hh.score}" style="background:${hh.bg};color:${hh.fg};border-color:${hh.bg};box-shadow:0 0 0 4px ${hh.ring}" title="${escapeHtml(hh.label)} — الجاهزية ${hh.score}% (المهام ${hh.done}/${hh.total}، البيانات ${hh.dataPct}%)"` : ''}>${full ? '\u2713' : stage.id}</div>
                     <div class="text-[11px] font-black mt-2 ${started ? 'text-slate-900' : 'text-slate-400'} group-hover:text-black">${escapeHtml(stage.title)}</div>
                     <div class="text-[10px] font-bold mt-0.5 ${full ? 'text-emerald-600' : 'text-slate-400'}">${doneN}/${stage.tasks.length}</div>`;
                 node.addEventListener('click', () => window.openStageTasks(stage.id));
@@ -19751,24 +19829,28 @@ window.HRInsurance = (function () {
     const hasContracts = (HRContracts.rows(e) || []).length > 0 || !!e.contractsRequired, comp = (typeof getActiveCompany === 'function' && getActiveCompany()) || {}, companyDays = Number(comp.annual_leave_days ?? comp.annualLeaveDays ?? 21) || 21;
     const fifth = HRIntegrity.anniversary(start, 5); let gapDays = 0;
     const yr = y => years[y] || (years[y] = { year: y, annual: 0, accrued: 0, used: 0, scheduled: 0 });
+    const M = {}, mo = k => M[k] || (M[k] = { accrued: 0, used: 0, scheduled: 0 }); let lastAnnual = 0;
     for (let d = start; d <= asOf; d = new Date(+d + D)) {
       const y = d.getUTCFullYear(), s = iso(d); let annual;
       if (hasContracts) { const c = HRContracts.active(e, s); if (!c) { gapDays++; continue; } annual = HRContracts.policy(c, e, s).annual; }
-      else annual = Math.max(d >= fifth ? 30 : 21, companyDays);
-      const Y = yr(y); Y.accrued += annual / (leap(y) ? 366 : 365); Y.annual = Math.max(Y.annual, annual);
+      else annual = Math.max(d >= fifth ? 30 : 21, companyDays, Number(e.annualLeaveDays ?? e.annual_leave_days) || 0);
+      const Y = yr(y); Y.accrued += annual / (leap(y) ? 366 : 365); Y.annual = Math.max(Y.annual, annual); mo(s.slice(0, 7)).accrued += annual / (leap(y) ? 366 : 365); lastAnnual = annual;
     }
     if (gapDays) errors.push('فجوة في سجل العقود (' + gapDays + ' يوماً بلا عقد ساري لم يُحتسب استحقاقها)');
     const days = HRIntegrity.requestDays(requests || [], e.id, errors); let used = 0, scheduled = 0; const end = opts.projectTo ? ymd(opts.projectTo) : asOf;
     for (const [on, r] of days) { if (!/سنوي/.test(r.sub_type || '')) continue; const d = ymd(on); if (!d || d < start) continue;
       if (hasContracts) { const c = HRContracts.active(e, on); if (c && !HRContracts.policy(c, e, on).annual) errors.push('إجازة سنوية خارج استحقاق العقد (' + on + ')'); }
-      if (d <= asOf) { used++; yr(d.getUTCFullYear()).used++; } else if (d <= end) { scheduled++; yr(d.getUTCFullYear()).scheduled++; } }
+      if (d <= asOf) { used++; yr(d.getUTCFullYear()).used++; mo(on.slice(0, 7)).used++; } else if (d <= end) { scheduled++; yr(d.getUTCFullYear()).scheduled++; mo(on.slice(0, 7)).scheduled++; } }
     let run = 0; const rows = Object.values(years).sort((a, b) => a.year - b.year).map(Y => { run += Y.accrued - Y.used; return { ...Y, accrued: money(Y.accrued), cumulative: money(run) }; });
     const accrued = money(Object.values(years).reduce((s, Y) => s + Y.accrued, 0));
-    return { errors: [...new Set(errors)], years: rows, accrued, used, scheduled, balance: money(accrued - used), perDay: null };
+    let cum = 0; const months = Object.keys(M).sort().map(k => { cum += M[k].accrued - M[k].used; return { month: k, accrued: money(M[k].accrued), used: M[k].used, scheduled: M[k].scheduled, cumulative: money(cum) }; });
+    return { errors: [...new Set(errors)], years: rows, months, annualNow: lastAnnual, perMonth: money(lastAnnual / 12), accrued, used, scheduled, balance: money(accrued - used), perDay: null };
   }
   function compute(e, requests) {
     const today = todayStr(), last = lastDayOf(e), ended = last && last <= today, asOf = ended ? last : today, main = ledger(e, requests, asOf, { projectTo: last || null });
     main.asOf = asOf; main.today = today; main.lastDay = last; main.ended = !!ended; main.underNotice = !!(last && last > today);
+    { const tD = ymd(asOf), st0 = ymd(e.startDate || e.start_date); if (tD && !main.notStarted) { const mEnd = iso(new Date(Date.UTC(tD.getUTCFullYear(), tD.getUTCMonth() + 1, 0))), cap = last && last < mEnd ? last : mEnd; if (cap > asOf) main.monthEnd = { date: cap, balance: ledger(e, requests, cap).balance }; }
+      if (st0) { const f = HRIntegrity.anniversary(st0, 5); main.fifthDate = iso(f); main.fifthAhead = !!tD && tD < f && (main.annualNow || 0) < 30; } }
     if (main.underNotice) { const p = ledger(e, requests, last); main.projected = { balance: p.balance, accrued: p.accrued, used: p.used }; }
     const start = ymd(e.startDate || e.start_date); if (start) { const t = ymd(asOf); main.serviceYears = t && t >= start ? money((t - start) / D / 365.25) : 0; }
     // التسوية مع الرصيد المرحّل المعتمد (إن وُجد): معلومة للمراجعة لا تغيّر الحساب
@@ -19779,19 +19861,32 @@ window.HRInsurance = (function () {
   window.HRLeaveLedger = { ledger, compute, lastDayOf };
   // ---- البطاقة في ملف الموظف ----
   const fmt = n => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const MLF = new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const mlabel = m => /^\d{4}-\d{2}$/.test(m || '') ? MLF.format(new Date(Date.UTC(+m.slice(0, 4), +m.slice(5, 7) - 1, 1))) : String(m || '');
+  window.hrLeaveMonthLabel = mlabel;
+  window.hrMonthsAr = n => n === 1 ? 'شهر' : n === 2 ? 'شهران' : n >= 3 && n <= 10 ? n + ' أشهر' : n + ' شهراً';
+  // رصيد الموظف في القوائم: مع تخزين مؤقت (اليوم + عدد الطلبات + العقود) كي لا يُعاد حساب مئات الموظفين عند كل رسم
+  const memo = new Map(); let reqAsked = false;
+  window.hrLeaveBalanceOf = e => { try { if (typeof hrReqLoaded !== 'undefined' && hrReqLoaded !== true) { if (!reqAsked && typeof window.loadHrRequests === 'function') { reqAsked = true; Promise.resolve(window.loadHrRequests()).then(() => { try { renderTable(); } catch (_) {} }).catch(() => {}); } return null; }
+    const reqs = typeof hrRequests !== 'undefined' ? hrRequests : [], key = [e.id, todayStr(), reqs.length, (HRContracts.rows(e) || []).length, e.startDate || e.start_date, (e.leaveOpeningBalance || {}).days, lastDayOf(e)].join('|'); if (memo.has(key)) return memo.get(key); if (memo.size > 800) memo.clear();
+    const r = compute(e, reqs), v = (r.errors || []).some(x => /المباشرة/.test(x)) || r.notStarted ? null : r.balance; memo.set(key, v); return v; } catch (_) { return null; } };
+  window.hrLeavePill = e => { const v = window.hrLeaveBalanceOf(e); if (v === null || v === undefined) return ''; return `<div class="mt-1"><span class="hr-leave-pill${v < 0 ? ' neg' : ''}" data-leave="${v}" title="رصيد الإجازة السنوية المتاح اليوم (استحقاق تلقائي من تاريخ المباشرة)"><i class="fas fa-umbrella-beach" aria-hidden="true"></i>إجازة ${fmt(v)} يوم</span></div>`; };
   const STATE = window.hrLeaveCard = { empId: null, asOf: null, timer: null, todayFn: null };
   async function ensureRequests() { try { if (typeof hrReqLoaded !== 'undefined' && hrReqLoaded !== true && typeof window.loadHrRequests === 'function') await window.loadHrRequests(); } catch (_) {} }
   function render() {
     const card = q$('d-leave-card'); if (!card) return; const e = employees.find(x => x.id === STATE.empId); if (!e) { card.remove(); return; }
     const reqs = typeof hrRequests !== 'undefined' ? hrRequests : [], missing = typeof hrReqLoaded !== 'undefined' && hrReqLoaded === 'missing', r = compute(e, reqs); STATE.asOf = r.today;
+    { const chip = q$('d-leave-chip'); if (chip) { const ok = !r.notStarted && !(r.errors || []).some(x => /المباشرة/.test(x)); chip.classList.toggle('hidden', !ok); if (ok) { chip.textContent = 'رصيد الإجازة: ' + fmt(r.balance) + ' يوم'; chip.className = 'px-3 py-0.5 rounded-full text-xs font-extrabold ' + (r.balance < 0 ? 'bg-red-100 text-red-800' : 'bg-sky-100 text-sky-800'); } } }
     const tone = r.balance < 0 ? 'text-red-700' : 'text-emerald-700', sub = r.ended ? `حتى آخر يوم عمل <b dir="ltr">${E(r.lastDay)}</b>` : (r.underNotice ? `حتى اليوم <b dir="ltr">${E(r.today)}</b> · آخر يوم عمل <b dir="ltr">${E(r.lastDay)}</b>` : `حتى اليوم <b dir="ltr">${E(r.today)}</b> (على رأس العمل)`);
     const rows = r.years.map(y => `<tr class="border-t border-slate-100"><td class="py-1.5 pl-3 font-extrabold" dir="ltr">${y.year}</td><td dir="ltr" class="px-2">${y.annual}</td><td dir="ltr" class="px-2">${fmt(y.accrued)}</td><td dir="ltr" class="px-2">${y.used}</td>${r.underNotice ? `<td dir="ltr" class="px-2">${y.scheduled || ''}</td>` : ''}<td dir="ltr" class="px-2 font-black ${y.cumulative < 0 ? 'text-red-700' : ''}">${fmt(y.cumulative)}</td></tr>`).join('');
     const kpi = (l, v, c) => `<div class="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2"><p class="text-[10px] font-bold text-slate-500">${l}</p><p class="text-base font-black ${c || 'text-slate-900'}" dir="ltr">${v}</p></div>`;
     card.innerHTML = `<div class="flex flex-wrap items-center justify-between gap-2 mb-3"><h3 class="text-sm font-black text-slate-900"><i class="fas fa-umbrella-beach ml-1 text-sky-600"></i>رصيد الإجازة السنوية</h3><span class="text-[11px] font-bold text-slate-500">${sub}</span></div>
       ${r.errors.some(x => /المباشرة/.test(x)) ? `<p class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs font-bold text-amber-900">${E(r.errors[0])} — سجّلها في بيانات الموظف ليبدأ الحساب.</p>` : r.notStarted ? '<p class="rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs font-bold text-slate-600">لم يباشر الموظف بعد؛ يبدأ الاستحقاق من تاريخ المباشرة.</p>' : `
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3" id="d-leave-kpis">${kpi('الرصيد المتبقي (يوم)', fmt(r.balance), tone)}${kpi('المستحق منذ المباشرة', fmt(r.accrued))}${kpi('المستخدم (إجازة سنوية معتمدة)', r.used)}${kpi(r.underNotice ? 'مجدول حتى آخر يوم عمل' : 'سنوات الخدمة', r.underNotice ? r.scheduled : fmt(r.serviceYears))}</div>
+      ${r.perMonth && !r.notStarted ? `<p id="d-leave-rate" class="mb-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-900"><i class="fas fa-arrow-trend-up ml-1" aria-hidden="true"></i>يزيد الرصيد تلقائياً بمعدل <b class="hr-num">+${fmt(r.perMonth)}</b> يوم كل شهر (${r.annualNow} يوماً في السنة)${r.monthEnd ? ` — المتوقع في ${E(r.monthEnd.date)}: <b dir="ltr">${fmt(r.monthEnd.balance)}</b> يوم` : ''}${r.fifthAhead ? ` — يرتفع الاستحقاق إلى 30 يوماً (2.5 يوم شهرياً) من <b dir="ltr">${E(r.fifthDate)}</b>` : ''}.</p>` : ''}
       ${r.projected ? `<p class="mb-2 rounded-xl bg-sky-50 border border-sky-200 px-3 py-2 text-xs font-bold text-sky-900">الرصيد المتوقع في آخر يوم عمل (${E(r.lastDay)}): <b dir="ltr">${fmt(r.projected.balance)}</b> يوم (مستحق ${fmt(r.projected.accrued)} − مستخدم ومجدول ${r.projected.used}).</p>` : ''}
-      <div class="overflow-x-auto"><table class="w-full text-[11px] font-bold text-slate-700"><thead><tr class="text-slate-500"><th class="text-right font-extrabold">السنة</th><th>الاستحقاق السنوي</th><th>المستحق</th><th>المستخدم</th>${r.underNotice ? '<th>مجدول</th>' : ''}<th>الرصيد التراكمي</th></tr></thead><tbody>${rows}</tbody></table></div>`}
+      <div class="overflow-x-auto"><table class="w-full text-[11px] font-bold text-slate-700"><thead><tr class="text-slate-500"><th class="text-right font-extrabold">السنة</th><th>الاستحقاق السنوي</th><th>المستحق</th><th>المستخدم</th>${r.underNotice ? '<th>مجدول</th>' : ''}<th>الرصيد التراكمي</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${(r.months || []).length ? `<details id="d-leave-months" class="mt-3"><summary class="cursor-pointer text-xs font-black text-slate-700">التفصيل الشهري منذ المباشرة (${window.hrMonthsAr(r.months.length)})</summary><div class="overflow-x-auto max-h-64 overflow-y-auto mt-2"><table class="w-full text-[11px] font-bold text-slate-700"><thead><tr class="text-slate-500"><th class="text-right font-extrabold">الشهر</th><th>استحقاق الشهر</th><th>المستخدم</th><th>الرصيد في نهاية الشهر</th></tr></thead><tbody>${[...r.months].reverse().map(m => `<tr class="border-t border-slate-100"><td class="py-1.5 pl-3 font-extrabold">${E(mlabel(m.month))}</td><td class="px-2"><span class="hr-num">+${fmt(m.accrued)}</span></td><td dir="ltr" class="px-2">${m.used || ''}</td><td dir="ltr" class="px-2 font-black ${m.cumulative < 0 ? 'text-red-700' : ''}">${fmt(m.cumulative)}</td></tr>`).join('')}</tbody></table></div></details>` : ''}`}
       ${r.opening ? `<p class="mt-2 text-[11px] font-bold text-slate-600">رصيد مرحّل معتمد لسنة ${r.opening.year}: <b dir="ltr">${fmt(r.opening.days)}</b> يوم (للمسير) — الحساب التراكمي قبلها <b dir="ltr">${fmt(r.opening.ledgerBefore)}</b>، الفرق <b dir="ltr">${r.opening.diff > 0 ? '+' : ''}${fmt(r.opening.diff)}</b>.</p>` : ''}
       ${r.errors.filter(x => !/المباشرة/.test(x)).map(x => `<p class="mt-2 text-[11px] font-bold text-amber-800"><i class="fas fa-triangle-exclamation ml-1"></i>${E(x)}</p>`).join('')}
       ${missing ? '<p class="mt-2 text-[11px] font-bold text-amber-800">تعذر تحميل طلبات الإجازة؛ المستخدم قد يكون ناقصاً.</p>' : ''}
@@ -19800,7 +19895,7 @@ window.HRInsurance = (function () {
   async function init(empId) {
     const panel = q$('d-ops-panel'); if (!panel || !empId) return; let card = q$('d-leave-card');
     if (!card) { card = document.createElement('div'); card.id = 'd-leave-card'; card.className = 'bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80'; card.setAttribute('aria-live', 'polite'); panel.parentNode.insertBefore(card, q$('d-kpi-card') || panel); }
-    STATE.empId = empId; card.innerHTML = '<p class="text-xs font-bold text-slate-400"><i class="fas fa-spinner fa-spin ml-1"></i>جاري حساب رصيد الإجازة…</p>';
+    STATE.empId = empId; { const chip = q$('d-leave-chip'); if (chip) chip.classList.add('hidden'); } card.innerHTML = '<p class="text-xs font-bold text-slate-400"><i class="fas fa-spinner fa-spin ml-1"></i>جاري حساب رصيد الإجازة…</p>';
     await ensureRequests(); if (STATE.empId !== empId) return; render();
     clearInterval(STATE.timer); STATE.timer = setInterval(() => { try { if (!q$('d-leave-card') || !q$('details-modal') || q$('details-modal').classList.contains('hidden')) { clearInterval(STATE.timer); return; } if (todayStr() !== STATE.asOf) render(); } catch (_) {} }, 60000);
   }
@@ -20429,6 +20524,167 @@ window.HRInsurance = (function () {
   let pending = false; const run = () => { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; try { scan(); } catch (_) {} }); };
   new MutationObserver(muts => { if (muts.some(m => m.addedNodes.length || m.type === 'attributes')) run(); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   run();
+})();
+</script>
+
+<script id="hr-security">
+/* الأمان: (1) التحقق بخطوتين TOTP عند الدخول لمن فعّله، (2) قسم «الأمان» في الإعدادات: تفعيل/إيقاف، الخروج من كل الأجهزة، الأحداث الأمنية،
+   (3) تنبيهات الجرس: قفل محاولات الدخول لبوابة موظف خلال 7 أيام، وتذكير أصحاب الصلاحيات المالية بتفعيل الخطوتين.
+   الإلزام على الخادم يأتي من migration_security_05_mfa_enforcement.sql (سياسات RLS تقييدية لمن فعّل العامل ولم يُكمل التحدي). */
+(function () {
+  'use strict';
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const q$ = id => document.getElementById(id), toast = (m, t) => { try { window.showToast(m, t || 'success'); } catch (_) {} };
+  const mfa = () => (typeof supabaseClient !== 'undefined' && supabaseClient.auth && supabaseClient.auth.mfa) || null;
+  const toLatin = s => String(s || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+  const FIN = ['owner', 'admin', 'hr', 'accountant'], ST = { factors: null, events: null, loadedAt: 0, ensuring: false };
+  window.hrSecReload = () => location.reload();
+  async function signOutNow(scope) { try { await supabaseClient.auth.signOut(scope ? { scope } : undefined); } catch (_) {} try { sessionStorage.clear(); } catch (_) {} window.hrSecReload(); }
+  const role = () => (window.hrViewerGuard && window.hrViewerGuard.role) || null;
+
+  // ---------- بوابة الدخول ----------
+  function gatePrompt() {
+    return new Promise(resolve => {
+      const old = q$('hr-mfa-gate'); if (old) old.remove();
+      const box = document.createElement('div'); box.id = 'hr-mfa-gate'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'hr-mfa-title');
+      box.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,23,42,.78)';
+      box.innerHTML = `<div dir="rtl" style="background:#fff;border-radius:24px;padding:24px;width:100%;max-width:380px;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.4)">
+        <div style="width:56px;height:56px;margin:0 auto 12px;border-radius:18px;background:#ecfdf5;color:#047857;display:flex;align-items:center;justify-content:center;font-size:22px"><i class="fas fa-shield-halved" aria-hidden="true"></i></div>
+        <h2 id="hr-mfa-title" style="font-size:18px;font-weight:900;color:#0f172a">التحقق بخطوتين</h2>
+        <p style="font-size:12px;font-weight:700;color:#64748b;margin:6px 0 16px">أدخل الرمز المكوّن من 6 أرقام من تطبيق المصادقة (Google Authenticator أو Microsoft Authenticator)</p>
+        <input id="hr-mfa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" dir="ltr" aria-label="رمز التحقق" placeholder="••••••" style="width:100%;text-align:center;font-size:26px;letter-spacing:.4em;font-weight:900;border:2px solid #e2e8f0;border-radius:16px;padding:10px">
+        <p id="hr-mfa-err" class="hidden" role="alert" style="font-size:12px;font-weight:800;color:#dc2626;margin-top:8px"></p>
+        <button id="hr-mfa-ok" type="button" style="width:100%;margin-top:16px;padding:12px;border-radius:16px;background:#0f172a;color:#fff;font-weight:800;font-size:14px">تحقق ومتابعة</button>
+        <button id="hr-mfa-out" type="button" style="width:100%;margin-top:8px;padding:10px;font-size:12px;font-weight:700;color:#64748b">تسجيل الخروج</button></div>`;
+      document.body.appendChild(box);
+      const inp = q$('hr-mfa-code'); let fails = 0, busy = false; setTimeout(() => { try { inp.focus(); } catch (_) {} }, 50);
+      const err = m => { const e = q$('hr-mfa-err'); if (e) { e.textContent = m; e.classList.remove('hidden'); } };
+      const verify = async () => {
+        if (busy) return; const code = toLatin(inp.value).replace(/\D/g, '').slice(0, 6); if (code.length !== 6) return err('أدخل 6 أرقام');
+        busy = true; q$('hr-mfa-ok').disabled = true;
+        try {
+          const m = mfa(), { data: fl, error: e1 } = await m.listFactors(); if (e1) throw e1;
+          const f = ((fl && fl.totp) || []).find(x => x.status === 'verified'); if (!f) throw new Error('no-factor');
+          const { data: ch, error: e2 } = await m.challenge({ factorId: f.id }); if (e2) throw e2;
+          const { error: e3 } = await m.verify({ factorId: f.id, challengeId: ch.id, code }); if (e3) throw e3;
+          box.remove(); resolve(true);
+        } catch (_) { fails++; inp.value = ''; err(fails >= 5 ? 'محاولات كثيرة؛ سيتم تسجيل خروجك' : 'الرمز غير صحيح أو منتهٍ؛ أعد المحاولة'); if (fails >= 5) setTimeout(() => signOutNow(), 1200); }
+        finally { busy = false; const b = q$('hr-mfa-ok'); if (b) b.disabled = false; }
+      };
+      q$('hr-mfa-ok').onclick = verify; q$('hr-mfa-out').onclick = () => signOutNow();
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') verify(); });
+      inp.addEventListener('input', () => { inp.value = toLatin(inp.value).replace(/\D/g, '').slice(0, 6); if (inp.value.length === 6) verify(); });
+    });
+  }
+  // يعيد true للمتابعة. لا يوقف الدخول إن كانت الخدمة غير متاحة أصلاً (لا عامل مفعّل = لا يوجد ما يُتحدّى)
+  window.hrMfaGate = async function () {
+    try { const m = mfa(); if (!m || !m.getAuthenticatorAssuranceLevel) return true;
+      const { data: a, error } = await m.getAuthenticatorAssuranceLevel(); if (error || !a) return true;
+      if (a.currentLevel === 'aal2' || a.nextLevel !== 'aal2') return true;
+      return await gatePrompt();
+    } catch (_) { return true; }
+  };
+
+  // ---------- البيانات ----------
+  async function loadFactors() { const m = mfa(); if (!m) { ST.factors = null; return null; } try { const { data, error } = await m.listFactors(); if (error) throw error; ST.factors = ((data && data.totp) || []).filter(f => f.status === 'verified'); return ST.factors; } catch (_) { ST.factors = null; return null; } }
+  async function loadEvents() {
+    ST.events = null; if (!FIN.includes(role()) || typeof activeCompanyId === 'undefined' || !activeCompanyId) return null;
+    try { const { data, error } = await supabaseClient.from('hr_audit_events').select('id,row_id,action,occurred_at,after_data').eq('company_id', activeCompanyId).eq('table_name', 'security').order('occurred_at', { ascending: false }).limit(30); if (error) throw error; ST.events = data || []; } catch (_) { ST.events = null; }
+    return ST.events;
+  }
+  const evLabel = ev => { const emp = (typeof employees !== 'undefined' ? employees : []).find(e => e.id === ev.row_id), nm = (emp && emp.name) || 'موظف', d = ev.after_data || {};
+    if (ev.action === 'PORTAL_PIN_LOCK') return `قُفل دخول بوابة ${nm} لمدة ${d.minutes || 15} دقيقة بعد محاولات خاطئة لآخر 4 أرقام من الهوية` + (Number(d.lock_count) > 1 ? ` (تكرر ${d.lock_count} مرات)` : '');
+    if (ev.action === 'PORTAL_LOGIN_LOCK') return `قُفل دخول بوابة ${nm} بالبريد وكلمة المرور لمدة ${d.minutes || 15} دقيقة بعد محاولات خاطئة`;
+    return ev.action; };
+  const fmtT = t => { try { return new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Riyadh' }).format(new Date(t)); } catch (_) { return String(t); } };
+  const dismissed = () => { try { return Number(localStorage.getItem('hr_mfa_nag_until') || 0) > Date.now(); } catch (_) { return false; } };
+
+  // ---------- قسم الأمان في الإعدادات ----------
+  const card = (icon, title, body, tone) => `<section class="rounded-2xl border border-slate-200 p-4"><h3 class="text-sm font-black text-slate-900 mb-3"><i class="fas ${icon} ml-1 ${tone || 'text-emerald-600'}" aria-hidden="true"></i>${title}</h3>${body}</section>`;
+  function html2fa() {
+    const f = ST.factors;
+    if (f === null) return card('fa-shield-halved', 'التحقق بخطوتين', '<p class="text-xs font-bold text-amber-800">تعذّر قراءة حالة التحقق بخطوتين. تأكد أن «Multi-Factor» (TOTP) مفعّل في إعدادات Authentication في Supabase.</p>', 'text-amber-600');
+    if (f.length) return card('fa-shield-halved', 'التحقق بخطوتين', `<p class="text-xs font-extrabold text-emerald-700 mb-2"><i class="fas fa-circle-check ml-1" aria-hidden="true"></i>مفعّل على حسابك</p>${f.map(x => `<div class="flex items-center justify-between gap-2 rounded-xl bg-slate-50 border border-slate-200 p-3 mb-2"><div class="min-w-0"><p class="text-xs font-black text-slate-800 truncate">${E(x.friendly_name || 'تطبيق المصادقة')}</p><p class="text-[11px] font-bold text-slate-500">أُضيف ${E(fmtT(x.created_at))}</p></div><button type="button" onclick="window.hrSecDisable('${E(x.id)}')" class="shrink-0 px-3 py-1.5 rounded-full border border-red-200 text-red-700 text-[11px] font-extrabold hover:bg-red-50">إيقاف</button></div>`).join('')}<p class="text-[11px] font-bold text-slate-500">عند فقدان الهاتف تواصل مع الدعم لإعادة التعيين؛ لا توجد رموز استرداد.</p>`);
+    return card('fa-shield-halved', 'التحقق بخطوتين', `<p class="text-xs font-bold text-slate-600 mb-3">يضيف رمزاً من هاتفك إلى كلمة المرور، فلا يكفي تسريب كلمة المرور لدخول حسابك. موصى به لحسابات المالك والمدير والموارد البشرية والمحاسب.</p><div id="sec-enroll"><button type="button" onclick="window.hrSecEnroll()" class="px-5 py-2.5 rounded-full bg-slate-900 text-white text-xs font-extrabold"><i class="fas fa-mobile-screen ml-1" aria-hidden="true"></i>تفعيل التحقق بخطوتين</button>${FIN.includes(role()) ? '<button type="button" onclick="window.hrSecSnooze()" class="mr-2 px-4 py-2.5 rounded-full text-xs font-bold text-slate-500 hover:bg-slate-100">ذكّرني لاحقاً</button>' : ''}</div>`, 'text-amber-600');
+  }
+  const htmlSessions = () => card('fa-right-from-bracket', 'الجلسات', '<p class="text-xs font-bold text-slate-600 mb-3">إن فقدتَ جهازاً أو شككتَ في تسريب كلمة المرور فاخرج من كل الأجهزة، ثم غيّر كلمة المرور.</p><button type="button" onclick="window.hrSecSignOutAll()" class="px-5 py-2.5 rounded-full border border-slate-300 text-slate-800 text-xs font-extrabold hover:bg-slate-50">الخروج من جميع الأجهزة</button>', 'text-sky-600');
+  function htmlEvents() {
+    const ev = ST.events; let body;
+    if (!FIN.includes(role())) body = '<p class="text-xs font-bold text-slate-500">تظهر الأحداث الأمنية للمالك والمدير والموارد البشرية والمحاسب.</p>';
+    else if (ev === null) body = '<p class="text-xs font-bold text-amber-800">تعذّر تحميل الأحداث الأمنية.</p>';
+    else if (!ev.length) body = '<p class="text-xs font-bold text-emerald-700"><i class="fas fa-circle-check ml-1" aria-hidden="true"></i>لا أحداث أمنية مسجّلة.</p>';
+    else body = `<ul class="space-y-2" id="sec-events">${ev.map(x => `<li class="flex items-start gap-2 rounded-xl bg-red-50 border border-red-100 p-3"><i class="fas fa-lock text-red-600 mt-0.5" aria-hidden="true"></i><div class="min-w-0"><p class="text-xs font-extrabold text-slate-800">${E(evLabel(x))}</p><p class="text-[11px] font-bold text-slate-500">${E(fmtT(x.occurred_at))}</p></div></li>`).join('')}</ul>`;
+    return card('fa-triangle-exclamation', 'الأحداث الأمنية', body, 'text-red-600');
+  }
+  window.hrSecRender = async function () {
+    const host = q$('sec-center'); if (!host) return; host.innerHTML = '<p class="text-xs font-bold text-slate-400"><i class="fas fa-spinner fa-spin ml-1" aria-hidden="true"></i>جاري التحميل…</p>';
+    await Promise.all([loadFactors(), loadEvents()]); host.innerHTML = '<h2 class="text-xl font-black text-slate-900 mb-1">الأمان والتحقق بخطوتين</h2><p class="text-xs font-bold text-slate-500 mb-4">حماية حسابك والوصول إلى منشأتك، وسجل المحاولات المشبوهة.</p><div class="space-y-4">' + html2fa() + htmlSessions() + htmlEvents() + '</div>'; ST.loadedAt = Date.now(); rebuildAlerts();
+  };
+  window.hrSecEnroll = async function () {
+    const m = mfa(), host = q$('sec-enroll'); if (!m || !host) return;
+    try {
+      const lf = await m.listFactors(); for (const f of ((lf.data && lf.data.totp) || []).filter(x => x.status !== 'verified')) { try { await m.unenroll({ factorId: f.id }); } catch (_) {} }
+      const { data, error } = await m.enroll({ factorType: 'totp', issuer: 'منصة سعودي HR', friendlyName: 'منصة سعودي HR ' + Date.now().toString(36).slice(-5) }); if (error) throw error;
+      host.innerHTML = `<ol class="text-xs font-bold text-slate-700 space-y-1 mb-3 list-decimal pr-5"><li>افتح تطبيق المصادقة واختر «إضافة حساب».</li><li>امسح الرمز، أو أدخل المفتاح السري يدوياً.</li><li>اكتب الرمز المكوّن من 6 أرقام الظاهر في التطبيق.</li></ol>
+        <div class="flex flex-wrap items-center gap-4 mb-3"><img id="sec-qr" alt="رمز QR لتطبيق المصادقة" src="${E(data.totp.qr_code)}" width="160" height="160" class="rounded-xl border border-slate-200 bg-white p-2"><div class="min-w-0"><p class="text-[11px] font-bold text-slate-500 mb-1">المفتاح السري (احتفظ به في مكان آمن)</p><code id="sec-secret" dir="ltr" class="block break-all rounded-xl bg-slate-50 border border-slate-200 p-2 text-xs font-black">${E(data.totp.secret)}</code></div></div>
+        <div class="flex gap-2 items-center"><input id="sec-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" dir="ltr" placeholder="000000" aria-label="رمز التحقق" class="w-36 border border-slate-300 rounded-xl p-2.5 text-center font-black tracking-widest"><button type="button" onclick="window.hrSecConfirm('${E(data.id)}')" class="px-5 py-2.5 rounded-full bg-emerald-600 text-white text-xs font-extrabold">تأكيد وتفعيل</button><button type="button" onclick="window.hrSecRender()" class="px-4 py-2.5 rounded-full text-xs font-bold text-slate-500">إلغاء</button></div><p id="sec-enroll-err" class="hidden text-xs font-bold text-red-600 mt-2" role="alert"></p>`;
+    } catch (e) { toast('تعذّر بدء التفعيل: ' + (e && e.message ? e.message : e), 'error'); }
+  };
+  window.hrSecConfirm = async function (factorId) {
+    const code = toLatin((q$('sec-code') || {}).value).replace(/\D/g, '').slice(0, 6), er = q$('sec-enroll-err'); if (code.length !== 6) { if (er) { er.textContent = 'أدخل 6 أرقام'; er.classList.remove('hidden'); } return; }
+    try { const m = mfa(), { data: ch, error: e1 } = await m.challenge({ factorId }); if (e1) throw e1; const { error: e2 } = await m.verify({ factorId, challengeId: ch.id, code }); if (e2) throw e2;
+      toast('تم تفعيل التحقق بخطوتين'); ST.loadedAt = 0; await window.hrSecRender(); try { window.refreshNotifications(); } catch (_) {}
+    } catch (_) { if (er) { er.textContent = 'الرمز غير صحيح؛ تأكد من ساعة هاتفك وأعد المحاولة'; er.classList.remove('hidden'); } }
+  };
+  window.hrSecDisable = async function (id) {
+    if (!(await window.hrConfirm('إيقاف التحقق بخطوتين', 'سيُدخل حسابك بكلمة المرور وحدها. هل تريد الإيقاف؟'))) return;
+    try { const { error } = await mfa().unenroll({ factorId: id }); if (error) throw error; toast('تم إيقاف التحقق بخطوتين', 'warning'); ST.loadedAt = 0; await window.hrSecRender(); try { window.refreshNotifications(); } catch (_) {} }
+    catch (e) { toast('تعذّر الإيقاف: ' + (e && e.message ? e.message : e), 'error'); }
+  };
+  window.hrSecSnooze = function () { try { localStorage.setItem('hr_mfa_nag_until', String(Date.now() + 7 * 864e5)); } catch (_) {} toast('سنذكّرك بعد أسبوع', 'warning'); rebuildAlerts(); try { window.refreshNotifications(); } catch (_) {} };
+  window.hrSecSignOutAll = async function () { if (await window.hrConfirm('الخروج من جميع الأجهزة', 'سيُسجَّل خروجك من كل الأجهزة والمتصفحات، ثم تدخل من جديد.')) signOutNow('global'); };
+  window.goSecurity = function () { window.switchView('settings'); setTimeout(() => { const k = q$('sec-center') && q$('sec-center').dataset.setSec; if (k) window.setSettingsSection(k); }, 80); };
+
+  // ---------- التنبيهات ----------
+  window.hrSecAlerts = [];
+  function rebuildAlerts() {
+    const out = [], wk = Date.now() - 7 * 864e5;
+    (ST.events || []).filter(e => new Date(e.occurred_at).getTime() >= wk).forEach(e => out.push({ level: 'high', icon: 'fa-lock', text: evLabel(e) }));
+    if (FIN.includes(role()) && Array.isArray(ST.factors) && !ST.factors.length && !dismissed()) out.push({ level: 'mid', icon: 'fa-shield-halved', text: 'فعّل التحقق بخطوتين لحسابك: صلاحياتك تشمل بيانات مالية وحساسة' });
+    window.hrSecAlerts = out;
+  }
+  window.hrSecEnsure = function () {
+    if (ST.ensuring || Date.now() - ST.loadedAt < 300000) return; ST.ensuring = true;
+    Promise.all([loadFactors(), loadEvents()]).then(() => { ST.loadedAt = Date.now(); rebuildAlerts(); try { window.refreshNotifications(); } catch (_) {} }).catch(() => {}).finally(() => { ST.ensuring = false; });
+  };
+})();
+</script>
+
+<script id="hr-trial">
+/* التجربة المجانية: (1) نافذة «حدود التجربة»، (2) شاشة الانتهاء: بعد 14 يوماً تتوقف المساحة (القاعدة تمنع القراءة والكتابة فعلياً، migration_trial_02)
+   فتظهر شاشة لا تُغلق فيها الترقية والخروج. تُنشأ من renderTrialBar عند انتهاء المدة وتُزال عند الترقية. */
+(function () {
+  'use strict';
+  const q$ = id => document.getElementById(id);
+  const LIMITS = ['حتى 20 موظفاً', 'دون دعوة مستخدمين أو منشآت إضافية', 'دون روابط بوابة الموظفين (وصول عام) أو إقفال المسير', 'دون إرسال رسائل خارجية (بريد أو واتساب أو SMS)', 'تتوقف المساحة بعد 14 يوماً ويعود كل شيء فور الترقية'];
+  window.hrTrialLimitsHtml = () => '<ul class="text-right text-[12px] font-bold text-slate-700 space-y-1.5">' + LIMITS.map(x => '<li><i class="fas fa-circle-info ml-1.5 text-slate-400" aria-hidden="true"></i>' + x + '</li>').join('') + '</ul>';
+  window.openTrialLimits = function () { openPolModal('حدود التجربة المجانية', '<p class="text-xs font-bold text-slate-500 mb-3">كل الأقسام متاحة للاستكشاف ببيانات نموذجية، مع هذه الحدود:</p>' + window.hrTrialLimitsHtml(), null); };
+  window.hrTrialExpired = function () {
+    if (q$('hr-trial-expired')) return;
+    const c = (typeof UPGRADE_CONTACT !== 'undefined' && UPGRADE_CONTACT) || { email: 'info@saudi-hr.com', whatsapp: '' };
+    const comp = (typeof getActiveCompany === 'function' && getActiveCompany()) || {}, msg = encodeURIComponent('أرغب بترقية اشتراك منصة سعودي HR\nالمنشأة: ' + (comp.nameAr || '') + '\nالحساب: ' + ((typeof currentUser !== 'undefined' && currentUser && currentUser.email) || ''));
+    const box = document.createElement('div'); box.id = 'hr-trial-expired'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'hr-trial-exp-title');
+    box.style.cssText = 'position:fixed;inset:0;z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,23,42,.88)';
+    box.innerHTML = `<div dir="rtl" style="background:#fff;border-radius:28px;padding:28px;width:100%;max-width:420px;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.45)">
+      <div style="width:60px;height:60px;margin:0 auto 12px;border-radius:20px;background:#fef2f2;color:#b91c1c;display:flex;align-items:center;justify-content:center;font-size:24px"><i class="fas fa-lock" aria-hidden="true"></i></div>
+      <h2 id="hr-trial-exp-title" style="font-size:19px;font-weight:900;color:#0f172a">انتهت التجربة المجانية</h2>
+      <p style="font-size:12px;font-weight:700;color:#64748b;margin:8px 0 18px;line-height:1.8">مرّت 14 يوماً على بدء تجربتك فتوقفت المساحة التجريبية. بياناتك محفوظة وتعود كاملة فور ترقية الاشتراك.</p>
+      <div style="display:grid;gap:8px">
+        ${c.whatsapp ? `<a href="https://wa.me/${c.whatsapp}?text=${msg}" target="_blank" rel="noopener" style="padding:12px;border-radius:16px;background:#059669;color:#fff;font-weight:800;font-size:13px"><i class="fab fa-whatsapp" aria-hidden="true"></i> واتساب المبيعات</a>` : ''}
+        <a id="hr-trial-mail" href="mailto:${c.email}?subject=${encodeURIComponent('ترقية اشتراك منصة سعودي HR')}&body=${msg}" style="padding:12px;border-radius:16px;background:#0f172a;color:#fff;font-weight:800;font-size:13px"><i class="fas fa-envelope" aria-hidden="true"></i> ${c.email}</a>
+        <button id="hr-trial-out" type="button" style="padding:10px;font-size:12px;font-weight:700;color:#64748b">تسجيل الخروج</button></div></div>`;
+    document.body.appendChild(box); q$('hr-trial-out').onclick = () => { try { window.signOut(); } catch (_) {} };
+  };
 })();
 </script>
 
