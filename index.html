@@ -1256,6 +1256,8 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
 .kpi-row{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 16px;align-items:end}
 @media (min-width:640px){.kpi-row{grid-template-columns:8.5rem minmax(0,1fr) auto}}
 .kpi-row input[data-kpi-read]{max-width:100%}
+/* المخالصة: خانات المرحلة/المسار/القسم لغير المعلمين: بلا تعبئة ولا حدود */
+#settlement-pdf-content .stl-edu-off{background:transparent !important;border-color:transparent !important;color:transparent !important;box-shadow:none !important}
 /* شارة رصيد الإجازة تحت المسمى في جدول الموظفين */
 .hr-num{direction:ltr;unicode-bidi:isolate;display:inline-block}
 .hr-leave-pill{display:inline-flex;align-items:center;gap:4px;padding:0 8px;border-radius:9999px;font-size:11px;font-weight:800;line-height:1.7;background:#e0f2fe;color:#075985;border:1px solid #bae6fd;white-space:nowrap}
@@ -3652,8 +3654,8 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
                     <td colspan="6" class="blue-cell" style="width: 50%;">مكافأة نهاية الخدمة</td>
                 </tr>
                 <tr>
-                    <td class="blue-cell" style="padding: 6px;">المرحلة</td>
-                    <td id="stl-stage" class="bg-white px-4">ابتدائي</td>
+                    <td id="stl-stage-lbl" class="blue-cell" data-lbl="المرحلة" style="padding: 6px;">المرحلة</td>
+                    <td id="stl-stage" class="bg-white px-4"></td>
                     <td class="blue-cell" style="padding: 6px;">الإجمالي</td>
                     <td colspan="2" id="stl-total" class="font-bold bg-white px-4 text-center">0</td>
                     <td colspan="4" class="blue-cell" style="padding: 6px;">الخدمة بالأيام</td>
@@ -3693,16 +3695,16 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
                     <td colspan="6" id="stl-box-eos-total" class="bg-white font-black text-center px-4 text-lg py-2">0.00</td>
                 </tr>
                 <tr>
-                    <td class="blue-cell" style="padding: 6px;">المسار</td>
-                    <td class="bg-white px-4">وطني</td>
+                    <td id="stl-track-lbl" class="blue-cell" data-lbl="المسار" style="padding: 6px;">المسار</td>
+                    <td id="stl-track" class="bg-white px-4"></td>
                     <td class="blue-cell" style="padding: 6px;">تاريخ آخر راتب</td>
                     <td colspan="2" id="stl-last-month" class="bg-white font-bold px-4 text-center">يونيو</td>
                     <td colspan="4" class="blue-cell" style="padding: 6px;">رصيد الإجازات</td>
                     <td colspan="2" id="stl-leave-bal" class="bg-white font-bold text-center px-4">0.00</td>
                 </tr>
                 <tr>
-                    <td class="blue-cell" style="padding: 6px;">القسم</td>
-                    <td class="bg-white px-4">ابتدائي</td>
+                    <td id="stl-sec-lbl" class="blue-cell" data-lbl="القسم" style="padding: 6px;">القسم</td>
+                    <td id="stl-sec" class="bg-white px-4"></td>
                     <td class="blue-cell" style="padding: 6px;">قيمة آخر راتب</td>
                     <td colspan="2" id="stl-last-val" class="bg-white font-bold px-4 text-center">0.00</td>
                     <td colspan="4" class="blue-cell" style="padding: 6px;">الإجازات المستنفذة</td>
@@ -18118,6 +18120,9 @@ window.verifyBackupFile=async function(input) {
 
             document.getElementById('stl-comp-name').innerText = comp.nameAr; document.getElementById('stl-name').innerText = emp.name;
             document.getElementById('stl-nid').innerText = emp.nid; document.getElementById('stl-job').innerText = emp.jobTitle;
+            // المرحلة والمسار والقسم تخص المعلمين فقط: كانت قيماً ثابتة («ابتدائي/وطني») تظهر لكل موظف. لغير المعلم تُفرَّغ الخلايا بلا تعبئة ولا حدود (يبقى توازن الجدول)
+            { const teacher = window.hrIsTeacher(emp), dep = (typeof departments !== 'undefined' ? departments : []).find(d => d.id === emp.departmentId), vals = { stage: emp.schoolStage, track: emp.track, sec: dep && dep.name };
+              ['stage', 'track', 'sec'].forEach(k => { const l = document.getElementById('stl-' + k + '-lbl'), v = document.getElementById('stl-' + k); if (!l || !v) return; l.innerText = teacher ? l.dataset.lbl : ''; v.innerText = teacher ? (vals[k] || '—') : ''; l.classList.toggle('stl-edu-off', !teacher); v.classList.toggle('stl-edu-off', !teacher); }); }
             document.getElementById('stl-nat').innerText = emp.nationality; document.getElementById('stl-start').innerText = emp.startDate || '—';
             document.getElementById('stl-bot-name').innerText = emp.name; document.getElementById('stl-hr-name').innerText = comp.sign1Name || 'مدير الموارد البشرية';
             document.getElementById('stl-mgr-title').innerText = comp.sign2Title || 'المشرف العام'; document.getElementById('stl-mgr-name').innerText = comp.sign2Name || '';
@@ -20660,6 +20665,10 @@ window.HRInsurance = (function () {
 })();
 </script>
 
+<script id="hr-edu">
+/* المعلم/المعلمة: «معلم…» أو المسمى «مدرس/مدرسة» وحده (لا «مدير مدرسة» ولا «وكيل مدرسة»). يحدد ظهور المرحلة والمسار والقسم في المخالصة. */
+window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || emp.job_title)) || '').replace(/\s+/g, ' ').trim(); return /معلم/.test(j) || /^(مدرس|مدرسة)( |$)/.test(j); };
+</script>
 <script id="hr-trial">
 /* التجربة المجانية: (1) نافذة «حدود التجربة»، (2) شاشة الانتهاء: بعد 14 يوماً تتوقف المساحة (القاعدة تمنع القراءة والكتابة فعلياً، migration_trial_02)
    فتظهر شاشة لا تُغلق فيها الترقية والخروج. تُنشأ من renderTrialBar عند انتهاء المدة وتُزال عند الترقية. */
