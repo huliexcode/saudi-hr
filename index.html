@@ -13370,7 +13370,7 @@ window.verifyBackupFile=async function(input) {
         }
         window.openImportEntitlements = function () {
             let m = document.getElementById('imp-modal'); if (!m) { m = document.createElement('div'); m.id = 'imp-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.className = 'fixed inset-0 z-[10001] bg-slate-900/60 flex items-center justify-center p-2 sm:p-4'; document.body.appendChild(m); m.addEventListener('keydown', e => { if (e.key === 'Escape') window.impClose(); }); }
-            IMP = { fileName: '', wb: null, sheet: '', headers: [], rows: [], map: {}, opts: { purpose: 'صرف مستحقات', date: today10(), method: 'تحويل بنكي', layout: 'full', formId: '', netMode: null, logo: true, stamp: true, sign: true, sigimg: true, words: true, letter: false, text: (policySettings && policySettings.impVoucher && policySettings.impVoucher.text && typeof policySettings.impVoucher.text === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.text)) : {}), sigSize: (policySettings && policySettings.impVoucher && policySettings.impVoucher.sigSize && typeof policySettings.impVoucher.sigSize === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.sigSize)) : {}), modelId: (policySettings && policySettings.impVoucher && typeof policySettings.impVoucher.modelId === 'string' ? policySettings.impVoucher.modelId : ''), addYear: !(policySettings && policySettings.impVoucher && policySettings.impVoucher.addYear === false), year: (policySettings && policySettings.impVoucher && /^\d{4}$/.test(String(policySettings.impVoucher.year || '')) ? String(policySettings.impVoucher.year) : ''), design: (policySettings && policySettings.impVoucher && policySettings.impVoucher.design && typeof policySettings.impVoucher.design === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.design)) : {}), style: (policySettings && policySettings.impVoucher && policySettings.impVoucher.style && typeof policySettings.impVoucher.style === 'object' ? { ...policySettings.impVoucher.style } : {}), top: (policySettings && policySettings.impVoucher && Number.isFinite(Number(policySettings.impVoucher.top)) ? Number(policySettings.impVoucher.top) : null) } }; m.classList.remove('hidden'); impRender();
+            IMP = { fileName: '', wb: null, sheet: '', headers: [], rows: [], map: {}, opts: { purpose: 'صرف مستحقات', date: today10(), method: 'تحويل بنكي', layout: 'full', formId: '', netMode: null, logo: true, stamp: true, sign: true, sigimg: true, words: true, letter: false, stampCfg: (policySettings && policySettings.impVoucher && policySettings.impVoucher.stamp && typeof policySettings.impVoucher.stamp === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.stamp)) : {}), text: (policySettings && policySettings.impVoucher && policySettings.impVoucher.text && typeof policySettings.impVoucher.text === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.text)) : {}), sigSize: (policySettings && policySettings.impVoucher && policySettings.impVoucher.sigSize && typeof policySettings.impVoucher.sigSize === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.sigSize)) : {}), modelId: (policySettings && policySettings.impVoucher && typeof policySettings.impVoucher.modelId === 'string' ? policySettings.impVoucher.modelId : ''), addYear: !(policySettings && policySettings.impVoucher && policySettings.impVoucher.addYear === false), year: (policySettings && policySettings.impVoucher && /^\d{4}$/.test(String(policySettings.impVoucher.year || '')) ? String(policySettings.impVoucher.year) : ''), design: (policySettings && policySettings.impVoucher && policySettings.impVoucher.design && typeof policySettings.impVoucher.design === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.design)) : {}), style: (policySettings && policySettings.impVoucher && policySettings.impVoucher.style && typeof policySettings.impVoucher.style === 'object' ? { ...policySettings.impVoucher.style } : {}), top: (policySettings && policySettings.impVoucher && Number.isFinite(Number(policySettings.impVoucher.top)) ? Number(policySettings.impVoucher.top) : null) } }; m.classList.remove('hidden'); impRender();
         };
         window.impClose = () => { const m = document.getElementById('imp-modal'); if (m) { m.classList.add('hidden'); m.innerHTML = ''; } IMP = null; };   // تفريغ المحتوى: لا معرّفات مكررة (imp-preview…) مع نافذة التعديل
         window.impPick = function () { const i = document.createElement('input'); i.type = 'file'; i.accept = '.xlsx,.xls,.csv'; i.id = 'imp-file'; i.style.display = 'none'; i.onchange = () => { const f = i.files?.[0]; i.remove(); if (f) window.impHandleFile(f); }; document.body.appendChild(i); i.click(); };
@@ -13444,7 +13444,12 @@ window.verifyBackupFile=async function(input) {
         window.impStyleForTest = impStyle;
         const impMoney = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const impDateTxt = d => /^\d{4}-\d{2}-\d{2}$/.test(d) ? fmtDate(toGregorianDate(d)) : d;
-        function impStampsHtml(comp, h) { const E = escapeHtml; const st = IMP.opts.stamp ? docStamps(comp).map(impSafeImg).filter(Boolean) : []; return st.length ? `<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">${st.map(s => `<img src="${E(s)}" alt="" style="height:${h}px;object-fit:contain;opacity:.92">`).join('')}</div>` : ''; }
+        // الختم: محاذاة (يمين/وسط/يسار؛ الافتراضي يسار كما كان)، حجم مستقل لكل ختم 30–300%، وإزاحة رأسية -120…+60 بكسل (السالب يُداخل الختم مع التواقيع كالختم الحقيقي)
+        function impStampsHtml(comp, h, cfg) {
+            const E = escapeHtml, c = (cfg && typeof cfg === 'object') ? cfg : {}, st = IMP.opts.stamp ? docStamps(comp).map(impSafeImg).filter(Boolean) : []; if (!st.length) return '';
+            const al = ['right', 'center', 'left'].includes(c.align) ? c.align : 'left', jc = { right: 'flex-start', center: 'center', left: 'flex-end' }[al], dy = Math.max(-120, Math.min(60, Math.round(Number(c.dy)) || 0)), sz = (c.sizes && typeof c.sizes === 'object') ? c.sizes : {};
+            return `<div data-imp-stamps style="display:flex;justify-content:${jc};align-items:center;gap:10px;margin-top:${8 + dy}px;position:relative;z-index:${dy < 0 ? 3 : 1}">${st.map((s, i) => `<img src="${E(s)}" alt="" style="height:${Math.max(20, Math.min(240, Math.round(h * Math.max(30, Math.min(300, Number(sz[i]) || 100)) / 100)))}px;object-fit:contain;opacity:.92">`).join('')}</div>`;
+        }
         // حجم التوقيع: الأساس يتناسب مع عدد الموقّعين (1→84، 2→72، 3→62، 4→54 بكسل) فيملأ العرض بتناسق، ولكل توقيع نسبة مستقلة 50–250% (sizes[i])، ويُقيَّد بـ24–140 بكسل كي لا يخرج عن الصفحة. صفّ الصور بارتفاع أكبر توقيع لتبقى الأسماء على سطر واحد.
         function impSigRow(r, comp, DK, B, h, R, sizes) {
             if (!IMP.opts.sign) return ''; const E = escapeHtml, rad = Number(R) > 0, signers = [['المستلم', r.name, ''], ...docSigners(comp).map(x => [x.label, x.name, IMP.opts.sigimg ? impSafeImg(x.img) : ''])].slice(0, 4), n = signers.length;
@@ -13454,13 +13459,13 @@ window.verifyBackupFile=async function(input) {
         }
         // ---------- أشكال الجدول: عدد الأعمدة، متصل/منفصل، مكان العنوان، تنعيم الحواف، ترتيب الحقول وإخفاؤها (يُحفظ في policySettings.impVoucher.design) ----------
         const IMP_SHAPES = { classic: { cols: 2, gap: 0, label: 'side' }, one: { cols: 1, gap: 0, label: 'side' }, cards2: { cols: 2, gap: 8, label: 'top' }, cards3: { cols: 3, gap: 8, label: 'top' }, list: { cols: 1, gap: 6, label: 'side' } };
-        const IMP_BLOCKS = ['band', 'table', 'text', 'note', 'sign'];
+        const IMP_BLOCKS = ['head', 'band', 'table', 'text', 'note', 'sign', 'stamp'];
         function impDesign() {
             const d = (IMP && IMP.opts && IMP.opts.design) || {}, shape = Object.prototype.hasOwnProperty.call(IMP_SHAPES, d.shape) ? d.shape : 'classic', radius = Math.max(0, Math.min(24, Math.round(Number(d.radius) || 0)));
             const strs = a => Array.isArray(a) ? [...new Set(a.filter(x => typeof x === 'string' && x.length && x.length < 120))].slice(0, 80) : [], order = strs(d.order), hidden = strs(d.hidden).filter(k => k !== 'amount'), span = {};
             if (d.span && typeof d.span === 'object') Object.keys(d.span).slice(0, 80).forEach(k => { if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype' && (d.span[k] === 'full' || d.span[k] === 'half')) span[k] = d.span[k]; });
-            let blocks = Array.isArray(d.blocks) ? [...new Set(d.blocks.filter(k => IMP_BLOCKS.includes(k)))] : []; IMP_BLOCKS.forEach(k => { if (blocks.includes(k)) return; if (k === 'band') blocks.unshift(k); else if (k === 'text' && blocks.includes('table')) blocks.splice(blocks.indexOf('table') + 1, 0, k); else blocks.push(k); });
-            const hideBlocks = strs(d.hideBlocks).filter(k => k === 'band' || k === 'note');
+            let blocks = Array.isArray(d.blocks) ? [...new Set(d.blocks.filter(k => IMP_BLOCKS.includes(k)))] : []; IMP_BLOCKS.forEach((k, di) => { if (blocks.includes(k)) return; let pos = 0; for (let j = di - 1; j >= 0; j--) { const at = blocks.indexOf(IMP_BLOCKS[j]); if (at >= 0) { pos = at + 1; break; } } blocks.splice(pos, 0, k); });   // القسم الناقص يُدرج بعد أقرب سابق له في الترتيب الافتراضي
+            const hideBlocks = strs(d.hideBlocks).filter(k => k !== 'table' && IMP_BLOCKS.includes(k));
             const active = shape !== 'classic' || radius > 0 || order.length > 0 || hidden.length > 0 || Object.keys(span).length > 0 || hideBlocks.length > 0 || blocks.join() !== IMP_BLOCKS.join();
             return { shape, radius, order, hidden, span, blocks, hideBlocks, active, sh: IMP_SHAPES[shape] };
         }
@@ -13515,10 +13520,10 @@ window.verifyBackupFile=async function(input) {
             const head = hasBg ? '' : `<div style="border-bottom:3px solid ${ACC};padding-bottom:6px;margin-bottom:10px">${o.logo ? docHeaderHtml(comp, { maxH: 48, maxW: 150, fs: 10 }) : docHeaderHtml({ ...comp, logoBase64: '' }, { fs: 10 })}</div>`;
             const padTop = (o.top !== null && o.top !== undefined && o.top !== '' && Number.isFinite(Number(o.top))) ? Math.max(0, Math.min(120, Number(o.top))) : (bg ? (Number(LY.lhTop) || 45) : 14), padBot = bg ? (Number(LY.lhBottom) || 30) : 14, bgCss = bg ? `background:#fff url('${bg}') center/100% 100% no-repeat;` : 'background:#fff;';
             const band = `<table style="width:100%;border-collapse:${R ? 'separate;border-spacing:0' : 'collapse'};margin-bottom:12px"><tr><td style="${S.band};padding:10px 12px;font-size:17px;font-weight:900;${R ? `border-radius:0 ${R}px ${R}px 0` : ''}">سند صرف</td><td style="${S.band};padding:10px 12px;font-size:10.5px;font-weight:700;text-align:left;white-space:nowrap;${R ? `border-radius:${R}px 0 0 ${R}px` : ''}">المرجع: <bdi dir="ltr">${E(ref)}</bdi>${inner && inner.copy ? ` · ${E(inner.copy)}` : ''}</td></tr></table>`;
-            const blocks = { band, table: D.active ? impGridHtml(r, S, D) : legacyFields(), text: impTextHtml(r, ref, S, R),
+            const blocks = { head, band, table: D.active ? impGridHtml(r, S, D) : legacyFields(), text: impTextHtml(r, ref, S, R),
                 note: `<p style="font-size:12.5px;font-weight:700;line-height:2.1;margin-top:14px;${S.note};${rad}padding:10px 12px;text-align:${S.al}">أقر أنا المذكور أعلاه باستلامي من ${E(comp.nameAr || 'المنشأة')} صافي المبلغ الموضّح، وذلك عن: <b>${E(r.purpose)}</b>، ${E(r.method)}، بتاريخ ${E(impDateTxt(r.date))}.</p>`,
-                sign: `${impSigRow(r, comp, DK, B, 'auto', R, o.sigSize)}${impStampsHtml(comp, 70)}` };
-            const T = impText(), textPage = T.pos === 'page' ? impTextHtml(r, ref, S, R) : '', order = D.blocks.filter(k => !D.hideBlocks.includes(k) && !(k === 'text' && T.pos === 'page')), body = `${textPage}${head}<div style="zoom:${S.scale}">${order.map(k => blocks[k]).join('')}</div>`;
+                sign: impSigRow(r, comp, DK, B, 'auto', R, o.sigSize), stamp: impStampsHtml(comp, 70, o.stampCfg) };
+            const T = impText(), textPage = T.pos === 'page' ? impTextHtml(r, ref, S, R) : '', order = D.blocks.filter(k => !D.hideBlocks.includes(k) && !(k === 'text' && T.pos === 'page')), body = `${textPage}<div style="zoom:${S.scale}">${order.map(k => blocks[k]).join('')}</div>`;
             if (inner) return `<div class="doc-fit" style="direction:rtl;color:#111;font-family:${S.ff};transform-origin:top right">${body}</div>`;
             return `<div class="cf-page" data-imp="full" style="width:210mm;min-height:297mm;box-sizing:border-box;padding:${padTop}mm 14mm ${padBot}mm;${bgCss}color:#111;direction:rtl;font-family:${S.ff};page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact">${body}</div>`;
         }
@@ -14115,7 +14120,7 @@ window.verifyBackupFile=async function(input) {
         function entVoucherOK(d) { return !!d && !!d.rec && !ENT_NO_VOUCHER.includes(d.rec.type); }
         function entVoucherOpts(st) {
             const iv = (policySettings && policySettings.impVoucher) || {}, pl = v => (v && typeof v === 'object' && !Array.isArray(v)) ? JSON.parse(JSON.stringify(v)) : {}, comp = getActiveCompany() || {};
-            return { purpose: '', date: today10(), method: 'نقداً', layout: 'full', formId: '', netMode: null, logo: !!st.logo, stamp: !!st.stamp, sign: !!st.sign, sigimg: true, words: !!st.words, letter: !!(comp.useLetterhead && entBackground()), text: pl(iv.text), sigSize: pl(iv.sigSize), modelId: typeof iv.modelId === 'string' ? iv.modelId : '', addYear: iv.addYear !== false, year: /^\d{4}$/.test(String(iv.year || '')) ? String(iv.year) : '', design: pl(iv.design), style: pl(iv.style), top: (iv.top !== null && iv.top !== undefined && Number.isFinite(Number(iv.top))) ? Number(iv.top) : null };
+            return { purpose: '', date: today10(), method: 'نقداً', layout: 'full', formId: '', netMode: null, logo: !!st.logo, stamp: !!st.stamp, sign: !!st.sign, sigimg: true, words: !!st.words, letter: !!(comp.useLetterhead && entBackground()), text: pl(iv.text), sigSize: pl(iv.sigSize), stampCfg: pl(iv.stamp), modelId: typeof iv.modelId === 'string' ? iv.modelId : '', addYear: iv.addYear !== false, year: /^\d{4}$/.test(String(iv.year || '')) ? String(iv.year) : '', design: pl(iv.design), style: pl(iv.style), top: (iv.top !== null && iv.top !== undefined && Number.isFinite(Number(iv.top))) ? Number(iv.top) : null };
         }
         function entVoucherRow(d) {
             const { emp, rec } = d, src = String(rec.from || rec.date || ''), iso = /^\d{4}-\d{2}-\d{2}/.test(src) ? src.slice(0, 10) : today10();
@@ -20823,19 +20828,22 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   'use strict';
   const E = s => escapeHtml(String(s == null ? '' : s)), $ = id => document.getElementById(id), toast = (m, t) => window.showToast(m, t);
   const canFinance = () => ['owner', 'admin', 'hr', 'accountant'].includes((window.hrViewerGuard && window.hrViewerGuard.role) || '');
-  // ---------- 1) موضع الجدول وتنسيق سند الصرف ----------
+  // ============================================================
+  // استوديو تصميم السند: 5 تبويبات، وكل قسم في بطاقة موحّدة (عنوان + وصف + محتوى). المعاينة ثابتة والتمرير للتعديلات فقط.
+  // الحالة في IMP.opts (يُحفظ منها للمنشأة: الموضع/التنسيق/التصميم/النص/أحجام التواقيع/الختم) وتُقرأ نفسها في سندات المستحقات.
+  // ============================================================
   const clampTop = v => Math.max(0, Math.min(120, Math.round(Number(v) * 2) / 2));
   const effTop = () => { const o = IMP.opts, LY = (typeof docLayout === 'function' ? docLayout() : {}), bg = o.letter && impLetterBg(); return Number.isFinite(Number(o.top)) && o.top !== null && o.top !== '' ? clampTop(o.top) : (bg ? (Number(LY.lhTop) || 45) : 14); };
   window.hrImpEffTop = effTop;
+  const strip = h => String(h == null ? '' : h).replace(/<[^>]*>/g, '');
+  function studioH(opts) { return (opts && opts.designer) ? Math.max(420, Math.round(innerHeight * 0.94 - 150)) : Math.max(460, Math.min(Math.round(innerHeight * 0.8), 900)); }
+  function previewScale() { if (innerWidth < 900) return Math.max(0.25, Math.min(0.42, (innerWidth - 64) / 794)); return Math.max(0.3, Math.min(0.62, ((window.__studioH || 640) - 20) / 1122.5)); }
   window.hrImpPreviewHtml = function () {
     if (!IMP) return '';
     const o = IMP.opts, ok = impRows().filter(r => r.amountOk), ref = i => (ok[i] && ok[i].ref) ? ok[i].ref : impRefBase() + '-' + String(i + 1).padStart(4, '0');
-    if (o.layout === 'custom') return '<p class="text-[10px] font-bold text-slate-500">النموذج المخصص يُعاين من زر الطباعة.</p>';
-    if (!ok.length) return '<p class="text-[10px] font-bold text-slate-500">اختر ملفاً بصفوف صالحة لتظهر المعاينة.</p>';
-    let html = ''; try {
-      if (o.layout === 'full') html = impVoucherHtml(ok[0], ref(0));
-      else { const q = o.layout === 'quarter'; html = impPageOfCards(ok.slice(0, q ? 4 : 2).map((r, i) => impCardHtml(r, ref(i), q)), q ? 2 : 1, 2); }
-    } catch (_) { return ''; }
+    if (o.layout === 'custom') return '<p class="imp-note">النموذج المخصص يُعاين من زر الطباعة.</p>';
+    if (!ok.length) return '<p class="imp-note">اختر ملفاً بصفوف صالحة لتظهر المعاينة.</p>';
+    let html = ''; try { html = impVoucherHtml(ok[0], ref(0)); } catch (_) { return ''; }
     const S = previewScale();
     return `<div id="imp-preview-box" aria-label="معاينة السند" style="direction:ltr;width:${Math.round(793.7 * S)}px;height:${Math.round(1122.5 * S)}px;overflow:hidden;position:relative;background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.25);border-radius:4px"><div style="width:210mm;height:297mm;transform:scale(${S});transform-origin:top left;position:absolute;top:0;left:0;pointer-events:none">${html}</div></div>`;
   };
@@ -20843,22 +20851,28 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   function refresh() { const box = $('imp-preview'), inp = $('imp-top'); if (inp && document.activeElement !== inp) inp.value = effTop(); if (box) box.innerHTML = window.hrImpPreviewHtml(); }
   function persist() {
     const sv = $('imp-top-save'); if (sv && !sv.checked) return; if (!IMP) return;
-    // لقطة لحظة التعديل (لا لحظة الحفظ): لو أُغلقت النافذة قبل انتهاء المؤقّت يبقى المحفوظ سليماً بدل أن تُمسح الإعدادات
-    const o = IMP.opts, snapState = JSON.parse(JSON.stringify({ top: o.top === undefined ? null : o.top, style: o.style || {}, design: o.design || {}, text: o.text || {}, sigSize: o.sigSize || {}, addYear: o.addYear, year: o.year || '', modelId: o.modelId || '' }));
+    // لقطة لحظة التعديل (لا لحظة الحفظ): لو أُغلقت النافذة قبل انتهاء المؤقّت يبقى المحفوظ سليماً
+    const o = IMP.opts, snapState = JSON.parse(JSON.stringify({ top: o.top === undefined ? null : o.top, style: o.style || {}, design: o.design || {}, text: o.text || {}, sigSize: o.sigSize || {}, stamp: o.stampCfg || {}, addYear: o.addYear, year: o.year || '', modelId: o.modelId || '' }));
     clearTimeout(saveTimer); pendingRun = async () => { try {
       const s = JSON.parse(JSON.stringify(policySettings || {})), iv = { ...(s.impVoucher || {}) }, z = snapState;
       if (z.top !== null && z.top !== undefined) iv.top = z.top; else delete iv.top;
-      if (Object.keys(z.style).length) iv.style = z.style; else delete iv.style;
-      if (Object.keys(z.design).length) iv.design = z.design; else delete iv.design;
+      ['style', 'design', 'text', 'sigSize', 'stamp'].forEach(k => { if (Object.keys(z[k]).length) iv[k] = z[k]; else delete iv[k]; });
       if (z.addYear === false) iv.addYear = false; else delete iv.addYear;
       if (z.year) iv.year = z.year; else delete iv.year;
-      if (Object.keys(z.text).length) iv.text = z.text; else delete iv.text;
-      if (Object.keys(z.sigSize).length) iv.sigSize = z.sigSize; else delete iv.sigSize;
       if (z.modelId) iv.modelId = z.modelId; else delete iv.modelId;
       s.impVoucher = iv; applyPolicySettings(s); await persistPolicySettings(getActiveCompany(), s);
     } catch (_) { toast('تعذر حفظ التنسيق للمنشأة', 'warning'); } }; saveTimer = setTimeout(() => { const f = pendingRun; pendingRun = null; if (f) f(); }, 700);
   }
   window.hrImpFlush = async function () { clearTimeout(saveTimer); const f = pendingRun; pendingRun = null; if (f) await f(); };
+  // ---------- مكوّنات العرض الموحّدة ----------
+  const card = (id, icon, title, sub, body, cls) => `<section id="${id}" class="imp-card${cls ? ' ' + cls : ''}"><header class="imp-card-h"><span class="imp-card-ic"><i class="fas ${icon}" aria-hidden="true"></i></span><span class="imp-card-tt"><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</span></header><div class="imp-card-b">${body}</div></section>`;
+  const seg = (items, cur, mk, label) => `<div class="imp-seg" role="group" aria-label="${label}">${items.map(([k, l]) => `<button type="button" class="imp-btn${cur === k ? ' on' : ''}" aria-pressed="${cur === k}" onclick="${mk(k)}">${l}</button>`).join('')}</div>`;
+  const grip = l => `<span data-handle role="button" tabindex="-1" aria-label="اسحب لتغيير مكان ${E(strip(l))}" title="اسحب لتغيير المكان" class="imp-grip"><i class="fas fa-grip-vertical" aria-hidden="true"></i></span>`;
+  const mvBtns = (kind, k, i, n) => `<button type="button" class="imp-btn sm" onclick="window.imp${kind}Move('${E(k)}',-1)" ${i === 0 ? 'disabled' : ''} aria-label="رفع"><i class="fas fa-chevron-up" aria-hidden="true"></i></button><button type="button" class="imp-btn sm" onclick="window.imp${kind}Move('${E(k)}',1)" ${i === n - 1 ? 'disabled' : ''} aria-label="خفض"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>`;
+  const trashBtn = (what, l, fn, dis) => `<button type="button" class="imp-btn sm danger" onclick="${fn}" ${dis ? 'disabled' : ''} aria-label="حذف ${what} ${E(strip(l))}" title="حذف"><i class="fas fa-trash-can" aria-hidden="true"></i></button>`;
+  const restoreChips = (title, items, fn, id) => items.length ? `<div><span class="imp-lbl">${title} (${items.length}) — اضغط لاستعادة</span><div class="imp-chips" id="${id}">${items.map(it => `<button type="button" class="imp-chip" onclick="${fn(it)}" aria-label="استعادة ${E(strip(it.l))}"><i class="fas fa-rotate-left" aria-hidden="true"></i>${it.l}</button>`).join('')}</div></div>` : '';
+  function mergeOrder(full, ks) { const set = new Set(ks), q = [...ks]; return full.map(k => set.has(k) ? q.shift() : k); }
+  // ---------- الموضع ----------
   window.impSetTop = function (v) { if (!IMP || String(v).trim() === '' || isNaN(Number(v))) return refresh(); IMP.opts.top = clampTop(v); refresh(); persist(); refreshModels(); };
   window.impTopStep = d => window.impSetTop(effTop() + Number(d));
   window.impTopReset = function () { if (!IMP) return; IMP.opts.top = null; refresh(); persist(); refreshModels(); };
@@ -20866,54 +20880,60 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     const comp = getActiveCompany() || {}, src = impLetterBg() || comp.offerPaper || comp.settlementPaper; if (!src) return toast('فعّل الورق الرسمي وارفع صورته من الإعدادات أولاً', 'warning');
     try { const r = await detectBlankArea(src, [210, 297]); window.impSetTop(r.top); toast(`بدأ الجدول من ${r.top} مم بحسب المساحة الفارغة في الورق الرسمي`); } catch (e) { toast('تعذر تحليل صورة الورق: ' + (e.message || ''), 'error'); }
   };
-  // التنسيق: قالب + لون الجدول + الحدود + الخط وحجمه (يُقرأ في impStyle)
+  window.hrImpPosHtml = function () {
+    const o = IMP.opts, full = o.layout === 'full', lh = impLetterBg();
+    return card('imp-pos-box', 'fa-arrows-up-down', 'موضع الجدول من أعلى الورقة', 'يُصلح تداخل الشعار أو الترويسة مع الجدول', `
+      <div class="imp-seg" style="align-items:center"><button type="button" class="imp-btn" onclick="window.impTopStep(-3)" ${full ? '' : 'disabled'} aria-label="رفع الجدول 3 مليمتر"><i class="fas fa-arrow-up" aria-hidden="true"></i>أعلى</button>
+        <label class="imp-slide" style="flex:1.2;justify-content:center"><input id="imp-top" type="number" min="0" max="120" step="0.5" value="${effTop()}" ${full ? '' : 'disabled'} onchange="window.impSetTop(this.value)" aria-label="بداية الجدول من أعلى الورقة بالمليمتر" class="imp-in" style="width:84px;text-align:center;font-weight:900"> مم</label>
+        <button type="button" class="imp-btn" onclick="window.impTopStep(3)" ${full ? '' : 'disabled'} aria-label="خفض الجدول 3 مليمتر"><i class="fas fa-arrow-down" aria-hidden="true"></i>أسفل</button></div>
+      <div class="imp-seg"><button type="button" class="imp-btn" onclick="window.impAutoTop()" ${full && lh ? '' : 'disabled'} title="${lh ? '' : 'يتطلب تفعيل الورق الرسمي'}"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i>اكتشاف تلقائي من الورق الرسمي</button><button type="button" class="imp-btn" onclick="window.impTopReset()" ${full ? '' : 'disabled'}>الافتراضي</button></div>
+      <p class="imp-note">${full ? 'تتحرك المعاينة فوراً. الخطوة 3 مم، ويمكنك كتابة قيمة دقيقة.' : 'موضع الجدول يعمل مع شكل «سند كامل» فقط.'}</p>`, full ? '' : 'imp-soft');
+  };
+  // ---------- الخط والتنسيق ----------
   const PRESETS = [['classic', 'كلاسيكي', 'تعبئة كاملة'], ['modern', 'عصري', 'تعبئة خفيفة'], ['minimal', 'مبسّط', 'خطوط فقط']];
   const SWATCH = ['#0f3d2e', '#1e3a8a', '#7f1d1d', '#0f766e', '#4c1d95', '#374151', '#b45309'];
   const BW = [['0', 'بلا حدود'], ['0.5', 'رفيعة جداً'], ['1', 'عادية'], ['1.5', 'سميكة'], ['2', 'أسمك'], ['3', 'غليظة']], BS = [['solid', 'متصلة'], ['dashed', 'متقطعة'], ['dotted', 'منقّطة']], SC = [[0.85, '85%'], [0.9, '90%'], [1, '100%'], [1.1, '110%'], [1.2, '120%'], [1.3, '130%']];
   window.hrImpStyleHtml = function () {
-    const o = IMP.opts, S = impStyle().S, st = o.style || {}, custom = o.layout === 'custom', btn = 'px-3 py-2 rounded-xl border text-[11px] font-extrabold', sel = 'w-full border border-slate-300 rounded-lg p-2 text-xs font-bold bg-white mt-1', lab = 'block text-[10px] font-extrabold text-slate-600';
-    return `<div id="imp-style-box" class="space-y-2.5 ${custom ? 'opacity-50 pointer-events-none' : ''}" ${custom ? 'aria-disabled="true"' : ''}><p class="text-xs font-black text-slate-800"><i class="fas fa-palette ml-1 text-slate-400" aria-hidden="true"></i>تنسيق السند <span class="text-slate-500 font-bold">${custom ? '(للنموذج المخصص تنسيقه الخاص من المنشئ)' : '(اللون والحدود والخط)'}</span></p>
-      <div class="grid grid-cols-3 gap-1.5" role="group" aria-label="قالب التنسيق">${PRESETS.map(([k, l, d]) => `<button type="button" onclick="window.impStyleSet('preset','${k}')" aria-pressed="${S.preset === k}" class="${btn} ${S.preset === k ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}">${l}<span class="block text-[9px] font-bold opacity-70">${d}</span></button>`).join('')}</div>
-      <div><span class="${lab}">محاذاة النص</span><div class="flex gap-1.5 mt-1" role="group" aria-label="محاذاة النص">${[['right', 'يمين', 'fa-align-right'], ['center', 'وسط', 'fa-align-center'], ['left', 'يسار', 'fa-align-left']].map(([k, l, ic]) => `<button type="button" onclick="window.impStyleSet('align','${k}')" aria-pressed="${S.al === k}" class="flex-1 ${btn} ${S.al === k ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}"><i class="fas ${ic} ml-1" aria-hidden="true"></i>${l}</button>`).join('')}</div></div>
-      <div><span class="${lab}">لون الجدول</span><div class="flex flex-wrap items-center gap-1.5 mt-1"><input type="color" id="imp-st-color" value="${S.ACC}" aria-label="لون الجدول" oninput="window.impStyleSet('color',this.value,true)" onchange="window.impStyleSet('color',this.value)" class="w-10 h-8 rounded border cursor-pointer">${SWATCH.map(c => `<button type="button" aria-label="اللون ${c}" onclick="window.impStyleSet('color','${c}')" style="background:${c}" class="w-6 h-6 rounded-full border-2 ${S.ACC.toLowerCase() === c ? 'border-slate-900' : 'border-white'} shadow"></button>`).join('')}<button type="button" onclick="window.impStyleSet('color','')" class="text-[10px] font-extrabold text-slate-500 underline mr-1">لون المنشأة</button></div></div>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2"><label class="${lab}">لون الحدود<input type="color" id="imp-st-border" value="${S.bc}" aria-label="لون الحدود" oninput="window.impStyleSet('border',this.value,true)" onchange="window.impStyleSet('border',this.value)" class="block w-full h-9 rounded border mt-1 cursor-pointer"></label>
-        <label class="${lab}">سماكة الحدود<select onchange="window.impStyleSet('bw',this.value)" class="${sel}">${BW.map(([v, l]) => `<option value="${v}" ${Number(v) === S.bw ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label class="${lab}">نوع الخط<select onchange="window.impStyleSet('bs',this.value)" class="${sel}">${BS.map(([v, l]) => `<option value="${v}" ${v === S.bs ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label class="${lab}">حجم الخط<select onchange="window.impStyleSet('scale',this.value)" class="${sel}">${SC.map(([v, l]) => `<option value="${v}" ${v === S.scale ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
-      <label class="${lab}">الخط<select onchange="window.impStyleSet('font',this.value)" class="${sel}" aria-label="الخط">${CF_FONTS.slice(1).map(([v, l]) => `<option value="${E(v)}" ${v === S.font ? 'selected' : ''} style="font-family:'${E(v)}'">${E(l)}</option>`).join('')}</select></label>
-      <button type="button" onclick="window.impStyleReset()" class="${btn} bg-white text-slate-700 border-slate-300">إعادة التنسيق الافتراضي</button></div>`;
+    const o = IMP.opts, S = impStyle().S, custom = o.layout === 'custom', sel = 'class="imp-in"';
+    const a = card('imp-st-a', 'fa-swatchbook', 'القالب والمحاذاة', custom ? 'للنموذج المخصص تنسيقه الخاص من المنشئ' : 'شكل الجدول العام ومحاذاة النصوص', `<div class="imp-grid3" role="group" aria-label="قالب التنسيق">${PRESETS.map(([k, l, d]) => `<button type="button" class="imp-btn${S.preset === k ? ' on' : ''}" style="flex-direction:column;gap:1px" onclick="window.impStyleSet('preset','${k}')" aria-pressed="${S.preset === k}">${l}<small style="font-size:9px;font-weight:700;opacity:.75">${d}</small></button>`).join('')}</div>
+      <div><span class="imp-lbl">محاذاة النص</span><div class="imp-seg" role="group" aria-label="محاذاة النص">${[['right', 'يمين', 'fa-align-right'], ['center', 'وسط', 'fa-align-center'], ['left', 'يسار', 'fa-align-left']].map(([k, l, ic]) => `<button type="button" class="imp-btn${S.al === k ? ' on' : ''}" onclick="window.impStyleSet('align','${k}')" aria-pressed="${S.al === k}"><i class="fas ${ic}" aria-hidden="true"></i>${l}</button>`).join('')}</div></div>`);
+    const b = card('imp-st-b', 'fa-fill-drip', 'لون الجدول', 'يُشتق منه لون العناوين والنص تلقائياً', `<div class="imp-chips" style="align-items:center"><input type="color" id="imp-st-color" value="${S.ACC}" aria-label="لون الجدول" oninput="window.impStyleSet('color',this.value,true)" onchange="window.impStyleSet('color',this.value)" style="width:42px;height:32px;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer">${SWATCH.map(c => `<button type="button" aria-label="اللون ${c}" onclick="window.impStyleSet('color','${c}')" style="background:${c}" class="imp-sw${S.ACC.toLowerCase() === c ? ' on' : ''}"></button>`).join('')}<button type="button" class="imp-chip" onclick="window.impStyleSet('color','')">لون المنشأة</button></div>`);
+    const c = card('imp-st-c', 'fa-border-all', 'الحدود', 'اللون والسماكة والنوع', `<div class="imp-grid3"><label><span class="imp-lbl">لون الحدود</span><input type="color" id="imp-st-border" value="${S.bc}" aria-label="لون الحدود" oninput="window.impStyleSet('border',this.value,true)" onchange="window.impStyleSet('border',this.value)" style="width:100%;height:36px;border:1px solid #cbd5e1;border-radius:10px;cursor:pointer"></label>
+      <label><span class="imp-lbl">السماكة</span><select onchange="window.impStyleSet('bw',this.value)" ${sel}>${BW.map(([v, l]) => `<option value="${v}" ${Number(v) === S.bw ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label><span class="imp-lbl">النوع</span><select onchange="window.impStyleSet('bs',this.value)" ${sel}>${BS.map(([v, l]) => `<option value="${v}" ${v === S.bs ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>`);
+    const d = card('imp-st-d', 'fa-font', 'الخط', 'نوع الخط وحجمه', `<div class="imp-grid2"><label><span class="imp-lbl">نوع الخط</span><select onchange="window.impStyleSet('font',this.value)" ${sel} aria-label="الخط">${CF_FONTS.slice(1).map(([v, l]) => `<option value="${E(v)}" ${v === S.font ? 'selected' : ''}>${E(l)}</option>`).join('')}</select></label>
+      <label><span class="imp-lbl">حجم الخط</span><select onchange="window.impStyleSet('scale',this.value)" ${sel}>${SC.map(([v, l]) => `<option value="${v}" ${v === S.scale ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+      <button type="button" class="imp-btn" onclick="window.impStyleReset()">إعادة التنسيق الافتراضي</button>`);
+    return `<div id="imp-style-box" class="imp-stack${custom ? ' imp-dis' : ''}" ${custom ? 'aria-disabled="true"' : ''}>${a}${b}${c}${d}</div>`;
   };
   window.impStyleSet = function (k, v, live) {
     if (!IMP) return; const st = { ...(IMP.opts.style || {}) };
     if (k === 'align' && !['right', 'center', 'left'].includes(v)) return;
     if (v === '' || v === null || v === undefined) delete st[k]; else st[k] = (k === 'bw' || k === 'scale') ? Number(v) : v;
     if (k === 'font' && typeof cfEnsureFonts === 'function') { try { cfEnsureFonts({ font: v, blocks: [] }); } catch (_) {} }
-    IMP.opts.style = st; refresh();
-    if (live) return;
+    IMP.opts.style = st; refresh(); if (live) return;
     const box = $('imp-style-box'); if (box) box.outerHTML = window.hrImpStyleHtml(); persist(); refreshModels();
   };
   window.impStyleReset = function () { if (!IMP) return; IMP.opts.style = {}; refresh(); const box = $('imp-style-box'); if (box) box.outerHTML = window.hrImpStyleHtml(); persist(); refreshModels(); };
-  // ---------- تصميم الجدول: أشكال + تنعيم الحواف + ترتيب الحقول بالسحب والإفلات ----------
+  // ---------- تصميم الجدول: شكل + حواف + حقول (سحب/حذف/استعادة) ----------
   const SHAPES_UI = [['classic', 'عمودان متصل', 2, 0], ['one', 'عمود واحد', 1, 0], ['cards2', 'بطاقات عمودان', 2, 1], ['cards3', 'بطاقات ثلاثة', 3, 1], ['list', 'قائمة مفصولة', 1, 1]];
-  const BLOCK_LBL = { band: 'الشريط الملوّن (عنوان السند)', table: 'الجدول', text: 'نص إضافي', note: 'الإقرار', sign: 'التواقيع والأختام' };
-  const shapeIcon = (cols, gap) => `<span aria-hidden="true" style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:${gap ? 3 : 0}px;width:38px;margin:0 auto 4px">${Array.from({ length: cols * (cols === 1 ? 4 : 3) }, () => `<i style="display:block;height:7px;border:1px solid #64748b;${gap ? 'border-radius:3px' : ''}"></i>`).join('')}</span>`;
+  const BLOCK_LBL = { head: 'الترويسة (الشعار وبيانات المنشأة)', band: 'الشريط الملوّن (عنوان السند)', table: 'الجدول', text: 'نص إضافي', note: 'الإقرار', sign: 'التواقيع', stamp: 'الختم' };
+  const DEF_BLOCKS = 'head,band,table,text,note,sign,stamp';
+  const shapeIcon = (cols, gap) => `<span aria-hidden="true" style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:${gap ? 3 : 0}px;width:38px">${Array.from({ length: cols * (cols === 1 ? 4 : 3) }, () => `<i style="display:block;height:7px;border:1px solid currentColor;opacity:.75;${gap ? 'border-radius:3px' : ''}"></i>`).join('')}</span>`;
   function curDesign() { return impDesign(); }
-  function putDesign(k, v) { const d = { ...(IMP.opts.design || {}) }; if (v === null || v === undefined || (Array.isArray(v) && !v.length) || v === 0 || v === 'classic' && k === 'shape') delete d[k]; else d[k] = v; IMP.opts.design = d; }
+  function putDesign(k, v) { const d = { ...(IMP.opts.design || {}) }; if (v === null || v === undefined || (Array.isArray(v) && !v.length) || v === 0 || (v === 'classic' && k === 'shape')) delete d[k]; else d[k] = v; IMP.opts.design = d; }
   window.hrImpDesignHtml = function () {
-    const D = curDesign(), full = IMP.opts.layout === 'full', list = full ? window.impDesignList() : [], btn = 'rounded-lg border text-[10px] font-extrabold px-2 py-1';
-    const row = (it, i, n) => `<li data-key="${E(it.k)}" class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5 ${it.hidden ? 'opacity-50' : ''}"><span data-handle role="button" tabindex="-1" aria-label="اسحب لتغيير مكان ${it.l.replace(/<[^>]*>/g, '')}" title="اسحب لتغيير المكان" style="touch-action:none;cursor:grab" class="w-6 h-7 flex items-center justify-center text-slate-400 select-none"><i class="fas fa-grip-vertical" aria-hidden="true"></i></span><span class="flex-1 min-w-0 truncate text-[11px] font-extrabold text-slate-800">${it.l}</span>
-      <button type="button" onclick="window.impFldMove('${E(it.k)}',-1)" ${i === 0 ? 'disabled' : ''} aria-label="رفع" class="${btn} border-slate-200 text-slate-600 disabled:opacity-30"><i class="fas fa-chevron-up" aria-hidden="true"></i></button>
-      <button type="button" onclick="window.impFldMove('${E(it.k)}',1)" ${i === n - 1 ? 'disabled' : ''} aria-label="خفض" class="${btn} border-slate-200 text-slate-600 disabled:opacity-30"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
-      <button type="button" onclick="window.impFldSpan('${E(it.k)}')" aria-pressed="${it.full}" title="عرض كامل السطر" class="${btn} ${it.full ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-slate-600'}">كامل</button>
-      <button type="button" onclick="window.impFldHide('${E(it.k)}')" ${it.k === 'amount' ? 'disabled' : ''} aria-pressed="${it.hidden}" aria-label="${it.hidden ? 'إظهار' : 'إخفاء'}" title="${it.hidden ? 'إظهار' : 'إخفاء'}" class="${btn} border-slate-300 text-slate-600 disabled:opacity-30"><i class="fas ${it.hidden ? 'fa-eye-slash' : 'fa-eye'}" aria-hidden="true"></i></button></li>`;
-    return `<div id="imp-design-box" class="space-y-2.5 ${full ? '' : 'opacity-50 pointer-events-none'}"><p class="text-xs font-black text-slate-800"><i class="fas fa-table-cells-large ml-1 text-slate-400" aria-hidden="true"></i>تصميم الجدول <span class="text-slate-500 font-bold">${full ? '(الشكل والحواف وترتيب الحقول)' : '(يعمل مع «سند كامل» فقط)'}</span></p>
-      <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px" role="group" aria-label="أشكال الجدول">${SHAPES_UI.map(([k, l, c, g]) => `<button type="button" onclick="window.impDesignSet('shape','${k}')" aria-pressed="${D.shape === k}" class="px-1 py-2 rounded-xl border text-[10px] font-extrabold ${D.shape === k ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}">${shapeIcon(c, g)}${l}</button>`).join('')}</div>
-      <label class="flex items-center gap-2 text-[11px] font-extrabold text-slate-700"><span class="w-24 shrink-0">تنعيم الحواف</span><input id="imp-radius" type="range" min="0" max="24" step="1" value="${D.radius}" oninput="window.impDesignSet('radius',+this.value,true)" onchange="window.impDesignSet('radius',+this.value)" aria-label="تنعيم الحواف" class="flex-1 accent-black"><output id="imp-radius-out" class="w-12 text-center font-black">${D.radius ? D.radius + ' px' : 'حادة'}</output></label>
-      <div><p class="text-[10px] font-extrabold text-slate-600 mb-1">الحقول <span class="font-bold text-slate-500">— اسحب <i class="fas fa-grip-vertical" aria-hidden="true"></i> لتغيير المكان (أو استخدم الأسهم)، والعين للإخفاء، و«كامل» لعرض السطر كله</span></p>
-        <ul id="imp-fld-list" class="space-y-1 max-h-64 overflow-y-auto pr-0.5">${list.length ? list.map((it, i) => row(it, i, list.length)).join('') : '<li class="text-[10px] font-bold text-slate-500">اختر ملفاً بصفوف صالحة لتظهر الحقول.</li>'}</ul></div>
-      <div><p class="text-[10px] font-extrabold text-slate-600 mb-1">ترتيب أقسام السند <span class="font-bold text-slate-500">— اسحب لتغيير المكان</span></p>
-        <ul id="imp-blk-list" class="space-y-1">${D.blocks.map((k, i) => `<li data-key="${k}" class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5 ${D.hideBlocks.includes(k) ? 'opacity-50' : ''}"><span data-handle role="button" tabindex="-1" aria-label="اسحب لتغيير مكان ${BLOCK_LBL[k]}" style="touch-action:none;cursor:grab" class="w-6 h-7 flex items-center justify-center text-slate-400 select-none"><i class="fas fa-grip-vertical" aria-hidden="true"></i></span><span class="flex-1 text-[11px] font-extrabold text-slate-800">${BLOCK_LBL[k]}${k === 'text' && IMP.opts.text && IMP.opts.text.pos === 'page' ? ' (أعلى الصفحة)' : ''}${D.hideBlocks.includes(k) ? ' — مخفي' : ''}</span><button type="button" onclick="window.impBlkMove('${k}',-1)" ${i === 0 ? 'disabled' : ''} aria-label="رفع" class="${btn} border-slate-200 text-slate-600 disabled:opacity-30"><i class="fas fa-chevron-up" aria-hidden="true"></i></button><button type="button" onclick="window.impBlkMove('${k}',1)" ${i === D.blocks.length - 1 ? 'disabled' : ''} aria-label="خفض" class="${btn} border-slate-200 text-slate-600 disabled:opacity-30"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>${(k === 'band' || k === 'note') ? `<button type="button" onclick="window.impBlkHide('${k}')" aria-pressed="${D.hideBlocks.includes(k)}" aria-label="${D.hideBlocks.includes(k) ? 'إظهار' : 'إخفاء'} ${BLOCK_LBL[k]}" title="${D.hideBlocks.includes(k) ? 'إظهار' : 'إخفاء'}" class="${btn} border-slate-300 text-slate-600"><i class="fas ${D.hideBlocks.includes(k) ? 'fa-eye-slash' : 'fa-eye'}" aria-hidden="true"></i></button>` : ''}</li>`).join('')}</ul></div>
-      <button type="button" onclick="window.impDesignReset()" class="px-3 py-2 rounded-xl border border-slate-300 bg-white text-[11px] font-extrabold text-slate-700">إعادة تصميم الجدول الافتراضي</button></div>`;
+    const D = curDesign(), full = IMP.opts.layout === 'full', list = full ? window.impDesignList() : [], live = list.filter(x => !x.hidden), gone = list.filter(x => x.hidden);
+    const shapes = card('imp-shape-card', 'fa-shapes', 'شكل الجدول وتنعيم الحواف', 'اختر الشكل ثم نعّم الحواف بالشريط', `<div class="imp-grid5" role="group" aria-label="أشكال الجدول">${SHAPES_UI.map(([k, l, c, g]) => `<button type="button" class="imp-shape${D.shape === k ? ' on' : ''}" aria-pressed="${D.shape === k}" onclick="window.impDesignSet('shape','${k}')">${shapeIcon(c, g)}${l}</button>`).join('')}</div>
+      <label class="imp-slide"><span class="nm">تنعيم الحواف</span><input id="imp-radius" type="range" min="0" max="24" step="1" value="${D.radius}" oninput="window.impDesignSet('radius',+this.value,true)" onchange="window.impDesignSet('radius',+this.value)" aria-label="تنعيم الحواف"><output id="imp-radius-out">${D.radius ? D.radius + ' px' : 'حادة'}</output></label>`);
+    const rows = live.map((it, i) => `<li data-key="${E(it.k)}" class="imp-row">${grip(it.l)}<span class="nm">${it.l}</span><button type="button" class="imp-btn sm${it.full ? ' on' : ''}" onclick="window.impFldSpan('${E(it.k)}')" aria-pressed="${it.full}" title="عرض كامل السطر">كامل</button>${mvBtns('Fld', it.k, i, live.length)}${trashBtn('الحقل', it.l, `window.impFldHide('${E(it.k)}')`, it.k === 'amount')}</li>`).join('');
+    const fields = card('imp-fields-card', 'fa-list-check', 'الحقول', 'اسحب لتغيير المكان، «كامل» لعرض السطر كله، والسلة لحذف الحقل (يمكن استعادته)', `<ul id="imp-fld-list" class="imp-list">${rows || '<li class="imp-note">اختر ملفاً بصفوف صالحة لتظهر الحقول.</li>'}</ul>${restoreChips('حقول محذوفة', gone, it => `window.impFldHide('${E(it.k)}')`, 'imp-fld-del')}`);
+    return `<div id="imp-design-box" class="imp-stack${full ? '' : ' imp-dis'}">${shapes}${fields}</div>`;
+  };
+  window.hrImpBlocksHtml = function () {
+    const D = curDesign(), full = IMP.opts.layout === 'full', T = impText(), vis = D.blocks.filter(k => !D.hideBlocks.includes(k)), gone = D.blocks.filter(k => D.hideBlocks.includes(k)).map(k => ({ k, l: BLOCK_LBL[k] }));
+    const rows = vis.map((k, i) => `<li data-key="${k}" class="imp-row"><span data-handle role="button" tabindex="-1" aria-label="اسحب لتغيير مكان ${BLOCK_LBL[k]}" title="اسحب لتغيير المكان" class="imp-grip"><i class="fas fa-grip-vertical" aria-hidden="true"></i></span><span class="nm">${BLOCK_LBL[k]}${k === 'text' && T.pos === 'page' ? ' (أعلى الصفحة)' : ''}</span>${mvBtns('Blk', k, i, vis.length)}${k === 'table' ? '' : trashBtn('القسم', BLOCK_LBL[k], `window.impBlkHide('${k}')`, false)}</li>`).join('');
+    return card('imp-blocks-box', 'fa-layer-group', 'ترتيب أقسام السند', 'اسحب لتغيير المكان، وأي قسم يمكن حذفه عدا الجدول (يمكن استعادته)', `<ul id="imp-blk-list" class="imp-list">${rows}</ul>${restoreChips('أقسام محذوفة', gone, it => `window.impBlkHide('${it.k}')`, 'imp-blk-del')}`, full ? '' : 'imp-dis');
   };
   function bindSort(id, onDone) {
     const list = $(id); if (!list) return;
@@ -20925,73 +20945,112 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
       list.addEventListener('pointermove', move); list.addEventListener('pointerup', up); list.addEventListener('pointercancel', up);
     });
   }
-  function clearPagePos(ks) { const t = IMP.opts.text; if (t && t.pos && ks && ks.indexOf('text') !== curDesign().blocks.indexOf('text')) { const n = { ...t }; delete n.pos; IMP.opts.text = n; } }
-  function paintDesign() { const box = $('imp-design-box'); if (box) box.outerHTML = window.hrImpDesignHtml(); bindSort('imp-fld-list', ks => { putDesign('order', ks); afterDesign(); }); bindSort('imp-blk-list', ks => { clearPagePos(ks); putDesign('blocks', ks.join() === 'band,table,text,note,sign' ? [] : ks); afterDesign(); }); }
-  function afterDesign() { refresh(); paintDesign(); persist(); refreshModels(); }
-  window.hrImpBindDesign = () => { bindSort('imp-fld-list', ks => { putDesign('order', ks); afterDesign(); }); bindSort('imp-blk-list', ks => { clearPagePos(ks); putDesign('blocks', ks.join() === 'band,table,text,note,sign' ? [] : ks); afterDesign(); }); };
+  function clearPagePos(nb) { const t = IMP.opts.text; if (t && t.pos && nb && nb.indexOf('text') !== curDesign().blocks.indexOf('text')) { const n = { ...t }; delete n.pos; IMP.opts.text = n; } }
+  const currentOrder = () => window.impDesignList().map(x => x.k);
+  window.hrImpBindDesign = () => {
+    bindSort('imp-fld-list', ks => { putDesign('order', mergeOrder(currentOrder(), ks)); afterDesign(); });
+    bindSort('imp-blk-list', ks => { const nb = mergeOrder(curDesign().blocks, ks); clearPagePos(nb); putDesign('blocks', nb.join() === DEF_BLOCKS ? [] : nb); afterDesign(); });
+  };
+  function paintDesign() { const a = $('imp-design-box'); if (a) a.outerHTML = window.hrImpDesignHtml(); const b = $('imp-blocks-box'); if (b) b.outerHTML = window.hrImpBlocksHtml(); window.hrImpBindDesign(); }
+  function afterDesign() { refresh(); paintDesign(); repaintText(); repaintSig(); repaintStamp(); persist(); refreshModels(); }
   window.impDesignSet = function (k, v, live) {
     if (!IMP) return; putDesign(k, v);
     if (k === 'radius') { const o = $('imp-radius-out'); if (o) o.textContent = v ? v + ' px' : 'حادة'; }
-    refresh(); if (live) return; paintDesign(); persist();
+    refresh(); if (live) return; paintDesign(); persist(); refreshModels();
   };
-  function currentOrder() { return window.impDesignList().map(x => x.k); }
-  window.impFldMove = function (k, d) { const ord = currentOrder(), i = ord.indexOf(k), j = i + Number(d); if (i < 0 || j < 0 || j >= ord.length) return; [ord[i], ord[j]] = [ord[j], ord[i]]; putDesign('order', ord); afterDesign(); };
-  window.impBlkMove = function (k, d) { const b = [...curDesign().blocks], i = b.indexOf(k), j = i + Number(d); if (i < 0 || j < 0 || j >= b.length) return; [b[i], b[j]] = [b[j], b[i]]; clearPagePos(b); putDesign('blocks', b.join() === 'band,table,text,note,sign' ? [] : b); afterDesign(); };
+  function swapVisible(full, hiddenSet, k, d) { const vis = full.filter(x => !hiddenSet.has(x)), i = vis.indexOf(k), j = i + Number(d); if (i < 0 || j < 0 || j >= vis.length) return null; const nb = [...full], p = nb.indexOf(vis[i]), q = nb.indexOf(vis[j]); [nb[p], nb[q]] = [nb[q], nb[p]]; return nb; }
+  window.impFldMove = function (k, d) { const nb = swapVisible(currentOrder(), new Set(curDesign().hidden), k, d); if (!nb) return; putDesign('order', nb); afterDesign(); };
+  window.impBlkMove = function (k, d) { const nb = swapVisible(curDesign().blocks, new Set(curDesign().hideBlocks), k, d); if (!nb) return; clearPagePos(nb); putDesign('blocks', nb.join() === DEF_BLOCKS ? [] : nb); afterDesign(); };
   window.impFldHide = function (k) { const h = new Set(curDesign().hidden); if (h.has(k)) h.delete(k); else if (k !== 'amount') h.add(k); putDesign('hidden', [...h]); afterDesign(); };
+  window.impBlkHide = function (k) { if (k === 'table' || !BLOCK_LBL[k]) return; const h = new Set(curDesign().hideBlocks); if (h.has(k)) h.delete(k); else h.add(k); putDesign('hideBlocks', [...h]); afterDesign(); };
   window.impFldSpan = function (k) { const it = window.impDesignList().find(x => x.k === k); if (!it) return; const sp = { ...curDesign().span }; sp[k] = it.full ? 'half' : 'full'; const d = { ...(IMP.opts.design || {}) }; d.span = sp; IMP.opts.design = d; afterDesign(); };
   window.impDesignReset = function () { if (!IMP) return; IMP.opts.design = {}; afterDesign(); };
+  // ---------- السنة ----------
   window.impYearSet = function (k, v) { if (!IMP) return; if (k === 'year') { const y = String(v || '').trim(); IMP.opts.year = /^\d{4}$/.test(y) && +y >= 2000 && +y <= 2100 ? y : ''; } else IMP.opts.addYear = !!v; window.impRender(); persist(); };
   window.hrImpYearHtml = function () {
-    const o = IMP.opts; return `<div id="imp-year-box" class="rounded-xl border border-slate-200 bg-white p-2.5 flex flex-wrap items-center gap-x-4 gap-y-2"><label class="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-700"><input id="imp-addyear" type="checkbox" ${o.addYear !== false ? 'checked' : ''} onchange="window.impYearSet('addYear', this.checked)" class="w-4 h-4"> إضافة السنة بجانب الشهر (مرتب شهر أكتوبر 2026)</label>
-      <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">السنة <input id="imp-year" type="number" min="2000" max="2100" placeholder="تلقائي" value="${E(o.year || '')}" ${o.addYear === false ? 'disabled' : ''} onchange="window.impYearSet('year', this.value)" aria-label="السنة" class="w-24 border border-slate-300 rounded-lg p-1.5 text-xs font-black text-center"></label><span class="text-[10px] font-bold text-slate-500">فارغة = من تاريخ الصرف</span></div>`;
+    const o = IMP.opts; return card('imp-year-box', 'fa-calendar-days', 'السنة بجانب الشهر', 'مثال: مرتب شهر أكتوبر 2026', `<label class="imp-slide"><input id="imp-addyear" type="checkbox" ${o.addYear !== false ? 'checked' : ''} onchange="window.impYearSet('addYear', this.checked)" style="width:16px;height:16px"> إضافة السنة تلقائياً بجانب اسم الشهر</label>
+      <label class="imp-slide"><span class="nm">السنة</span><input id="imp-year" type="number" min="2000" max="2100" placeholder="تلقائي" value="${E(o.year || '')}" ${o.addYear === false ? 'disabled' : ''} onchange="window.impYearSet('year', this.value)" aria-label="السنة" class="imp-in" style="width:110px;text-align:center;font-weight:900"><span class="imp-note">فارغة = من تاريخ الصرف</span></label>`);
   };
-  // ---------- نص إضافي + أحجام التواقيع + مكتبة النماذج المحفوظة ----------
+  // ---------- النص الإضافي ----------
+  const TOKENS = ['الاسم', 'المبلغ', 'البيان', 'التاريخ', 'الشهر', 'الهوية', 'المرجع'];
+  function textPosNow() { const T = impText(); if (T.pos === 'page') return 'page'; const b = curDesign().blocks, i = b.indexOf('text'); if (b[i - 1] === 'head') return 'top'; if (i === b.length - 1) return 'bottom'; if (b[i - 1] === 'table') return 'mid'; return ''; }
   window.hrImpTextHtml = function () {
-    const T = impText(), btn = 'px-2.5 py-1.5 rounded-lg border text-[11px] font-extrabold';
-    return `<div id="imp-text-box" class="rounded-xl border border-slate-200 bg-white p-2.5 space-y-2"><p class="text-xs font-black text-slate-800"><i class="fas fa-font ml-1 text-slate-400" aria-hidden="true"></i>نص إضافي على السند <span class="text-slate-500 font-bold">(يظهر في الوسط بين الجدول والإقرار، وتنقله من «ترتيب أقسام السند»)</span></p>
-      <textarea id="imp-text" rows="2" maxlength="300" placeholder="مثال: هذا السند صادر إلكترونياً ولا يحتاج ختماً — يمكنك استخدام {الاسم} {المبلغ} {البيان} {التاريخ} {الشهر}" oninput="window.impTextSet('t', this.value, true)" onchange="window.impTextSet('t', this.value)" aria-label="النص الإضافي" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-bold">${E(T.t)}</textarea>
-      <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="مكان النص"><span class="text-[10px] font-extrabold text-slate-600">المكان</span>${[['page', 'أعلى الصفحة'], ['top', 'فوق كل عنصر'], ['mid', 'في الوسط'], ['bottom', 'أسفل']].map(([k, l]) => `<button type="button" onclick="window.impTextPos('${k}')" aria-pressed="${textPosNow() === k}" class="${btn} ${textPosNow() === k ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}">${l}</button>`).join('')}</div>
-      <div class="flex flex-wrap items-center gap-2"><span class="flex gap-1" role="group" aria-label="محاذاة النص">${[['right', 'يمين'], ['center', 'وسط'], ['left', 'يسار']].map(([k, l]) => `<button type="button" onclick="window.impTextSet('align','${k}')" aria-pressed="${T.align === k}" class="${btn} ${T.align === k ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}">${l}</button>`).join('')}</span>
-        <label class="flex items-center gap-1 text-[10px] font-extrabold text-slate-600">الحجم<select onchange="window.impTextSet('size', +this.value)" class="border border-slate-300 rounded-lg p-1.5 text-xs font-bold bg-white">${[10, 12, 14, 16, 18, 22, 26, 30].map(v => `<option value="${v}" ${v === T.size ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-        <label class="flex items-center gap-1 text-[10px] font-extrabold text-slate-600"><input type="checkbox" ${T.bold ? 'checked' : ''} onchange="window.impTextSet('bold', this.checked)" class="w-4 h-4"> ثقيل</label>
-        <label class="flex items-center gap-1 text-[10px] font-extrabold text-slate-600"><input type="checkbox" ${T.frame ? 'checked' : ''} onchange="window.impTextSet('frame', this.checked)" class="w-4 h-4"> داخل إطار</label>
-        <label class="flex items-center gap-1 text-[10px] font-extrabold text-slate-600">اللون<input type="color" value="${T.color || '#111111'}" oninput="window.impTextSet('color', this.value, true)" onchange="window.impTextSet('color', this.value)" aria-label="لون النص" class="w-8 h-7 rounded border cursor-pointer"></label></div></div>`;
+    const T = impText(), pos = textPosNow(), off = curDesign().hideBlocks.includes('text');
+    return card('imp-text-box', 'fa-font', 'نص إضافي على السند', off ? 'القسم محذوف — استعده من «ترتيب أقسام السند»' : 'عنوان أو ملاحظة حرّة، ويمكن وضعه فوق كل عنصر', `
+      <textarea id="imp-text" rows="2" maxlength="300" placeholder="مثال: سند إلكتروني صادر من المنصة — {الاسم}" oninput="window.impTextSet('t', this.value, true)" onchange="window.impTextSet('t', this.value)" aria-label="النص الإضافي" class="imp-in">${E(T.t)}</textarea>
+      <div class="imp-chips" aria-label="رموز جاهزة">${TOKENS.map(t => `<button type="button" class="imp-chip" onclick="window.impTextToken('{${t}}')">{${t}}</button>`).join('')}</div>
+      <div><span class="imp-lbl">المكان</span>${seg([['page', 'أعلى الصفحة'], ['top', 'فوق الشريط'], ['mid', 'في الوسط'], ['bottom', 'أسفل']], pos, k => `window.impTextPos('${k}')`, 'مكان النص')}</div>
+      <div><span class="imp-lbl">المحاذاة</span>${seg([['right', 'يمين'], ['center', 'وسط'], ['left', 'يسار']], T.align, k => `window.impTextSet('align','${k}')`, 'محاذاة النص')}</div>
+      <div class="imp-chips" style="align-items:center"><label class="imp-slide">الحجم<select onchange="window.impTextSet('size', +this.value)" class="imp-in" style="width:76px">${[10, 12, 14, 16, 18, 22, 26, 30].map(v => `<option value="${v}" ${v === T.size ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+        <label class="imp-slide"><input type="checkbox" ${T.bold ? 'checked' : ''} onchange="window.impTextSet('bold', this.checked)" style="width:16px;height:16px"> ثقيل</label>
+        <label class="imp-slide"><input type="checkbox" ${T.frame ? 'checked' : ''} onchange="window.impTextSet('frame', this.checked)" style="width:16px;height:16px"> داخل إطار</label>
+        <label class="imp-slide">اللون<input type="color" value="${T.color || '#111111'}" oninput="window.impTextSet('color', this.value, true)" onchange="window.impTextSet('color', this.value)" aria-label="لون النص" style="width:34px;height:28px;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer"></label></div>`, off ? 'imp-soft' : '');
   };
+  function repaintText() { const b = $('imp-text-box'); if (!b) return; const ta = b.querySelector('textarea'), val = ta ? ta.value : ''; b.outerHTML = window.hrImpTextHtml(); const nt = $('imp-text'); if (nt) nt.value = val; }
   window.impTextSet = function (k, v, live) {
     if (!IMP) return; const t = { ...(IMP.opts.text || {}) }; if (k === 't') { t.t = String(v).slice(0, 300); if (!t.t) delete t.t; } else t[k] = v; IMP.opts.text = t; refresh(); if (live) return;
-    if (k !== 't') { const b = $('imp-text-box'); if (b) { const ta = b.querySelector('textarea'), val = ta ? ta.value : ''; b.outerHTML = window.hrImpTextHtml(); const nt = $('imp-text'); if (nt) nt.value = val; } }
-    persist(); refreshModels();
+    if (k !== 't') repaintText(); persist(); refreshModels();
   };
+  window.impTextToken = function (tok) { const ta = $('imp-text'); if (!ta) return; const a = ta.selectionStart == null ? ta.value.length : ta.selectionStart, b = ta.selectionEnd == null ? a : ta.selectionEnd; ta.value = (ta.value.slice(0, a) + tok + ta.value.slice(b)).slice(0, 300); const p = Math.min(ta.value.length, a + tok.length); ta.focus(); try { ta.setSelectionRange(p, p); } catch (_) {} window.impTextSet('t', ta.value); };
+  window.impTextPos = function (p) {
+    if (!IMP) return; const t = { ...(IMP.opts.text || {}) };
+    if (p === 'page') t.pos = 'page'; else { delete t.pos; const b = curDesign().blocks.filter(k => k !== 'text'), i = p === 'top' ? b.indexOf('head') + 1 : p === 'bottom' ? b.length : b.indexOf('table') + 1, nb = [...b.slice(0, i), 'text', ...b.slice(i)]; putDesign('blocks', nb.join() === DEF_BLOCKS ? [] : nb); }
+    IMP.opts.text = t; afterDesign();
+  };
+  // ---------- أحجام التواقيع ----------
   window.hrImpSigHtml = function () {
-    const o = IMP.opts, comp = getActiveCompany() || {}, names = ['المستلم', ...docSigners(comp).map(x => x.label)].slice(0, 4), sz = o.sigSize || {};
-    return `<div id="imp-sig-box" class="rounded-xl border border-slate-200 bg-white p-2.5 space-y-2 ${o.sign ? '' : 'opacity-50 pointer-events-none'}"><p class="text-xs font-black text-slate-800"><i class="fas fa-signature ml-1 text-slate-400" aria-hidden="true"></i>حجم كل توقيع <span class="text-slate-500 font-bold">(مستقل لكل توقيع، ويبقى متناسقاً مع الصفحة)</span></p>
-      ${names.map((nm, i) => { const v = Math.max(50, Math.min(250, Number(sz[i]) || 100)); return `<label class="flex items-center gap-2 text-[11px] font-extrabold text-slate-700"><span class="w-28 shrink-0 truncate">${E(nm)}</span><input type="range" min="50" max="250" step="10" value="${v}" oninput="window.impSigSet(${i}, +this.value, true)" onchange="window.impSigSet(${i}, +this.value)" aria-label="حجم توقيع ${E(nm)}" class="flex-1 accent-black"><output id="imp-sig-out-${i}" class="w-12 text-center font-black">${v}%</output></label>`; }).join('')}
-      <button type="button" onclick="window.impSigReset()" class="px-3 py-1.5 rounded-lg border border-slate-300 text-[11px] font-extrabold text-slate-700">الحجم المتناسق التلقائي</button></div>`;
+    const o = IMP.opts, comp = getActiveCompany() || {}, names = ['المستلم', ...docSigners(comp).map(x => x.label)].slice(0, 4), sz = o.sigSize || {}, off = !o.sign || curDesign().hideBlocks.includes('sign');
+    return card('imp-sig-box', 'fa-signature', 'حجم كل توقيع', off ? 'التواقيع مخفية — فعّلها من «ترتيب أقسام السند»' : 'مستقل لكل توقيع، ويبقى متناسقاً مع الصفحة', names.map((nm, i) => { const v = Math.max(50, Math.min(250, Number(sz[i]) || 100)); return `<label class="imp-slide"><span class="nm">${E(nm)}</span><input type="range" min="50" max="250" step="10" value="${v}" oninput="window.impSigSet(${i}, +this.value, true)" onchange="window.impSigSet(${i}, +this.value)" aria-label="حجم توقيع ${E(nm)}"><output id="imp-sig-out-${i}">${v}%</output></label>`; }).join('') + '<button type="button" class="imp-btn" onclick="window.impSigReset()">الحجم المتناسق التلقائي</button>', off ? 'imp-dis' : '');
   };
+  function repaintSig() { const b = $('imp-sig-box'); if (b) b.outerHTML = window.hrImpSigHtml(); }
   window.impSigSet = function (i, v, live) {
     if (!IMP) return; const sz = { ...(IMP.opts.sigSize || {}) }; if (Number(v) === 100) delete sz[i]; else sz[i] = Number(v); IMP.opts.sigSize = sz;
     const out = $('imp-sig-out-' + i); if (out) out.textContent = Number(v) + '%'; refresh(); if (live) return; persist(); refreshModels();
   };
-  window.impSigReset = function () { if (!IMP) return; IMP.opts.sigSize = {}; const b = $('imp-sig-box'); if (b) b.outerHTML = window.hrImpSigHtml(); refresh(); persist(); refreshModels(); };
-  // مكتبة النماذج: لقطة من (الموضع، التنسيق، تصميم الجدول، النص، أحجام التواقيع، الخيارات) تُحفظ باسم وتُختار من قائمة منسدلة
+  window.impSigReset = function () { if (!IMP) return; IMP.opts.sigSize = {}; repaintSig(); refresh(); persist(); refreshModels(); };
+  // ---------- الختم: مكان وحجم لكل ختم ----------
+  window.hrImpStampHtml = function () {
+    const o = IMP.opts, comp = getActiveCompany() || {}, stamps = (typeof docStamps === 'function' ? docStamps(comp) : []).map(x => impSafeImg(x)).filter(Boolean), c = o.stampCfg || {}, al = ['right', 'center', 'left'].includes(c.align) ? c.align : 'left', dy = Math.max(-120, Math.min(60, Math.round(Number(c.dy)) || 0)), sz = c.sizes || {}, off = !o.stamp || curDesign().hideBlocks.includes('stamp'), b = curDesign().blocks, above = b.indexOf('stamp') < b.indexOf('sign');
+    const body = !stamps.length ? '<p class="imp-note">لا يوجد ختم مرفوع في «بيانات المنشأة». ارفع صورة الختم من الإعدادات ليظهر هنا.</p>' : `
+      ${stamps.map((s, i) => { const v = Math.max(30, Math.min(300, Number(sz[i]) || 100)); return `<label class="imp-slide"><img src="${E(s)}" alt="" style="width:36px;height:36px;object-fit:contain;border:1px solid #e2e8f0;border-radius:8px;background:#fff;flex:none"><span class="nm">${stamps.length > 1 ? 'ختم ' + (i + 1) : 'حجم الختم'}</span><input type="range" min="30" max="300" step="10" value="${v}" oninput="window.impStampSize(${i}, +this.value, true)" onchange="window.impStampSize(${i}, +this.value)" aria-label="حجم الختم ${i + 1}"><output id="imp-stamp-out-${i}">${v}%</output></label>`; }).join('')}
+      <div><span class="imp-lbl">المحاذاة</span>${seg([['right', 'يمين'], ['center', 'وسط'], ['left', 'يسار']], al, k => `window.impStampSet('align','${k}')`, 'محاذاة الختم')}</div>
+      <label class="imp-slide"><span class="nm">الارتفاع</span><input id="imp-stamp-dy" type="range" min="-120" max="60" step="4" value="${dy}" oninput="window.impStampSet('dy', +this.value, true)" onchange="window.impStampSet('dy', +this.value)" aria-label="الإزاحة الرأسية للختم"><output id="imp-stamp-dy-out">${dy} px</output></label>
+      <p class="imp-note">القيمة السالبة ترفع الختم ليتداخل مع التواقيع كالختم الحقيقي.</p>
+      <div><span class="imp-lbl">مكان الختم</span>${seg([['above', 'فوق التواقيع'], ['below', 'تحت التواقيع']], above ? 'above' : 'below', k => `window.impStampPos('${k}')`, 'مكان الختم')}</div>
+      <button type="button" class="imp-btn" onclick="window.impStampReset()">إعادة ضبط الختم</button>`;
+    return card('imp-stamp-box', 'fa-stamp', 'الختم', off ? 'الختم مخفي — فعّله من «ترتيب أقسام السند»' : 'حدّد مكان الختم وكبّره أو صغّره', body, off ? 'imp-dis' : '');
+  };
+  function repaintStamp() { const b = $('imp-stamp-box'); if (b) b.outerHTML = window.hrImpStampHtml(); }
+  window.impStampSet = function (k, v, live) {
+    if (!IMP) return; const c = { ...(IMP.opts.stampCfg || {}) };
+    if (k === 'align') { if (!['right', 'center', 'left'].includes(v)) return; if (v === 'left') delete c.align; else c.align = v; }
+    else if (k === 'dy') { const n = Math.max(-120, Math.min(60, Math.round(Number(v)) || 0)); if (!n) delete c.dy; else c.dy = n; const out = $('imp-stamp-dy-out'); if (out) out.textContent = n + ' px'; }
+    IMP.opts.stampCfg = c; refresh(); if (live) return; repaintStamp(); persist(); refreshModels();
+  };
+  window.impStampSize = function (i, v, live) {
+    if (!IMP) return; const c = { ...(IMP.opts.stampCfg || {}) }, sz = { ...(c.sizes || {}) }; if (Number(v) === 100) delete sz[i]; else sz[i] = Math.max(30, Math.min(300, Number(v))); if (Object.keys(sz).length) c.sizes = sz; else delete c.sizes; IMP.opts.stampCfg = c;
+    const out = $('imp-stamp-out-' + i); if (out) out.textContent = Number(v) + '%'; refresh(); if (live) return; persist(); refreshModels();
+  };
+  window.impStampPos = function (p) { const b = curDesign().blocks.filter(k => k !== 'stamp'), i = b.indexOf('sign'), at = p === 'above' ? i : i + 1, nb = [...b.slice(0, at), 'stamp', ...b.slice(at)]; putDesign('blocks', nb.join() === DEF_BLOCKS ? [] : nb); afterDesign(); };
+  window.impStampReset = function () { if (!IMP) return; IMP.opts.stampCfg = {}; repaintStamp(); refresh(); persist(); refreshModels(); };
+  // ---------- نماذج السند المحفوظة ----------
   const MAX_MODELS = 20;
   const getModels = () => { const m = policySettings && policySettings.impVoucher && policySettings.impVoucher.models; return Array.isArray(m) ? m.filter(x => x && typeof x.id === 'string' && typeof x.name === 'string' && x.data && typeof x.data === 'object' && !Array.isArray(x.data)).slice(0, MAX_MODELS) : []; };
   const plain = v => (v && typeof v === 'object' && !Array.isArray(v)) ? JSON.parse(JSON.stringify(v)) : {};
-  function snap() { const o = IMP.opts; return JSON.parse(JSON.stringify({ top: o.top === undefined ? null : o.top, style: o.style || {}, design: o.design || {}, text: o.text || {}, sigSize: o.sigSize || {}, flags: { logo: !!o.logo, stamp: !!o.stamp, sign: !!o.sign, sigimg: !!o.sigimg, words: !!o.words } })); }
+  function snap() { const o = IMP.opts; return JSON.parse(JSON.stringify({ top: o.top === undefined ? null : o.top, style: o.style || {}, design: o.design || {}, text: o.text || {}, sigSize: o.sigSize || {}, stamp: o.stampCfg || {}, flags: { logo: !!o.logo, stamp: !!o.stamp, sign: !!o.sign, sigimg: !!o.sigimg, words: !!o.words } })); }
   const stable = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)) ? Object.fromEntries(Object.keys(x).sort().map(y => [y, x[y]])) : x);
-  function applySnap(d) { const o = IMP.opts; o.top = (d.top !== null && d.top !== undefined && Number.isFinite(Number(d.top))) ? clampTop(d.top) : null; o.style = plain(d.style); o.design = plain(d.design); o.text = plain(d.text); o.sigSize = plain(d.sigSize); const f = (d.flags && typeof d.flags === 'object') ? d.flags : {}; ['logo', 'stamp', 'sign', 'sigimg', 'words'].forEach(k => { if (typeof f[k] === 'boolean') o[k] = f[k]; }); }
+  function applySnap(d) { const o = IMP.opts; o.top = (d.top !== null && d.top !== undefined && Number.isFinite(Number(d.top))) ? clampTop(d.top) : null; o.style = plain(d.style); o.design = plain(d.design); o.text = plain(d.text); o.sigSize = plain(d.sigSize); o.stampCfg = plain(d.stamp); const f = (d.flags && typeof d.flags === 'object') ? d.flags : {}; ['logo', 'stamp', 'sign', 'sigimg', 'words'].forEach(k => { if (typeof f[k] === 'boolean') o[k] = f[k]; }); }
   async function writeIV(mut) { try { const s = JSON.parse(JSON.stringify(policySettings || {})), iv = { ...(s.impVoucher || {}) }; mut(iv); s.impVoucher = iv; applyPolicySettings(s); await persistPolicySettings(getActiveCompany(), s); return true; } catch (_) { toast('تعذر حفظ النماذج للمنشأة', 'warning'); return false; } }
   window.hrImpModelsHtml = function () {
-    const ms = getModels(), cur = IMP.opts.modelId || '', sel = ms.find(m => m.id === cur), dirty = !!sel && stable(snap()) !== stable(sel.data), b = 'px-3 py-2 rounded-xl border text-[11px] font-extrabold';
-    return `<div id="imp-models-box" class="rounded-xl border border-slate-200 bg-white p-2.5 space-y-2"><p class="text-xs font-black text-slate-800"><i class="fas fa-folder-open ml-1 text-slate-400" aria-hidden="true"></i>نماذج السند المحفوظة <span class="text-slate-500 font-bold">(احفظ تنسيقك ثم اختره لاحقاً من القائمة)</span></p>
-      <div class="flex flex-wrap items-center gap-2"><select id="imp-model" onchange="window.impModelSelect(this.value)" aria-label="نموذج السند" class="flex-1 min-w-[10rem] border border-slate-300 rounded-lg p-2 text-xs font-bold bg-white"><option value="">— بدون نموذج (تنسيقي الحالي) —</option>${ms.map(m => `<option value="${E(m.id)}" ${m.id === cur ? 'selected' : ''}>${E(m.name)}</option>`).join('')}</select>
-        <button type="button" id="imp-model-save" onclick="window.impModelSave()" ${sel ? '' : 'disabled'} class="${b} ${dirty ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-300'} disabled:opacity-40">حفظ التعديلات</button>
-        <button type="button" onclick="window.impModelDelete()" ${sel ? '' : 'disabled'} class="${b} bg-white text-red-700 border-red-200 disabled:opacity-40">حذف</button></div>
-      ${dirty ? '<p role="status" class="text-[10px] font-extrabold text-amber-700">● لديك تعديلات لم تُحفظ في هذا النموذج بعد</p>' : ''}
-      <div class="flex flex-wrap gap-2"><input id="imp-model-name" maxlength="40" placeholder="اسم النموذج الجديد (مثال: سند الرواتب الشهري)" aria-label="اسم النموذج الجديد" class="flex-1 min-w-[10rem] border border-slate-300 rounded-lg p-2 text-xs font-bold"><button type="button" onclick="window.impModelSaveAs()" class="${b} bg-slate-900 text-white border-slate-900">حفظ كنموذج جديد</button></div></div>`;
+    const ms = getModels(), cur = IMP.opts.modelId || '', sel = ms.find(m => m.id === cur), dirty = !!sel && stable(snap()) !== stable(sel.data);
+    return card('imp-models-box', 'fa-folder-open', 'نماذج السند المحفوظة', 'احفظ تنسيقك كاملاً ثم اختره لاحقاً من القائمة', `
+      <div class="imp-chips" style="flex-wrap:nowrap;align-items:center"><select id="imp-model" onchange="window.impModelSelect(this.value)" aria-label="نموذج السند" class="imp-in" style="flex:1;min-width:0"><option value="">— بدون نموذج (تنسيقي الحالي) —</option>${ms.map(m => `<option value="${E(m.id)}" ${m.id === cur ? 'selected' : ''}>${E(m.name)}</option>`).join('')}</select>
+        <button type="button" id="imp-model-save" onclick="window.impModelSave()" ${sel ? '' : 'disabled'} class="imp-btn${dirty ? ' ok' : ''}">حفظ التعديلات</button><button type="button" onclick="window.impModelDelete()" ${sel ? '' : 'disabled'} class="imp-btn danger">حذف</button></div>
+      ${dirty ? '<p role="status" class="imp-note" style="color:#b45309;font-weight:800">● لديك تعديلات لم تُحفظ في هذا النموذج بعد</p>' : ''}
+      <div class="imp-chips" style="flex-wrap:nowrap"><input id="imp-model-name" maxlength="40" placeholder="اسم النموذج الجديد (مثال: سند الرواتب الشهري)" aria-label="اسم النموذج الجديد" class="imp-in" style="flex:1;min-width:0"><button type="button" onclick="window.impModelSaveAs()" class="imp-btn pri">حفظ كنموذج جديد</button></div>`);
   };
   function refreshModels() { const b = $('imp-models-box'); if (!b || !IMP) return; const inp = $('imp-model-name'), v = inp ? inp.value : '', focus = document.activeElement === inp; b.outerHTML = window.hrImpModelsHtml(); const n = $('imp-model-name'); if (n) { n.value = v; if (focus) n.focus(); } }
-  window.hrImpRefresh = function () { refresh(); refreshModels(); const sb = $('imp-sig-box'); if (sb) sb.outerHTML = window.hrImpSigHtml(); };
+  window.hrImpRefresh = function () { refresh(); refreshModels(); repaintSig(); repaintStamp(); };
   window.impModelSelect = function (id) {
     if (!IMP) return; if (!id) { IMP.opts.modelId = ''; persist(); return refreshModels(); }
     const m = getModels().find(x => x.id === id); if (!m) return; applySnap(m.data); IMP.opts.modelId = id; window.impRender(); persist(); toast(`طُبّق النموذج «${m.name}»`);
@@ -21008,51 +21067,79 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   };
   window.impModelDelete = async function () {
     const ms = getModels(), m = ms.find(x => x.id === IMP.opts.modelId); if (!m) return; if (!(await window.hrConfirm('حذف النموذج', `سيُحذف النموذج «${m.name}» نهائياً (تنسيقك الحالي يبقى كما هو).`))) return;
-    IMP.opts.modelId = ''; if (await writeIV(iv => { iv.models = ms.filter(x => x.id !== m.id).map(x => ({ id: x.id, name: x.name, data: x.data })); iv.modelId = ''; delete iv.modelId; })) { toast('حُذف النموذج', 'warning'); refreshModels(); }
+    IMP.opts.modelId = ''; if (await writeIV(iv => { iv.models = ms.filter(x => x.id !== m.id).map(x => ({ id: x.id, name: x.name, data: x.data })); delete iv.modelId; })) { toast('حُذف النموذج', 'warning'); refreshModels(); }
   };
-  // ---------- الاستوديو: معاينة ثابتة + تمرير التعديلات فقط ----------
-  const DEF_BLOCKS = 'band,table,text,note,sign';
-  function studioH(opts) { return (opts && opts.designer) ? Math.max(420, Math.round(innerHeight * 0.94 - 150)) : Math.max(460, Math.min(Math.round(innerHeight * 0.8), 900)); }
-  function previewScale() { if (innerWidth < 900) return Math.max(0.25, Math.min(0.42, (innerWidth - 64) / 794)); return Math.max(0.3, Math.min(0.62, ((window.__studioH || 640) - 20) / 1122.5)); }
+  // ---------- الاستوديو: تبويبات + معاينة ثابتة ----------
+  const TABS = [['t1', 'fa-folder-open', 'النماذج والصفحة'], ['t2', 'fa-table-cells', 'الجدول والحقول'], ['t3', 'fa-layer-group', 'الأقسام والنص'], ['t4', 'fa-signature', 'التواقيع والختم'], ['t5', 'fa-palette', 'المظهر']];
+  let curTab = 't1'; try { const sv = sessionStorage.getItem('imp_tab'); if (TABS.some(x => x[0] === sv)) curTab = sv; } catch (_) {}
+  window.impStudioTab = function (t, focus) {
+    if (!TABS.some(x => x[0] === t)) return; curTab = t; try { sessionStorage.setItem('imp_tab', t); } catch (_) {}
+    document.querySelectorAll('.imp-tab').forEach(b => { const on = b.dataset.tab === t; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; b.classList.toggle('on', on); if (on && focus) b.focus(); });
+    document.querySelectorAll('.imp-pane').forEach(p => { p.hidden = p.dataset.pane !== t; });
+    const c = $('imp-controls'); if (c) c.scrollTop = 0;
+  };
+  window.impTabKey = function (e) { const i = TABS.findIndex(x => x[0] === curTab); let j = i; if (e.key === 'ArrowLeft') j = (i + 1) % TABS.length; else if (e.key === 'ArrowRight') j = (i - 1 + TABS.length) % TABS.length; else if (e.key === 'Home') j = 0; else if (e.key === 'End') j = TABS.length - 1; else return; e.preventDefault(); window.impStudioTab(TABS[j][0], true); };
+  (function css() { let st = $('hr-studio-css'); if (!st) { st = document.createElement('style'); st.id = 'hr-studio-css'; document.head.appendChild(st); } st.textContent = `
+.imp-studio{display:flex;gap:14px;align-items:stretch;height:var(--studio-h,640px);min-height:420px}
+.imp-studio-ctl{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;padding:0 4px 0 8px}
+.imp-studio-prev{flex:0 0 auto;align-self:flex-start;max-height:100%;overflow:auto}
+.imp-tabs{position:sticky;top:0;z-index:6;display:flex;gap:4px;padding:6px 0 8px;background:#f8fafc;border-bottom:1px solid #e2e8f0;margin-bottom:12px}
+.imp-tab{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 3px;border-radius:12px;border:1px solid transparent;background:transparent;color:#475569;font-size:10.5px;font-weight:800;cursor:pointer;line-height:1.25;text-align:center}
+.imp-tab i{font-size:14px}.imp-tab:hover{background:#eef2f6}.imp-tab.on{background:#0f172a;color:#fff}
+.imp-tab:focus-visible,.imp-btn:focus-visible,.imp-in:focus-visible,.imp-chip:focus-visible,.imp-shape:focus-visible{outline:2px solid #0f172a;outline-offset:2px}
+.imp-pane{display:flex;flex-direction:column;gap:12px}.imp-pane[hidden]{display:none!important}
+.imp-stack{display:flex;flex-direction:column;gap:12px}
+.imp-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.imp-card-h{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.imp-card-ic{flex:none;width:32px;height:32px;border-radius:10px;background:#f1f5f9;color:#475569;display:flex;align-items:center;justify-content:center;font-size:13px}
+.imp-card-tt{display:flex;flex-direction:column;min-width:0}.imp-card-tt b{font-size:13px;font-weight:900;color:#0f172a;line-height:1.35}.imp-card-tt small{font-size:10.5px;font-weight:700;color:#64748b;line-height:1.5}
+.imp-card-b{display:flex;flex-direction:column;gap:10px}
+.imp-soft{opacity:.65}.imp-dis{opacity:.5;pointer-events:none}
+.imp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.imp-row{display:flex;align-items:center;gap:5px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;padding:4px 6px}
+.imp-row .nm{flex:1;min-width:0;font-size:11.5px;font-weight:800;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.imp-grip{flex:none;width:24px;height:28px;display:flex;align-items:center;justify-content:center;color:#94a3b8;cursor:grab;touch-action:none;user-select:none}
+.imp-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:7px 12px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;color:#334155;font-size:11px;font-weight:800;cursor:pointer;line-height:1.2;transition:background .12s}
+.imp-btn:hover:not(:disabled){background:#f1f5f9}.imp-btn.on,.imp-btn.pri{background:#0f172a;color:#fff;border-color:#0f172a}.imp-btn.ok{background:#059669;color:#fff;border-color:#059669}
+.imp-btn.danger{color:#b91c1c;border-color:#fecaca}.imp-btn.danger:hover:not(:disabled){background:#fef2f2}
+.imp-btn.sm{padding:4px 8px;font-size:10px;border-radius:8px}.imp-btn:disabled{opacity:.4;cursor:not-allowed}
+.imp-seg{display:flex;gap:6px}.imp-seg .imp-btn{flex:1}
+.imp-in{border:1px solid #cbd5e1;border-radius:10px;padding:7px 9px;font-size:12px;font-weight:700;background:#fff;color:#0f172a;width:100%}
+.imp-lbl{display:block;font-size:10.5px;font-weight:800;color:#475569;margin-bottom:4px}
+.imp-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.imp-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.imp-grid5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.imp-slide{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800;color:#334155}.imp-slide .nm{width:120px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.imp-slide input[type=range]{flex:1;min-width:0;accent-color:#0f172a}.imp-slide output{width:56px;text-align:center;font-weight:900;flex:none;direction:ltr;unicode-bidi:isolate}
+.imp-chips{display:flex;flex-wrap:wrap;gap:6px}
+.imp-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;border:1px dashed #94a3b8;background:#f8fafc;color:#475569;font-size:10.5px;font-weight:800;cursor:pointer}.imp-chip:hover{background:#eef2f6}
+.imp-note{font-size:10.5px;font-weight:700;color:#64748b;line-height:1.6;margin:0}
+.imp-savebar{position:sticky;bottom:0;z-index:5;margin-top:auto;background:#f8fafc;border-top:1px solid #e2e8f0;padding:8px 2px}
+.imp-shape{display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 2px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;color:#334155;font-size:10px;font-weight:800;cursor:pointer;text-align:center}.imp-shape.on{background:#0f172a;color:#fff;border-color:#0f172a}
+.imp-sw{width:24px;height:24px;border-radius:999px;border:2px solid #fff;box-shadow:0 0 0 1px #cbd5e1;cursor:pointer;padding:0}.imp-sw.on{box-shadow:0 0 0 2px #0f172a}
+@media (max-width:899px){.imp-studio{flex-direction:column-reverse;height:auto}.imp-studio-ctl{overflow:visible}.imp-studio-prev{position:sticky;top:0;z-index:20;align-self:center;max-height:44vh;background:#f8fafc;padding:4px}.imp-tabs{top:auto;position:static}.imp-grid5{grid-template-columns:repeat(3,minmax(0,1fr))}}`; })();
   window.hrImpTopControlsHtml = function (opts) {
-    opts = opts || {}; const o = IMP.opts, full = o.layout === 'full', lh = impLetterBg(), btn = 'px-3 py-2 rounded-xl border border-slate-300 bg-white text-[11px] font-extrabold hover:bg-slate-100', H = studioH(opts); window.__studioH = H;
-    return `<div id="imp-top-box" class="imp-studio rounded-2xl border border-slate-200 bg-slate-50 p-3" style="--studio-h:${opts.designer ? '100%' : H + 'px'}">
-      <div id="imp-controls" class="imp-studio-ctl"><div class="space-y-2.5 ${full ? '' : 'opacity-60'}"><p class="text-xs font-black text-slate-800"><i class="fas fa-arrows-up-down ml-1 text-slate-400" aria-hidden="true"></i>موضع الجدول من أعلى الورقة <span class="text-slate-500 font-bold">(يُصلح تداخل الشعار مع الجدول)</span></p>
-        <div class="flex flex-wrap items-center gap-2"><button type="button" onclick="window.impTopStep(-3)" ${full ? '' : 'disabled'} class="${btn}" aria-label="رفع الجدول 3 مليمتر"><i class="fas fa-arrow-up ml-1" aria-hidden="true"></i>أعلى</button>
-          <label class="flex items-center gap-1 text-[11px] font-bold text-slate-600"><input id="imp-top" type="number" min="0" max="120" step="0.5" value="${effTop()}" ${full ? '' : 'disabled'} onchange="window.impSetTop(this.value)" aria-label="بداية الجدول من أعلى الورقة بالمليمتر" class="w-20 border border-slate-300 rounded-lg p-2 text-xs font-black text-center"> مم</label>
-          <button type="button" onclick="window.impTopStep(3)" ${full ? '' : 'disabled'} class="${btn}" aria-label="خفض الجدول 3 مليمتر"><i class="fas fa-arrow-down ml-1" aria-hidden="true"></i>أسفل</button></div>
-        <div class="flex flex-wrap items-center gap-2"><button type="button" onclick="window.impAutoTop()" ${full && lh ? '' : 'disabled'} class="${btn} ${full && lh ? '' : 'opacity-50'}" title="${lh ? '' : 'يتطلب تفعيل الورق الرسمي'}"><i class="fas fa-wand-magic-sparkles ml-1" aria-hidden="true"></i>اكتشاف تلقائي من الورق الرسمي</button>
-          <button type="button" onclick="window.impTopReset()" ${full ? '' : 'disabled'} class="${btn}">الافتراضي</button></div>
-        <p class="text-[10px] font-bold text-slate-500">${full ? 'تتحرك المعاينة فوراً. الخطوة 3 مم، ويمكنك كتابة قيمة دقيقة.' : 'موضع الجدول يعمل مع شكل «سند كامل» فقط.'}</p></div>
-        ${window.hrImpModelsHtml()}
-        ${window.hrImpYearHtml()}
-        ${window.hrImpDesignHtml()}
-        ${window.hrImpTextHtml()}
-        ${window.hrImpSigHtml()}
-        ${window.hrImpStyleHtml()}
-        ${opts.designer ? '' : '<label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-600"><input id="imp-top-save" type="checkbox" checked class="w-4 h-4"> احفظ الموضع والتنسيق للمنشأة (يبقيان في المرات القادمة)</label>'}</div>
+    opts = opts || {}; const H = studioH(opts); window.__studioH = H; const t = curTab, pane = (k, inner) => `<div id="imp-pane-${k}" class="imp-pane" role="tabpanel" aria-labelledby="imp-tab-${k}" data-pane="${k}" ${t === k ? '' : 'hidden'}>${inner}</div>`;
+    return `<div id="imp-top-box" class="imp-studio" style="--studio-h:${opts.designer ? '100%' : H + 'px'}">
+      <div id="imp-controls" class="imp-studio-ctl">
+        <div class="imp-tabs" role="tablist" aria-label="أقسام تحرير السند" onkeydown="window.impTabKey(event)">${TABS.map(([k, ic, l]) => `<button type="button" role="tab" id="imp-tab-${k}" class="imp-tab${t === k ? ' on' : ''}" data-tab="${k}" aria-selected="${t === k}" aria-controls="imp-pane-${k}" tabindex="${t === k ? 0 : -1}" onclick="window.impStudioTab('${k}')"><i class="fas ${ic}" aria-hidden="true"></i><span>${l}</span></button>`).join('')}</div>
+        ${pane('t1', window.hrImpModelsHtml() + window.hrImpPosHtml() + window.hrImpYearHtml())}
+        ${pane('t2', window.hrImpDesignHtml())}
+        ${pane('t3', window.hrImpBlocksHtml() + window.hrImpTextHtml())}
+        ${pane('t4', window.hrImpSigHtml() + window.hrImpStampHtml())}
+        ${pane('t5', window.hrImpStyleHtml())}
+        ${opts.designer ? '' : '<div class="imp-savebar"><label class="imp-slide"><input id="imp-top-save" type="checkbox" checked style="width:16px;height:16px"> احفظ الموضع والتنسيق للمنشأة (يبقيان في المرات القادمة)</label></div>'}
+      </div>
       <div id="imp-preview" class="imp-studio-prev" aria-label="معاينة ثابتة">${window.hrImpPreviewHtml()}</div></div>`;
   };
-  if (!document.getElementById('hr-studio-css')) { const st = document.createElement('style'); st.id = 'hr-studio-css'; st.textContent = `.imp-studio{display:flex;gap:14px;align-items:stretch;height:var(--studio-h,640px);min-height:420px}.imp-studio-ctl{flex:1;min-width:0;overflow-y:auto;overscroll-behavior:contain;padding:2px 6px 10px 8px;display:flex;flex-direction:column;gap:14px}.imp-studio-prev{flex:0 0 auto;align-self:flex-start;max-height:100%;overflow:auto}@media (max-width:899px){.imp-studio{flex-direction:column-reverse;height:auto}.imp-studio-ctl{overflow:visible}.imp-studio-prev{position:sticky;top:0;z-index:20;align-self:center;max-height:44vh;background:#f8fafc;padding:4px}}`; document.head.appendChild(st); }
-  // مكان النص: أعلى الصفحة (فوق الترويسة) / فوق كل عنصر / في الوسط / أسفل
-  function textPosNow() { const T = impText(); if (T.pos === 'page') return 'page'; const b = curDesign().blocks, i = b.indexOf('text'); if (i === 0) return 'top'; if (i === b.length - 1) return 'bottom'; if (b[i - 1] === 'table') return 'mid'; return ''; }
-  function repaintText() { const b = $('imp-text-box'); if (!b) return; const ta = b.querySelector('textarea'), val = ta ? ta.value : ''; b.outerHTML = window.hrImpTextHtml(); const nt = $('imp-text'); if (nt) nt.value = val; }
-  window.impTextPos = function (p) {
-    if (!IMP) return; const t = { ...(IMP.opts.text || {}) };
-    if (p === 'page') t.pos = 'page'; else { delete t.pos; const b = curDesign().blocks.filter(k => k !== 'text'), i = p === 'top' ? 0 : p === 'bottom' ? b.length : b.indexOf('table') + 1, nb = [...b.slice(0, i), 'text', ...b.slice(i)]; putDesign('blocks', nb.join() === DEF_BLOCKS ? [] : nb); }
-    IMP.opts.text = t; refresh(); repaintText(); paintDesign(); persist(); refreshModels();
-  };
-  window.impBlkHide = function (k) { if (k !== 'band' && k !== 'note') return; const h = new Set(curDesign().hideBlocks); if (h.has(k)) h.delete(k); else h.add(k); putDesign('hideBlocks', [...h]); afterDesign(); };
-  // ---------- نافذة «تعديل التصميم» من صفحة المستحقات (نفس لوحة سندات الاستيراد على مستندات المستحقات الجارية) ----------
+  // ---------- نافذة «تعديل التصميم» من صفحة المستحقات ----------
   window.hrEntVoucherPanelHtml = function () {
     const iv = (policySettings && policySettings.impVoucher) || {}, ms = (Array.isArray(iv.models) ? iv.models : []).filter(m => m && typeof m.id === 'string' && typeof m.name === 'string' && m.data && typeof m.data === 'object' && !Array.isArray(m.data)).slice(0, 20), cur = typeof iv.modelId === 'string' ? iv.modelId : '';
     return `<div id="ent-vpanel" class="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-center gap-3"><label class="text-[11px] font-bold text-slate-600">نموذج السند <select id="ent-vmodel" onchange="window.hrEntVoucherModel(this.value)" aria-label="نموذج السند" class="border border-slate-200 rounded-lg p-1.5 text-xs font-bold bg-white min-w-[12rem]"><option value="">التصميم الحالي</option>${ms.map(m => `<option value="${E(m.id)}" ${m.id === cur ? 'selected' : ''}>${E(m.name)}</option>`).join('')}</select></label>
       <button type="button" onclick="window.hrOpenVoucherDesigner()" class="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-extrabold"><i class="fas fa-pen-ruler ml-1" aria-hidden="true"></i>تعديل التصميم</button>
-      <span class="text-[10px] font-bold text-slate-500 w-full">اختر نموذجاً محفوظاً فيُطبَّق على كل المستندات الجارية، أو اضغط «تعديل التصميم» لتغيير الشريط والنص والجدول والتواقيع والألوان بمعاينة ثابتة. التغييرات تُحفظ للمنشأة وتشمل سندات الاستيراد أيضاً.</span></div>`;
+      <span class="text-[10px] font-bold text-slate-500 w-full">اختر نموذجاً محفوظاً فيُطبَّق على كل المستندات الجارية، أو اضغط «تعديل التصميم» لتغيير الشريط والنص والجدول والتواقيع والختم والألوان بمعاينة ثابتة. التغييرات تُحفظ للمنشأة وتشمل سندات الاستيراد أيضاً.</span></div>`;
   };
   window.hrEntVoucherModel = async function (id) {
     const ms = getModels(), m = ms.find(x => x.id === id);
-    await writeIV(iv => { if (m) { const d = m.data; if (d.top !== null && d.top !== undefined && Number.isFinite(Number(d.top))) iv.top = clampTop(d.top); else delete iv.top; ['style', 'design', 'text', 'sigSize'].forEach(k => { const v = plain(d[k]); if (Object.keys(v).length) iv[k] = v; else delete iv[k]; }); iv.modelId = id; } else delete iv.modelId; });
+    await writeIV(iv => { if (m) { const d = m.data; if (d.top !== null && d.top !== undefined && Number.isFinite(Number(d.top))) iv.top = clampTop(d.top); else delete iv.top; [['style', 'style'], ['design', 'design'], ['text', 'text'], ['sigSize', 'sigSize'], ['stamp', 'stamp']].forEach(([k, src]) => { const v = plain(d[src]); if (Object.keys(v).length) iv[k] = v; else delete iv[k]; }); iv.modelId = id; } else delete iv.modelId; });
     try { renderEntStudio(); } catch (_) {} if (m) toast(`طُبّق النموذج «${m.name}» على المستحقات`);
   };
   window.hrOpenVoucherDesigner = function () {
