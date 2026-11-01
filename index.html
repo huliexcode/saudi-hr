@@ -13310,7 +13310,23 @@ window.verifyBackupFile=async function(input) {
         }
         const impRound = n => Math.round(n * 100) / 100;
         const impNetMode = () => IMP.opts.netMode || (IMP.map.amount >= 0 ? 'file' : 'calc');
-        function impRows() {
+        // إضافة السنة بجانب اسم الشهر في «البيان» و«شهر الصرف»: «مرتب شهر اكتوبر» ← «مرتب شهر اكتوبر 2026». السنة من تاريخ الصرف (ويُطرح عام إن كان الشهر بعد شهر الصرف: راتب ديسمبر يُصرف في يناير) أو تُحدَّد يدوياً.
+        const IMP_MONTH_NAMES = [['يناير', 'كانون الثاني', 'january', 'jan'], ['فبراير', 'شباط', 'february', 'feb'], ['مارس', 'آذار', 'march', 'mar'], ['أبريل', 'ابريل', 'نيسان', 'april', 'apr'], ['مايو', 'أيار', 'may'], ['يونيو', 'يونيه', 'حزيران', 'june', 'jun'], ['يوليو', 'يوليه', 'تموز', 'july', 'jul'], ['أغسطس', 'آب', 'august', 'aug'], ['سبتمبر', 'أيلول', 'september', 'sep'], ['أكتوبر', 'تشرين الأول', 'october', 'oct'], ['نوفمبر', 'تشرين الثاني', 'november', 'nov'], ['ديسمبر', 'كانون الأول', 'december', 'dec']];
+        const impNormAr = x => String(x).replace(/[أإآ]/g, 'ا').toLowerCase();
+        const IMP_MONTH_RE = IMP_MONTH_NAMES.flatMap((names, i) => names.map(n => ({ mi: i + 1, re: new RegExp('(?<![\\u0600-\\u06FFA-Za-z])' + impNormAr(n).replace(/ /g, '\\s+') + '(?![\\u0600-\\u06FFA-Za-z])') }))).sort((a, b) => b.re.source.length - a.re.source.length);
+        function impAddYear(text, dateIso) {
+            const o = IMP && IMP.opts; if (!o || o.addYear === false || !text) return text; const t = String(text);
+            if (/(?<!\d)(?:19|20|13|14)\d{2}(?!\d)/.test(t)) return t;            // فيه سنة أصلاً
+            const n = impNormAr(t); let best = null;
+            for (const m of IMP_MONTH_RE) { const x = m.re.exec(n); if (x && (!best || x.index < best.at)) best = { at: x.index, end: x.index + x[0].length, mi: m.mi }; }
+            if (!best) return t;
+            const ov = Number(o.year), d = /^\d{4}-\d{2}/.test(dateIso || '') ? dateIso : (/^\d{4}-\d{2}/.test(o.date || '') ? o.date : null);
+            const yr = Number.isInteger(ov) && ov >= 2000 && ov <= 2100 ? ov : (d ? (best.mi > Number(d.slice(5, 7)) ? Number(d.slice(0, 4)) - 1 : Number(d.slice(0, 4))) : new Date().getFullYear());
+            return t.slice(0, best.end) + ' ' + yr + t.slice(best.end);
+        }
+        window.impAddYearForTest = impAddYear;
+        function impRows() { const rows = impRowsRaw(); if (!IMP || IMP.opts.addYear === false) return rows; return rows.map(r => ({ ...r, month: impAddYear(r.month, r.date), purpose: impAddYear(r.purpose, r.date) })); }
+        function impRowsRaw() {
             if (!IMP) return []; const m = IMP.map, o = IMP.opts, g = (r, k) => m[k] >= 0 ? impCell(r[m[k]]) : '', used = new Set(Object.values(m).filter(i => i >= 0)), mode = impNetMode();
             return IMP.rows.map((r, n) => {
                 const grossRaw = m.gross >= 0 ? r[m.gross] : '', dedRaw = m.deduction >= 0 ? r[m.deduction] : '', amtRaw = m.amount >= 0 ? r[m.amount] : '';
@@ -13354,7 +13370,7 @@ window.verifyBackupFile=async function(input) {
         }
         window.openImportEntitlements = function () {
             let m = document.getElementById('imp-modal'); if (!m) { m = document.createElement('div'); m.id = 'imp-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.className = 'fixed inset-0 z-[10001] bg-slate-900/60 flex items-center justify-center p-2 sm:p-4'; document.body.appendChild(m); m.addEventListener('keydown', e => { if (e.key === 'Escape') window.impClose(); }); }
-            IMP = { fileName: '', wb: null, sheet: '', headers: [], rows: [], map: {}, opts: { purpose: 'صرف مستحقات', date: today10(), method: 'تحويل بنكي', layout: 'full', formId: '', netMode: null, logo: true, stamp: true, sign: true, sigimg: true, words: true, letter: false, style: (policySettings && policySettings.impVoucher && policySettings.impVoucher.style && typeof policySettings.impVoucher.style === 'object' ? { ...policySettings.impVoucher.style } : {}), top: (policySettings && policySettings.impVoucher && Number.isFinite(Number(policySettings.impVoucher.top)) ? Number(policySettings.impVoucher.top) : null) } }; m.classList.remove('hidden'); impRender();
+            IMP = { fileName: '', wb: null, sheet: '', headers: [], rows: [], map: {}, opts: { purpose: 'صرف مستحقات', date: today10(), method: 'تحويل بنكي', layout: 'full', formId: '', netMode: null, logo: true, stamp: true, sign: true, sigimg: true, words: true, letter: false, addYear: !(policySettings && policySettings.impVoucher && policySettings.impVoucher.addYear === false), year: (policySettings && policySettings.impVoucher && /^\d{4}$/.test(String(policySettings.impVoucher.year || '')) ? String(policySettings.impVoucher.year) : ''), design: (policySettings && policySettings.impVoucher && policySettings.impVoucher.design && typeof policySettings.impVoucher.design === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.design)) : {}), style: (policySettings && policySettings.impVoucher && policySettings.impVoucher.style && typeof policySettings.impVoucher.style === 'object' ? { ...policySettings.impVoucher.style } : {}), top: (policySettings && policySettings.impVoucher && Number.isFinite(Number(policySettings.impVoucher.top)) ? Number(policySettings.impVoucher.top) : null) } }; m.classList.remove('hidden'); impRender();
         };
         window.impClose = () => { document.getElementById('imp-modal')?.classList.add('hidden'); IMP = null; };
         window.impPick = function () { const i = document.createElement('input'); i.type = 'file'; i.accept = '.xlsx,.xls,.csv'; i.id = 'imp-file'; i.style.display = 'none'; i.onchange = () => { const f = i.files?.[0]; i.remove(); if (f) window.impHandleFile(f); }; document.body.appendChild(i); i.click(); };
@@ -13404,6 +13420,7 @@ window.verifyBackupFile=async function(input) {
                         <div class="overflow-auto rounded-2xl border border-slate-200 max-h-72"><table class="w-full text-right text-xs"><thead class="bg-slate-50 sticky top-0"><tr>${['#', 'الاسم', 'الهوية / الإقامة', 'المرتب', 'الخصم', 'الصافي', 'شهر الصرف', 'الطريقة', ...(rows.some(r => r.iban) ? ['الآيبان'] : []), 'الحالة'].map(h => `<th class="p-2.5 font-extrabold text-slate-500 whitespace-nowrap">${h}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, 50).map(r => `<tr class="border-t border-slate-100"><td class="p-2.5 font-bold text-slate-400">${r.n}</td><td class="p-2.5 font-black text-slate-800">${escapeHtml(r.name) || '<span class="text-slate-300">—</span>'}</td><td class="p-2.5 font-bold" dir="ltr">${escapeHtml(r.id) || '—'}</td><td class="p-2.5 font-bold" dir="ltr">${r.gross !== null ? fmtMoney(r.gross) : '—'}</td><td class="p-2.5 font-bold ${r.deduction ? 'text-red-700' : 'text-slate-400'}" dir="ltr">${r.deduction ? fmtMoney(r.deduction) : '—'}</td><td class="p-2.5 font-black" dir="ltr">${r.amountOk ? fmtMoney(r.amount) : `<span class="text-amber-700">${escapeHtml(r.amountRaw) || '—'}</span>`}${r.mismatch ? ' <span class="text-amber-600" title="الإجمالي يختلف عن المرتب − الخصم">⚠</span>' : ''}</td><td class="p-2.5 font-bold text-slate-600">${escapeHtml(r.month) || '—'}</td><td class="p-2.5 font-bold text-slate-600">${escapeHtml(r.method)}</td>${rows.some(x => x.iban) ? `<td class="p-2.5 font-bold text-slate-600" dir="ltr">${escapeHtml(r.iban) || '—'}${r.iban && !/^SA\d{22}$/.test(r.iban) ? ' <span class="text-amber-600" title="ليس بصيغة آيبان سعودي — يُقبل كما هو">⚠</span>' : ''}</td>` : ''}<td class="p-2.5">${r.amountOk ? '<span class="text-emerald-700 font-black">جاهز</span>' : `<span class="text-amber-700 font-black">${escapeHtml(r.reason)}</span>`}</td></tr>`).join('')}</tbody></table>${rows.length > 50 ? `<p class="p-2.5 text-[11px] font-bold text-slate-500">يُعرض أول 50 صفاً من ${rows.length}؛ الإصدار يشمل الكل.</p>` : ''}</div>` : ''}
                 </div>
                 <div class="px-5 py-3 border-t flex flex-wrap justify-end gap-2"><button type="button" id="imp-vouchers" onclick="window.impPrintVouchers()" ${canPrint ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-brand text-brand-ink text-xs font-extrabold disabled:bg-slate-200 disabled:text-slate-600 disabled:opacity-100 disabled:cursor-not-allowed"><i class="fas fa-print ml-1"></i>طباعة السندات (${ok.length})</button><button type="button" id="imp-statement" onclick="window.impPrintStatement()" ${ok.length ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-slate-900 text-white text-xs font-extrabold disabled:bg-slate-200 disabled:text-slate-600 disabled:opacity-100 disabled:cursor-not-allowed"><i class="fas fa-table-list ml-1"></i>كشف الصرف</button><button type="button" id="imp-export" onclick="window.impExportExcel()" ${rows.length ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-emerald-800 text-white text-xs font-extrabold disabled:bg-slate-200 disabled:text-slate-600 disabled:opacity-100 disabled:cursor-not-allowed"><i class="fas fa-file-excel ml-1"></i>تصدير Excel</button><button type="button" onclick="window.impClose()" class="px-5 py-2.5 rounded-full border border-slate-300 text-xs font-extrabold">إغلاق</button></div></div>`;
+            try { if (window.hrImpBindDesign) window.hrImpBindDesign(); } catch (_) {}
             const __b = m.querySelector('.p-5.overflow-y-auto'); if (__b && __sc) __b.scrollTop = __sc;   // لا يقفز التمرير إلى الأعلى عند تغيير خيار
         }
         window.impRender = impRender; window.impRowsForTest = impRows; window.impDetectForTest = impDetect; Object.defineProperty(window, 'IMP_STATE', { get: () => IMP });
@@ -13427,21 +13444,67 @@ window.verifyBackupFile=async function(input) {
         const impMoney = n => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const impDateTxt = d => /^\d{4}-\d{2}-\d{2}$/.test(d) ? fmtDate(toGregorianDate(d)) : d;
         function impStampsHtml(comp, h) { const E = escapeHtml; const st = IMP.opts.stamp ? docStamps(comp).map(impSafeImg).filter(Boolean) : []; return st.length ? `<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">${st.map(s => `<img src="${E(s)}" alt="" style="height:${h}px;object-fit:contain;opacity:.92">`).join('')}</div>` : ''; }
-        function impSigRow(r, comp, DK, B, h) {
-            if (!IMP.opts.sign) return ''; const E = escapeHtml, signers = [['المستلم', r.name, ''], ...docSigners(comp).map(x => [x.label, x.name, IMP.opts.sigimg ? impSafeImg(x.img) : ''])].slice(0, 4);
-            return `<table style="width:100%;border-collapse:collapse;margin-top:${h > 60 ? 24 : 10}px"><tr>${signers.map(s => `<td style="border:${B};padding:6px;text-align:center;vertical-align:top"><div style="font-size:${h > 60 ? 11 : 9}px;font-weight:800;color:${DK}">${E(s[0] || '')}</div><div style="height:${h}px;display:flex;align-items:center;justify-content:center">${s[2] ? `<img src="${E(s[2])}" alt="" style="max-height:${h - 6}px;max-width:100%;object-fit:contain">` : ''}</div><div style="border-top:1px solid #999;font-size:${h > 60 ? 10 : 8}px;color:#666;padding-top:2px">${E(s[1] || '') || 'الاسم / التوقيع'}</div></td>`).join('')}</tr></table>`;
+        function impSigRow(r, comp, DK, B, h, R) {
+            if (!IMP.opts.sign) return ''; const E = escapeHtml, rad = Number(R) > 0, signers = [['المستلم', r.name, ''], ...docSigners(comp).map(x => [x.label, x.name, IMP.opts.sigimg ? impSafeImg(x.img) : ''])].slice(0, 4);
+            const td = s => `<td style="border:${B};${rad ? `border-radius:${R}px;` : ''}padding:6px;text-align:center;vertical-align:top"><div style="font-size:${h > 60 ? 11 : 9}px;font-weight:800;color:${DK}">${E(s[0] || '')}</div><div style="height:${h}px;display:flex;align-items:center;justify-content:center">${s[2] ? `<img src="${E(s[2])}" alt="" style="max-height:${h - 6}px;max-width:100%;object-fit:contain">` : ''}</div><div style="border-top:1px solid #111;padding-top:3px;${s[1] ? `font-size:${h > 60 ? 12.5 : 11}px;font-weight:900;color:#000` : `font-size:${h > 60 ? 10 : 8}px;color:#777`}">${E(s[1] || '') || 'الاسم / التوقيع'}</div></td>`;
+            return `<table style="${rad ? 'width:calc(100% + 12px);margin-inline:-6px;border-collapse:separate;border-spacing:6px 0' : 'width:100%;border-collapse:collapse'};margin-top:${h > 60 ? 24 : 10}px"><tr>${signers.map(td).join('')}</tr></table>`;
+        }
+        // ---------- أشكال الجدول: عدد الأعمدة، متصل/منفصل، مكان العنوان، تنعيم الحواف، ترتيب الحقول وإخفاؤها (يُحفظ في policySettings.impVoucher.design) ----------
+        const IMP_SHAPES = { classic: { cols: 2, gap: 0, label: 'side' }, one: { cols: 1, gap: 0, label: 'side' }, cards2: { cols: 2, gap: 8, label: 'top' }, cards3: { cols: 3, gap: 8, label: 'top' }, list: { cols: 1, gap: 6, label: 'side' } };
+        const IMP_BLOCKS = ['table', 'note', 'sign'];
+        function impDesign() {
+            const d = (IMP && IMP.opts && IMP.opts.design) || {}, shape = IMP_SHAPES[d.shape] ? d.shape : 'classic', radius = Math.max(0, Math.min(24, Math.round(Number(d.radius) || 0)));
+            const strs = a => Array.isArray(a) ? [...new Set(a.filter(x => typeof x === 'string' && x.length && x.length < 120))].slice(0, 80) : [], order = strs(d.order), hidden = strs(d.hidden).filter(k => k !== 'amount'), span = {};
+            if (d.span && typeof d.span === 'object') Object.keys(d.span).slice(0, 80).forEach(k => { if (d.span[k] === 'full' || d.span[k] === 'half') span[k] = d.span[k]; });
+            let blocks = Array.isArray(d.blocks) ? [...new Set(d.blocks.filter(k => IMP_BLOCKS.includes(k)))] : []; IMP_BLOCKS.forEach(k => { if (!blocks.includes(k)) blocks.push(k); });
+            const active = shape !== 'classic' || radius > 0 || order.length > 0 || hidden.length > 0 || Object.keys(span).length > 0 || blocks.join() !== IMP_BLOCKS.join();
+            return { shape, radius, order, hidden, span, blocks, active, sh: IMP_SHAPES[shape] };
+        }
+        window.impDesignForTest = impDesign;
+        function impFieldItems(r) {
+            const E = escapeHtml, items = [{ k: 'name', l: 'الاسم', v: E(r.name) || '—' }, { k: 'id', l: 'الهوية / الإقامة / الجواز', v: `<bdi dir="ltr">${E(r.id) || '—'}</bdi>` }];
+            if (r.month) items.push({ k: 'month', l: 'شهر الصرف', v: E(r.month) });
+            items.push({ k: 'method', l: 'طريقة الصرف', v: E(r.method) || '—' });
+            if (r.phone) items.push({ k: 'phone', l: 'الجوال', v: `<bdi dir="ltr">${E(r.phone)}</bdi>` }); if (r.bank) items.push({ k: 'bank', l: 'البنك', v: E(r.bank) }); if (r.iban) items.push({ k: 'iban', l: 'الآيبان', v: `<bdi dir="ltr">${E(r.iban)}</bdi>` });
+            items.push({ k: 'purpose', l: 'البيان', v: E(r.purpose) || '—' }, { k: 'date', l: 'تاريخ الصرف', v: E(impDateTxt(r.date)) || '—' }); if (r.notes) items.push({ k: 'notes', l: 'ملاحظات', v: E(r.notes) });
+            (r.extra || []).forEach(([h, v]) => items.push({ k: 'x:' + h, l: E(h), v: E(v) }));
+            const net = r.gross !== null && r.deduction;
+            if (r.gross !== null && (r.deduction || r.gross !== r.amount)) items.push({ k: 'gross', l: 'المرتب الشهري', v: `<b><bdi dir="ltr">${E(fmtMoney(r.gross))}</bdi></b>` }, { k: 'deduction', l: 'الخصم', v: `<b style="color:#b42318"><bdi dir="ltr">${E(fmtMoney(r.deduction))}</bdi></b>` });
+            items.push({ k: 'amount', l: net ? 'الصافي المستلم' : 'المبلغ', v: `<b style="font-size:17px">${E(fmtMoney(r.amount))}</b>${IMP.opts.words ? `<span style="font-size:11px;font-weight:700">${E(tafqeet(r.amount))}</span>` : ''}`, wide: true, amt: true });
+            return items;
+        }
+        function impOrderedItems(r, D, all) {
+            const items = impFieldItems(r), by = new Map(items.map(i => [i.k, i])), out = [];
+            D.order.forEach(k => { if (by.has(k)) { out.push(by.get(k)); by.delete(k); } }); items.forEach(i => { if (by.has(i.k)) out.push(i); });
+            return all ? out : out.filter(i => !D.hidden.includes(i.k));
+        }
+        window.impDesignList = function () { const ok = impRows().filter(r => r.amountOk); if (!ok.length) return []; const D = impDesign(); return impOrderedItems(ok[0], D, true).map(i => ({ k: i.k, l: i.l, hidden: D.hidden.includes(i.k), full: D.span[i.k] === 'full' || (D.span[i.k] !== 'half' && !!i.wide) })); };
+        function impGridHtml(r, S, D) {
+            const E = escapeHtml, { cols, gap, label } = D.sh, R = D.radius, joined = gap === 0, min = S.preset === 'minimal', B = S.B, rad = R ? `border-radius:${R}px;` : '', items = impOrderedItems(r, D), cells = [];
+            let row = 0, pos = 0; const fillRow = () => { for (; pos < cols; pos++) cells.push({ it: null, row, col: pos, span: 1 }); pos = 0; row++; };
+            items.forEach(it => { const full = cols === 1 || D.span[it.k] === 'full' || (D.span[it.k] !== 'half' && it.wide); if (full) { if (pos) fillRow(); cells.push({ it, row, col: 0, span: cols }); row++; pos = 0; } else { cells.push({ it, row, col: pos, span: 1 }); pos++; if (pos === cols) { pos = 0; row++; } } });
+            if (pos) fillRow(); const lastRow = row - 1;
+            const cellHtml = c => { const it = c.it, bottom = c.row === lastRow, bd = joined ? (min ? (bottom ? '' : `border-bottom:${B};`) : `${bottom ? '' : `border-bottom:${B};`}${c.col === 0 ? '' : `border-inline-start:${B};`}`) : (min ? `border-bottom:${B};` : `border:${B};${rad}overflow:hidden;`), amtBg = it && it.amt && S.amt !== 'transparent' ? `background:${S.amt};` : '';
+                const inner = !it ? '' : label === 'side' ? `<div style="display:flex;align-items:stretch;min-height:32px;height:100%"><div style="flex:0 0 ${c.span > 1 && cols > 1 ? Math.round(60 / cols) : 38}%;${S.lab};font-weight:800;padding:7px 9px;font-size:11px;display:flex;align-items:center;${min ? '' : `border-inline-end:${B};`}">${it.l}</div><div style="flex:1;min-width:0;${amtBg}padding:7px 9px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:10px;flex-wrap:wrap">${it.v}</div></div>` : `<div style="${S.lab};font-weight:800;padding:4px 9px;font-size:10px">${it.l}</div><div style="${amtBg}padding:6px 9px;font-size:12px;font-weight:700">${it.v}</div>`;
+                return `<div data-fld="${E(it ? it.k : '')}" style="grid-column:span ${c.span};${bd}min-width:0">${inner}</div>`; };
+            const grid = `display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));${joined ? '' : `gap:${gap}px;`}`;
+            return joined ? `<div style="${min ? '' : `border:${B};`}${rad}${rad ? 'overflow:hidden;' : ''}"><div style="${grid}">${cells.map(cellHtml).join('')}</div></div>` : `<div style="${grid}">${cells.map(cellHtml).join('')}</div>`;
         }
         function impVoucherHtml(r, ref) {
-            const { comp, ACC, DK, INK, TINT, B, S } = impStyle(), o = IMP.opts, E = escapeHtml, cell = (v, x) => `<td style="${S.cb};padding:7px 9px;${x || ''}">${v}</td>`, lab = `${S.lab};font-weight:800;width:18%;font-size:11px`, bg = o.letter ? impLetterBg() : '', LY = (typeof docLayout === 'function' ? docLayout() : {}) || {};
-            const pairs = [['الاسم', E(r.name) || '—'], ['الهوية / الإقامة / الجواز', `<bdi dir="ltr">${E(r.id) || '—'}</bdi>`], ...(r.month ? [['شهر الصرف', E(r.month)]] : []), ['طريقة الصرف', E(r.method) || '—'], ...(r.phone ? [['الجوال', `<bdi dir="ltr">${E(r.phone)}</bdi>`]] : []), ...(r.bank ? [['البنك', E(r.bank)]] : []), ...(r.iban ? [['الآيبان', `<bdi dir="ltr">${E(r.iban)}</bdi>`]] : []), ['البيان', E(r.purpose) || '—'], ['تاريخ الصرف', E(impDateTxt(r.date)) || '—'], ...(r.notes ? [['ملاحظات', E(r.notes)]] : []), ...r.extra.map(([h, v]) => [E(h), E(v)])];
-            const rowsHtml = pairs.reduce((a, p, i) => { if (i % 2 === 0) a.push([p]); else a[a.length - 1].push(p); return a; }, []).map(pr => `<tr>${pr.map(p => cell(p[0], lab) + cell(p[1], 'font-weight:700;font-size:12px;width:32%')).join('')}${pr.length === 1 ? `<td colspan="2" style="${S.cb}"></td>` : ''}</tr>`).join('');
-            const money = `${r.gross !== null && (r.deduction || r.gross !== r.amount) ? `<tr>${cell('المرتب الشهري', lab)}${cell(`<b><bdi dir="ltr">${E(fmtMoney(r.gross))}</bdi></b>`, 'font-size:13px;width:32%')}${cell('الخصم', lab)}${cell(`<b style="color:#b42318"><bdi dir="ltr">${E(fmtMoney(r.deduction))}</bdi></b>`, 'font-size:13px;width:32%')}</tr>` : ''}<tr>${cell(r.gross !== null && r.deduction ? 'الصافي المستلم' : 'المبلغ', lab)}<td colspan="3" style="${S.cb};padding:9px 10px;background:${S.amt}"><b style="font-size:17px">${E(fmtMoney(r.amount))}</b>${o.words ? `<span style="font-size:11px;font-weight:700;margin-right:12px">${E(tafqeet(r.amount))}</span>` : ''}</td></tr>`;
+            const { comp, ACC, DK, INK, TINT, B, S } = impStyle(), o = IMP.opts, E = escapeHtml, D = impDesign(), R = D.radius, rad = R ? `border-radius:${R}px;` : '', cell = (v, x) => `<td style="${S.cb};padding:7px 9px;${x || ''}">${v}</td>`, lab = `${S.lab};font-weight:800;width:18%;font-size:11px`, bg = o.letter ? impLetterBg() : '', LY = (typeof docLayout === 'function' ? docLayout() : {}) || {};
+            const legacyFields = () => {
+                const pairs = [['الاسم', E(r.name) || '—'], ['الهوية / الإقامة / الجواز', `<bdi dir="ltr">${E(r.id) || '—'}</bdi>`], ...(r.month ? [['شهر الصرف', E(r.month)]] : []), ['طريقة الصرف', E(r.method) || '—'], ...(r.phone ? [['الجوال', `<bdi dir="ltr">${E(r.phone)}</bdi>`]] : []), ...(r.bank ? [['البنك', E(r.bank)]] : []), ...(r.iban ? [['الآيبان', `<bdi dir="ltr">${E(r.iban)}</bdi>`]] : []), ['البيان', E(r.purpose) || '—'], ['تاريخ الصرف', E(impDateTxt(r.date)) || '—'], ...(r.notes ? [['ملاحظات', E(r.notes)]] : []), ...r.extra.map(([h, v]) => [E(h), E(v)])];
+                const rowsHtml = pairs.reduce((a, p, i) => { if (i % 2 === 0) a.push([p]); else a[a.length - 1].push(p); return a; }, []).map(pr => `<tr>${pr.map(p => cell(p[0], lab) + cell(p[1], 'font-weight:700;font-size:12px;width:32%')).join('')}${pr.length === 1 ? `<td colspan="2" style="${S.cb}"></td>` : ''}</tr>`).join('');
+                const money = `${r.gross !== null && (r.deduction || r.gross !== r.amount) ? `<tr>${cell('المرتب الشهري', lab)}${cell(`<b><bdi dir="ltr">${E(fmtMoney(r.gross))}</bdi></b>`, 'font-size:13px;width:32%')}${cell('الخصم', lab)}${cell(`<b style="color:#b42318"><bdi dir="ltr">${E(fmtMoney(r.deduction))}</bdi></b>`, 'font-size:13px;width:32%')}</tr>` : ''}<tr>${cell(r.gross !== null && r.deduction ? 'الصافي المستلم' : 'المبلغ', lab)}<td colspan="3" style="${S.cb};padding:9px 10px;background:${S.amt}"><b style="font-size:17px">${E(fmtMoney(r.amount))}</b>${o.words ? `<span style="font-size:11px;font-weight:700;margin-right:12px">${E(tafqeet(r.amount))}</span>` : ''}</td></tr>`;
+                return `<table style="width:100%;border-collapse:collapse">${rowsHtml}${money}</table>`;
+            };
             const head = bg ? '' : `<div style="border-bottom:3px solid ${ACC};padding-bottom:6px;margin-bottom:10px">${o.logo ? docHeaderHtml(comp, { maxH: 48, maxW: 150, fs: 10 }) : docHeaderHtml({ ...comp, logoBase64: '' }, { fs: 10 })}</div>`;
             const padTop = (o.top !== null && o.top !== undefined && o.top !== '' && Number.isFinite(Number(o.top))) ? Math.max(0, Math.min(120, Number(o.top))) : (bg ? (Number(LY.lhTop) || 45) : 14), padBot = bg ? (Number(LY.lhBottom) || 30) : 14, bgCss = bg ? `background:#fff url('${bg}') center/100% 100% no-repeat;` : 'background:#fff;';
-            return `<div class="cf-page" data-imp="full" style="width:210mm;min-height:297mm;box-sizing:border-box;padding:${padTop}mm 14mm ${padBot}mm;${bgCss}color:#111;direction:rtl;font-family:${S.ff};page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact">${head}<div style="zoom:${S.scale}">
-                <table style="width:100%;border-collapse:collapse;margin-bottom:12px"><tr><td style="${S.band};padding:10px 12px;font-size:17px;font-weight:900">سند صرف</td><td style="${S.band};padding:10px 12px;font-size:10.5px;font-weight:700;text-align:left;white-space:nowrap">المرجع: <bdi dir="ltr">${E(ref)}</bdi></td></tr></table>
-                <table style="width:100%;border-collapse:collapse">${rowsHtml}${money}</table>
-                <p style="font-size:12.5px;font-weight:700;line-height:2.1;margin-top:14px;${S.note};padding:10px 12px">أقر أنا المذكور أعلاه باستلامي من ${E(comp.nameAr || 'المنشأة')} صافي المبلغ الموضّح، وذلك عن: <b>${E(r.purpose)}</b>، ${E(r.method)}، بتاريخ ${E(impDateTxt(r.date))}.</p>${impSigRow(r, comp, DK, B, 52)}${impStampsHtml(comp, 70)}</div></div>`;
+            const band = `<table style="width:100%;border-collapse:${R ? 'separate;border-spacing:0' : 'collapse'};margin-bottom:12px"><tr><td style="${S.band};padding:10px 12px;font-size:17px;font-weight:900;${R ? `border-radius:0 ${R}px ${R}px 0` : ''}">سند صرف</td><td style="${S.band};padding:10px 12px;font-size:10.5px;font-weight:700;text-align:left;white-space:nowrap;${R ? `border-radius:${R}px 0 0 ${R}px` : ''}">المرجع: <bdi dir="ltr">${E(ref)}</bdi></td></tr></table>`;
+            const blocks = { table: D.active ? impGridHtml(r, S, D) : legacyFields(),
+                note: `<p style="font-size:12.5px;font-weight:700;line-height:2.1;margin-top:14px;${S.note};${rad}padding:10px 12px">أقر أنا المذكور أعلاه باستلامي من ${E(comp.nameAr || 'المنشأة')} صافي المبلغ الموضّح، وذلك عن: <b>${E(r.purpose)}</b>، ${E(r.method)}، بتاريخ ${E(impDateTxt(r.date))}.</p>`,
+                sign: `${impSigRow(r, comp, DK, B, 52, R)}${impStampsHtml(comp, 70)}` };
+            return `<div class="cf-page" data-imp="full" style="width:210mm;min-height:297mm;box-sizing:border-box;padding:${padTop}mm 14mm ${padBot}mm;${bgCss}color:#111;direction:rtl;font-family:${S.ff};page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact">${head}<div style="zoom:${S.scale}">${band}${D.blocks.map(k => blocks[k]).join('')}</div></div>`;
         }
         // بطاقة مضغوطة لشكلي «سندان» و«أربعة» في الصفحة
         function impCardHtml(r, ref, quarter) {
@@ -20744,9 +20807,12 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   function persist() {
     const sv = $('imp-top-save'); if (sv && !sv.checked) return;
     clearTimeout(saveTimer); saveTimer = setTimeout(async () => { try {
-      const s = JSON.parse(JSON.stringify(policySettings || {})), iv = { ...(s.impVoucher || {}) }, st = (IMP && IMP.opts.style) || {};
+      const s = JSON.parse(JSON.stringify(policySettings || {})), iv = { ...(s.impVoucher || {}) }, st = (IMP && IMP.opts.style) || {}, ds = (IMP && IMP.opts.design) || {};
       if (IMP && IMP.opts.top !== null && IMP.opts.top !== undefined) iv.top = IMP.opts.top; else delete iv.top;
       if (Object.keys(st).length) iv.style = st; else delete iv.style;
+      if (Object.keys(ds).length) iv.design = ds; else delete iv.design;
+      if (IMP && IMP.opts.addYear === false) iv.addYear = false; else delete iv.addYear;
+      if (IMP && IMP.opts.year) iv.year = IMP.opts.year; else delete iv.year;
       s.impVoucher = iv; applyPolicySettings(s); await persistPolicySettings(getActiveCompany(), s);
     } catch (_) { toast('تعذر حفظ التنسيق للمنشأة', 'warning'); } }, 700);
   }
@@ -20782,6 +20848,57 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     const box = $('imp-style-box'); if (box) box.outerHTML = window.hrImpStyleHtml(); persist();
   };
   window.impStyleReset = function () { if (!IMP) return; IMP.opts.style = {}; refresh(); const box = $('imp-style-box'); if (box) box.outerHTML = window.hrImpStyleHtml(); persist(); };
+  // ---------- تصميم الجدول: أشكال + تنعيم الحواف + ترتيب الحقول بالسحب والإفلات ----------
+  const SHAPES_UI = [['classic', 'عمودان متصل', 2, 0], ['one', 'عمود واحد', 1, 0], ['cards2', 'بطاقات عمودان', 2, 1], ['cards3', 'بطاقات ثلاثة', 3, 1], ['list', 'قائمة مفصولة', 1, 1]];
+  const BLOCK_LBL = { table: 'الجدول', note: 'الإقرار', sign: 'التواقيع والأختام' };
+  const shapeIcon = (cols, gap) => `<span aria-hidden="true" style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:${gap ? 3 : 0}px;width:38px;margin:0 auto 4px">${Array.from({ length: cols * (cols === 1 ? 4 : 3) }, () => `<i style="display:block;height:7px;border:1px solid #64748b;${gap ? 'border-radius:3px' : ''}"></i>`).join('')}</span>`;
+  function curDesign() { return impDesign(); }
+  function putDesign(k, v) { const d = { ...(IMP.opts.design || {}) }; if (v === null || v === undefined || (Array.isArray(v) && !v.length) || v === 0 || v === 'classic' && k === 'shape') delete d[k]; else d[k] = v; IMP.opts.design = d; }
+  window.hrImpDesignHtml = function () {
+    const D = curDesign(), full = IMP.opts.layout === 'full', list = full ? window.impDesignList() : [], btn = 'rounded-lg border text-[10px] font-extrabold px-2 py-1';
+    const row = (it, i, n) => `<li data-key="${E(it.k)}" class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5 ${it.hidden ? 'opacity-50' : ''}"><span data-handle role="button" tabindex="-1" aria-label="اسحب لتغيير مكان ${it.l.replace(/<[^>]*>/g, '')}" title="اسحب لتغيير المكان" style="touch-action:none;cursor:grab" class="w-6 h-7 flex items-center justify-center text-slate-400 select-none"><i class="fas fa-grip-vertical" aria-hidden="true"></i></span><span class="flex-1 min-w-0 truncate text-[11px] font-extrabold text-slate-800">${it.l}</span>
+      <button type="button" onclick="window.impFldMove('${E(it.k)}',-1)" ${i === 0 ? 'disabled' : ''} aria-label="رفع" class="${btn} border-slate-200 text-slate-600 disabled:opacity-30"><i class="fas fa-chevron-up" aria-hidden="true"></i></button>
+      <button type="button" onclick="window.impFldMove('${E(it.k)}',1)" ${i === n - 1 ? 'disabled' : ''} aria-label="خفض" class="${btn} border-slate-200 text-slate-600 disabled:opacity-30"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+      <button type="button" onclick="window.impFldSpan('${E(it.k)}')" aria-pressed="${it.full}" title="عرض كامل السطر" class="${btn} ${it.full ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-slate-600'}">كامل</button>
+      <button type="button" onclick="window.impFldHide('${E(it.k)}')" ${it.k === 'amount' ? 'disabled' : ''} aria-pressed="${it.hidden}" aria-label="${it.hidden ? 'إظهار' : 'إخفاء'}" title="${it.hidden ? 'إظهار' : 'إخفاء'}" class="${btn} border-slate-300 text-slate-600 disabled:opacity-30"><i class="fas ${it.hidden ? 'fa-eye-slash' : 'fa-eye'}" aria-hidden="true"></i></button></li>`;
+    return `<div id="imp-design-box" class="space-y-2.5 ${full ? '' : 'opacity-50 pointer-events-none'}"><p class="text-xs font-black text-slate-800"><i class="fas fa-table-cells-large ml-1 text-slate-400" aria-hidden="true"></i>تصميم الجدول <span class="text-slate-500 font-bold">${full ? '(الشكل والحواف وترتيب الحقول)' : '(يعمل مع «سند كامل» فقط)'}</span></p>
+      <div class="grid grid-cols-5 gap-1.5" role="group" aria-label="أشكال الجدول">${SHAPES_UI.map(([k, l, c, g]) => `<button type="button" onclick="window.impDesignSet('shape','${k}')" aria-pressed="${D.shape === k}" class="px-1 py-2 rounded-xl border text-[10px] font-extrabold ${D.shape === k ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}">${shapeIcon(c, g)}${l}</button>`).join('')}</div>
+      <label class="flex items-center gap-2 text-[11px] font-extrabold text-slate-700"><span class="w-24 shrink-0">تنعيم الحواف</span><input id="imp-radius" type="range" min="0" max="24" step="1" value="${D.radius}" oninput="window.impDesignSet('radius',+this.value,true)" onchange="window.impDesignSet('radius',+this.value)" aria-label="تنعيم الحواف" class="flex-1 accent-black"><output id="imp-radius-out" class="w-12 text-center font-black">${D.radius ? D.radius + ' px' : 'حادة'}</output></label>
+      <div><p class="text-[10px] font-extrabold text-slate-600 mb-1">الحقول <span class="font-bold text-slate-500">— اسحب <i class="fas fa-grip-vertical" aria-hidden="true"></i> لتغيير المكان (أو استخدم الأسهم)، والعين للإخفاء، و«كامل» لعرض السطر كله</span></p>
+        <ul id="imp-fld-list" class="space-y-1 max-h-64 overflow-y-auto pr-0.5">${list.length ? list.map((it, i) => row(it, i, list.length)).join('') : '<li class="text-[10px] font-bold text-slate-500">اختر ملفاً بصفوف صالحة لتظهر الحقول.</li>'}</ul></div>
+      <div><p class="text-[10px] font-extrabold text-slate-600 mb-1">ترتيب أقسام السند <span class="font-bold text-slate-500">— اسحب لتغيير المكان</span></p>
+        <ul id="imp-blk-list" class="space-y-1">${D.blocks.map((k, i) => `<li data-key="${k}" class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1.5"><span data-handle role="button" tabindex="-1" aria-label="اسحب لتغيير مكان ${BLOCK_LBL[k]}" style="touch-action:none;cursor:grab" class="w-6 h-7 flex items-center justify-center text-slate-400 select-none"><i class="fas fa-grip-vertical" aria-hidden="true"></i></span><span class="flex-1 text-[11px] font-extrabold text-slate-800">${BLOCK_LBL[k]}</span><button type="button" onclick="window.impBlkMove('${k}',-1)" ${i === 0 ? 'disabled' : ''} aria-label="رفع" class="${btn} border-slate-200 text-slate-600 disabled:opacity-30"><i class="fas fa-chevron-up" aria-hidden="true"></i></button><button type="button" onclick="window.impBlkMove('${k}',1)" ${i === D.blocks.length - 1 ? 'disabled' : ''} aria-label="خفض" class="${btn} border-slate-200 text-slate-600 disabled:opacity-30"><i class="fas fa-chevron-down" aria-hidden="true"></i></button></li>`).join('')}</ul></div>
+      <button type="button" onclick="window.impDesignReset()" class="px-3 py-2 rounded-xl border border-slate-300 bg-white text-[11px] font-extrabold text-slate-700">إعادة تصميم الجدول الافتراضي</button></div>`;
+  };
+  function bindSort(id, onDone) {
+    const list = $(id); if (!list) return;
+    list.addEventListener('pointerdown', e => {
+      const h = e.target.closest && e.target.closest('[data-handle]'); if (!h || !list.contains(h)) return; const item = h.closest('[data-key]'); if (!item || item.parentNode !== list) return;
+      e.preventDefault(); try { list.setPointerCapture(e.pointerId); } catch (_) {} item.style.pointerEvents = 'none'; item.style.opacity = '.55'; item.style.boxShadow = '0 4px 14px rgba(0,0,0,.25)';
+      const move = ev => { const el = document.elementFromPoint(ev.clientX, ev.clientY), t = el && el.closest && el.closest('[data-key]'); if (!t || t === item || t.parentNode !== list) return; const r = t.getBoundingClientRect(); list.insertBefore(item, ev.clientY > r.top + r.height / 2 ? t.nextSibling : t); };
+      const up = () => { list.removeEventListener('pointermove', move); list.removeEventListener('pointerup', up); list.removeEventListener('pointercancel', up); item.style.pointerEvents = ''; item.style.opacity = ''; item.style.boxShadow = ''; try { list.releasePointerCapture(e.pointerId); } catch (_) {} onDone([...list.children].filter(x => x.dataset && x.dataset.key).map(x => x.dataset.key)); };
+      list.addEventListener('pointermove', move); list.addEventListener('pointerup', up); list.addEventListener('pointercancel', up);
+    });
+  }
+  function paintDesign() { const box = $('imp-design-box'); if (box) box.outerHTML = window.hrImpDesignHtml(); bindSort('imp-fld-list', ks => { putDesign('order', ks); afterDesign(); }); bindSort('imp-blk-list', ks => { putDesign('blocks', ks.join() === 'table,note,sign' ? [] : ks); afterDesign(); }); }
+  function afterDesign() { refresh(); paintDesign(); persist(); }
+  window.hrImpBindDesign = () => { bindSort('imp-fld-list', ks => { putDesign('order', ks); afterDesign(); }); bindSort('imp-blk-list', ks => { putDesign('blocks', ks.join() === 'table,note,sign' ? [] : ks); afterDesign(); }); };
+  window.impDesignSet = function (k, v, live) {
+    if (!IMP) return; putDesign(k, v);
+    if (k === 'radius') { const o = $('imp-radius-out'); if (o) o.textContent = v ? v + ' px' : 'حادة'; }
+    refresh(); if (live) return; paintDesign(); persist();
+  };
+  function currentOrder() { return window.impDesignList().map(x => x.k); }
+  window.impFldMove = function (k, d) { const ord = currentOrder(), i = ord.indexOf(k), j = i + Number(d); if (i < 0 || j < 0 || j >= ord.length) return; [ord[i], ord[j]] = [ord[j], ord[i]]; putDesign('order', ord); afterDesign(); };
+  window.impBlkMove = function (k, d) { const b = [...curDesign().blocks], i = b.indexOf(k), j = i + Number(d); if (i < 0 || j < 0 || j >= b.length) return; [b[i], b[j]] = [b[j], b[i]]; putDesign('blocks', b.join() === 'table,note,sign' ? [] : b); afterDesign(); };
+  window.impFldHide = function (k) { const h = new Set(curDesign().hidden); if (h.has(k)) h.delete(k); else if (k !== 'amount') h.add(k); putDesign('hidden', [...h]); afterDesign(); };
+  window.impFldSpan = function (k) { const it = window.impDesignList().find(x => x.k === k); if (!it) return; const sp = { ...curDesign().span }; sp[k] = it.full ? 'half' : 'full'; const d = { ...(IMP.opts.design || {}) }; d.span = sp; IMP.opts.design = d; afterDesign(); };
+  window.impDesignReset = function () { if (!IMP) return; IMP.opts.design = {}; afterDesign(); };
+  window.impYearSet = function (k, v) { if (!IMP) return; if (k === 'year') { const y = String(v || '').trim(); IMP.opts.year = /^\d{4}$/.test(y) && +y >= 2000 && +y <= 2100 ? y : ''; } else IMP.opts.addYear = !!v; window.impRender(); persist(); };
+  window.hrImpYearHtml = function () {
+    const o = IMP.opts; return `<div id="imp-year-box" class="rounded-xl border border-slate-200 bg-white p-2.5 flex flex-wrap items-center gap-x-4 gap-y-2"><label class="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-700"><input id="imp-addyear" type="checkbox" ${o.addYear !== false ? 'checked' : ''} onchange="window.impYearSet('addYear', this.checked)" class="w-4 h-4"> إضافة السنة بجانب الشهر (مرتب شهر أكتوبر 2026)</label>
+      <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">السنة <input id="imp-year" type="number" min="2000" max="2100" placeholder="تلقائي" value="${E(o.year || '')}" ${o.addYear === false ? 'disabled' : ''} onchange="window.impYearSet('year', this.value)" aria-label="السنة" class="w-24 border border-slate-300 rounded-lg p-1.5 text-xs font-black text-center"></label><span class="text-[10px] font-bold text-slate-500">فارغة = من تاريخ الصرف</span></div>`;
+  };
   window.hrImpTopControlsHtml = function () {
     const o = IMP.opts, full = o.layout === 'full', lh = impLetterBg(), btn = 'px-3 py-2 rounded-xl border border-slate-300 bg-white text-[11px] font-extrabold hover:bg-slate-100';
     return `<div id="imp-top-box" class="rounded-2xl border border-slate-200 bg-slate-50 p-3 flex flex-wrap items-start gap-4">
@@ -20792,6 +20909,8 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
         <div class="flex flex-wrap items-center gap-2"><button type="button" onclick="window.impAutoTop()" ${full && lh ? '' : 'disabled'} class="${btn} ${full && lh ? '' : 'opacity-50'}" title="${lh ? '' : 'يتطلب تفعيل الورق الرسمي'}"><i class="fas fa-wand-magic-sparkles ml-1" aria-hidden="true"></i>اكتشاف تلقائي من الورق الرسمي</button>
           <button type="button" onclick="window.impTopReset()" ${full ? '' : 'disabled'} class="${btn}">الافتراضي</button></div>
         <p class="text-[10px] font-bold text-slate-500">${full ? 'تتحرك المعاينة فوراً. الخطوة 3 مم، ويمكنك كتابة قيمة دقيقة.' : 'موضع الجدول يعمل مع شكل «سند كامل» فقط.'}</p></div>
+        ${window.hrImpYearHtml()}
+        ${window.hrImpDesignHtml()}
         ${window.hrImpStyleHtml()}
         <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-600"><input id="imp-top-save" type="checkbox" checked class="w-4 h-4"> احفظ الموضع والتنسيق للمنشأة (يبقيان في المرات القادمة)</label></div>
       <div id="imp-preview" class="shrink-0">${window.hrImpPreviewHtml()}</div></div>`;
