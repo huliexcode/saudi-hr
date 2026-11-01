@@ -8330,7 +8330,7 @@ window.verifyBackupFile=async function(input) {
                 <p>تبقى كل بياناتك ومستنداتك كما هي بعد الترقية — تواصل معنا لتفعيل اشتراكك:</p>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     ${UPGRADE_CONTACT.whatsapp ? `<a href="https://wa.me/${UPGRADE_CONTACT.whatsapp}?text=${msg}" target="_blank" rel="noopener" class="px-4 py-3 rounded-2xl bg-emerald-600 text-white text-center text-xs font-extrabold"><i class="fab fa-whatsapp ml-1"></i>واتساب المبيعات</a>` : ''}
-                    <a href="mailto:${UPGRADE_CONTACT.email}?subject=${encodeURIComponent('ترقية اشتراك منصة سعودي HR')}&body=${msg}" class="px-4 py-3 rounded-2xl bg-slate-900 text-white text-center text-xs font-extrabold"><i class="fas fa-envelope ml-1"></i>${UPGRADE_CONTACT.email}</a></div></div>`, null);
+                    <a href="mailto:${UPGRADE_CONTACT.email}?subject=${encodeURIComponent('ترقية اشتراك منصة سعودي HR')}&body=${msg}" class="px-4 py-3 rounded-2xl bg-slate-900 text-white text-center text-xs font-extrabold"><i class="fas fa-envelope ml-1"></i>${UPGRADE_CONTACT.email}</a></div></div>`, null, false);
         };
 
         // ====================================================================
@@ -13354,7 +13354,7 @@ window.verifyBackupFile=async function(input) {
         }
         window.openImportEntitlements = function () {
             let m = document.getElementById('imp-modal'); if (!m) { m = document.createElement('div'); m.id = 'imp-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.className = 'fixed inset-0 z-[10001] bg-slate-900/60 flex items-center justify-center p-2 sm:p-4'; document.body.appendChild(m); m.addEventListener('keydown', e => { if (e.key === 'Escape') window.impClose(); }); }
-            IMP = { fileName: '', wb: null, sheet: '', headers: [], rows: [], map: {}, opts: { purpose: 'صرف مستحقات', date: today10(), method: 'تحويل بنكي', layout: 'full', formId: '', netMode: null, logo: true, stamp: true, sign: true, sigimg: true, words: true, letter: false } }; m.classList.remove('hidden'); impRender();
+            IMP = { fileName: '', wb: null, sheet: '', headers: [], rows: [], map: {}, opts: { purpose: 'صرف مستحقات', date: today10(), method: 'تحويل بنكي', layout: 'full', formId: '', netMode: null, logo: true, stamp: true, sign: true, sigimg: true, words: true, letter: false, top: (policySettings && policySettings.impVoucher && Number.isFinite(Number(policySettings.impVoucher.top)) ? Number(policySettings.impVoucher.top) : null) } }; m.classList.remove('hidden'); impRender();
         };
         window.impClose = () => { document.getElementById('imp-modal')?.classList.add('hidden'); IMP = null; };
         window.impPick = function () { const i = document.createElement('input'); i.type = 'file'; i.accept = '.xlsx,.xls,.csv'; i.id = 'imp-file'; i.style.display = 'none'; i.onchange = () => { const f = i.files?.[0]; i.remove(); if (f) window.impHandleFile(f); }; document.body.appendChild(i); i.click(); };
@@ -13376,6 +13376,7 @@ window.verifyBackupFile=async function(input) {
         function impRender() {
             const m = document.getElementById('imp-modal'); if (!m || !IMP) return; const rows = impRows(), has = IMP.headers.length > 0, ok = rows.filter(r => r.amountOk), total = ok.reduce((s, r) => s + r.amount, 0), bad = rows.length - ok.length, mism = rows.filter(r => r.mismatch).length, o = IMP.opts, hasGross = rows.some(r => r.gross !== null), totGross = ok.reduce((s, r) => s + (r.gross || 0), 0), totDed = ok.reduce((s, r) => s + (r.deduction || 0), 0);
             const I = 'border border-slate-300 rounded-lg p-2 text-xs font-bold bg-white w-full', lh = impLetterBg(), forms = impForms(), canPrint = ok.length && (o.layout !== 'custom' || o.formId), blankNet = IMP.map.amount >= 0 && IMP.map.gross >= 0 ? rows.filter(r => r.fileAmt === null && r.gross !== null).length : 0;
+            const __sc = (m.querySelector('.p-5.overflow-y-auto') || {}).scrollTop || 0;
             m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[96vh] overflow-hidden flex flex-col">
                 <div class="flex flex-wrap items-center justify-between gap-2 px-5 py-4 border-b"><div><h3 class="text-sm font-black text-slate-900"><i class="fas fa-file-import ml-1 text-slate-400"></i>استيراد مستحقات من Excel</h3><p class="text-[11px] font-bold text-slate-500 mt-0.5">للصرف لأشخاص غير مضافين كموظفين — لا يُحفظ شيء في المنصة ولا تُنشأ حركات.</p></div>
                     <div class="flex gap-2"><button type="button" id="imp-template" onclick="window.impDownloadTemplate()" class="px-4 py-2 rounded-full bg-slate-100 text-xs font-extrabold"><i class="fas fa-download ml-1"></i>قالب Excel فارغ</button><button type="button" onclick="window.impClose()" aria-label="إغلاق" class="w-9 h-9 rounded-full bg-slate-100 font-bold">&times;</button></div></div>
@@ -13395,6 +13396,7 @@ window.verifyBackupFile=async function(input) {
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-2 text-[11px] font-extrabold text-slate-700">${[['logo', 'الشعار', true], ['stamp', 'ختم المنشأة', o.layout !== 'custom'], ['sign', 'خانات التواقيع', o.layout !== 'custom'], ['sigimg', 'صور توقيع المعتمدين', o.layout !== 'custom'], ['words', 'التفقيط', o.layout !== 'custom']].map(([k, l, en]) => `<label class="flex items-center gap-1.5 ${en ? '' : 'opacity-40'}"><input type="checkbox" data-imp-opt="${k}" ${o[k] ? 'checked' : ''} ${en ? '' : 'disabled'} onchange="window.impOpt('${k}', this.checked)" class="w-4 h-4"> ${l}</label>`).join('')}
                                 <label class="flex items-center gap-1.5 ${lh && o.layout === 'full' ? '' : 'opacity-40'}" title="${lh ? '' : 'فعّل الورق الرسمي وارفع صورته من الإعدادات'}"><input type="checkbox" data-imp-opt="letter" ${o.letter && lh ? 'checked' : ''} ${lh && o.layout === 'full' ? '' : 'disabled'} onchange="window.impOpt('letter', this.checked)" class="w-4 h-4"> الطباعة على الورق الرسمي</label></div>
                             <p class="text-[10px] font-bold text-slate-500">المرفقات تُؤخذ من «بيانات المنشأة» (الشعار والختم وتواقيع المعتمدين) و«الأوراق الرسمية».${lh ? '' : ' الورق الرسمي غير مفعّل حالياً.'}</p>
+                            ${window.hrImpTopControlsHtml()}
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5"><label class="block text-[10px] font-extrabold text-slate-600">بيان افتراضي<input value="${escapeHtml(o.purpose)}" maxlength="120" oninput="IMP.opts.purpose=this.value" onchange="window.impRender()" class="${I} mt-1"></label>
                                 <label class="block text-[10px] font-extrabold text-slate-600">طريقة الصرف الافتراضية<select onchange="window.impOpt('method', this.value)" class="${I} mt-1">${['تحويل بنكي', 'نقداً', 'شيك', 'حوالة'].map(x => `<option ${o.method === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
                                 <label class="block text-[10px] font-extrabold text-slate-600">تاريخ الصرف الافتراضي<input value="${escapeHtml(o.date)}" dir="ltr" onchange="const p=parseFlexibleDate(this.value);if(p.ok&&p.value){window.impOpt('date',p.value)}else{window.showToast('تاريخ غير صالح','warning')}" class="${I} mt-1"></label></div></div>
@@ -13402,6 +13404,7 @@ window.verifyBackupFile=async function(input) {
                         <div class="overflow-auto rounded-2xl border border-slate-200 max-h-72"><table class="w-full text-right text-xs"><thead class="bg-slate-50 sticky top-0"><tr>${['#', 'الاسم', 'الهوية / الإقامة', 'المرتب', 'الخصم', 'الصافي', 'شهر الصرف', 'الطريقة', ...(rows.some(r => r.iban) ? ['الآيبان'] : []), 'الحالة'].map(h => `<th class="p-2.5 font-extrabold text-slate-500 whitespace-nowrap">${h}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, 50).map(r => `<tr class="border-t border-slate-100"><td class="p-2.5 font-bold text-slate-400">${r.n}</td><td class="p-2.5 font-black text-slate-800">${escapeHtml(r.name) || '<span class="text-slate-300">—</span>'}</td><td class="p-2.5 font-bold" dir="ltr">${escapeHtml(r.id) || '—'}</td><td class="p-2.5 font-bold" dir="ltr">${r.gross !== null ? fmtMoney(r.gross) : '—'}</td><td class="p-2.5 font-bold ${r.deduction ? 'text-red-700' : 'text-slate-400'}" dir="ltr">${r.deduction ? fmtMoney(r.deduction) : '—'}</td><td class="p-2.5 font-black" dir="ltr">${r.amountOk ? fmtMoney(r.amount) : `<span class="text-amber-700">${escapeHtml(r.amountRaw) || '—'}</span>`}${r.mismatch ? ' <span class="text-amber-600" title="الإجمالي يختلف عن المرتب − الخصم">⚠</span>' : ''}</td><td class="p-2.5 font-bold text-slate-600">${escapeHtml(r.month) || '—'}</td><td class="p-2.5 font-bold text-slate-600">${escapeHtml(r.method)}</td>${rows.some(x => x.iban) ? `<td class="p-2.5 font-bold text-slate-600" dir="ltr">${escapeHtml(r.iban) || '—'}${r.iban && !/^SA\d{22}$/.test(r.iban) ? ' <span class="text-amber-600" title="ليس بصيغة آيبان سعودي — يُقبل كما هو">⚠</span>' : ''}</td>` : ''}<td class="p-2.5">${r.amountOk ? '<span class="text-emerald-700 font-black">جاهز</span>' : `<span class="text-amber-700 font-black">${escapeHtml(r.reason)}</span>`}</td></tr>`).join('')}</tbody></table>${rows.length > 50 ? `<p class="p-2.5 text-[11px] font-bold text-slate-500">يُعرض أول 50 صفاً من ${rows.length}؛ الإصدار يشمل الكل.</p>` : ''}</div>` : ''}
                 </div>
                 <div class="px-5 py-3 border-t flex flex-wrap justify-end gap-2"><button type="button" id="imp-vouchers" onclick="window.impPrintVouchers()" ${canPrint ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-brand text-brand-ink text-xs font-extrabold disabled:bg-slate-200 disabled:text-slate-600 disabled:opacity-100 disabled:cursor-not-allowed"><i class="fas fa-print ml-1"></i>طباعة السندات (${ok.length})</button><button type="button" id="imp-statement" onclick="window.impPrintStatement()" ${ok.length ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-slate-900 text-white text-xs font-extrabold disabled:bg-slate-200 disabled:text-slate-600 disabled:opacity-100 disabled:cursor-not-allowed"><i class="fas fa-table-list ml-1"></i>كشف الصرف</button><button type="button" id="imp-export" onclick="window.impExportExcel()" ${rows.length ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-emerald-800 text-white text-xs font-extrabold disabled:bg-slate-200 disabled:text-slate-600 disabled:opacity-100 disabled:cursor-not-allowed"><i class="fas fa-file-excel ml-1"></i>تصدير Excel</button><button type="button" onclick="window.impClose()" class="px-5 py-2.5 rounded-full border border-slate-300 text-xs font-extrabold">إغلاق</button></div></div>`;
+            const __b = m.querySelector('.p-5.overflow-y-auto'); if (__b && __sc) __b.scrollTop = __sc;   // لا يقفز التمرير إلى الأعلى عند تغيير خيار
         }
         window.impRender = impRender; window.impRowsForTest = impRows; window.impDetectForTest = impDetect; Object.defineProperty(window, 'IMP_STATE', { get: () => IMP });
         // ---------- السندات ----------
@@ -13419,7 +13422,7 @@ window.verifyBackupFile=async function(input) {
             const rowsHtml = pairs.reduce((a, p, i) => { if (i % 2 === 0) a.push([p]); else a[a.length - 1].push(p); return a; }, []).map(pr => `<tr>${pr.map(p => cell(p[0], lab) + cell(p[1], 'font-weight:700;font-size:12px;width:32%')).join('')}${pr.length === 1 ? `<td colspan="2" style="border:${B}"></td>` : ''}</tr>`).join('');
             const money = `${r.gross !== null && (r.deduction || r.gross !== r.amount) ? `<tr>${cell('المرتب الشهري', lab)}${cell(`<b><bdi dir="ltr">${E(fmtMoney(r.gross))}</bdi></b>`, 'font-size:13px;width:32%')}${cell('الخصم', lab)}${cell(`<b style="color:#b42318"><bdi dir="ltr">${E(fmtMoney(r.deduction))}</bdi></b>`, 'font-size:13px;width:32%')}</tr>` : ''}<tr>${cell(r.gross !== null && r.deduction ? 'الصافي المستلم' : 'المبلغ', lab)}<td colspan="3" style="border:${B};padding:9px 10px;background:#fbfaf3"><b style="font-size:17px">${E(fmtMoney(r.amount))}</b>${o.words ? `<span style="font-size:11px;font-weight:700;margin-right:12px">${E(tafqeet(r.amount))}</span>` : ''}</td></tr>`;
             const head = bg ? '' : `<div style="border-bottom:3px solid ${ACC};padding-bottom:6px;margin-bottom:10px">${o.logo ? docHeaderHtml(comp, { maxH: 48, maxW: 150, fs: 10 }) : docHeaderHtml({ ...comp, logoBase64: '' }, { fs: 10 })}</div>`;
-            const padTop = bg ? (Number(LY.lhTop) || 45) : 14, padBot = bg ? (Number(LY.lhBottom) || 30) : 14, bgCss = bg ? `background:#fff url('${bg}') center/100% 100% no-repeat;` : 'background:#fff;';
+            const padTop = (o.top !== null && o.top !== undefined && o.top !== '' && Number.isFinite(Number(o.top))) ? Math.max(0, Math.min(120, Number(o.top))) : (bg ? (Number(LY.lhTop) || 45) : 14), padBot = bg ? (Number(LY.lhBottom) || 30) : 14, bgCss = bg ? `background:#fff url('${bg}') center/100% 100% no-repeat;` : 'background:#fff;';
             return `<div class="cf-page" data-imp="full" style="width:210mm;min-height:297mm;box-sizing:border-box;padding:${padTop}mm 14mm ${padBot}mm;${bgCss}color:#111;direction:rtl;font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact">${head}
                 <table style="width:100%;border-collapse:collapse;margin-bottom:12px"><tr><td style="background:${ACC};color:${INK};padding:10px 12px;font-size:17px;font-weight:900">سند صرف</td><td style="background:${ACC};color:${INK};padding:10px 12px;font-size:10.5px;font-weight:700;text-align:left;white-space:nowrap">المرجع: <bdi dir="ltr">${E(ref)}</bdi></td></tr></table>
                 <table style="width:100%;border-collapse:collapse">${rowsHtml}${money}</table>
@@ -13764,7 +13767,7 @@ window.verifyBackupFile=async function(input) {
             if (!emps.length) html = 'حدّد الموظفين المطلوب إصدار نماذجهم';
             else {
                 const invalid = emps.flatMap(e => validateEntitlementForEmployee(collectEntForm(e), e));
-                if (invalid.length) { box.innerHTML = `<p class="text-xs text-red-600 p-3">${escapeHtml([...new Set(invalid)].join('، '))}</p>`; return; }
+                if (invalid.length) { box.innerHTML = `<div class="p-3 space-y-2"><p class="text-xs text-red-600">${escapeHtml([...new Set(invalid)].join('، '))}</p>${window.hrEntFixable(invalid) ? '<button type="button" id="ent-quickfix" onclick="window.entQuickFix()" class="px-4 py-2 rounded-full bg-slate-900 text-white text-[11px] font-extrabold"><i class="fas fa-wand-magic-sparkles ml-1" aria-hidden="true"></i>حلّ المشكلة الآن</button>' : ''}</div>`; return; }
                 const totals = emps.map(e => collectEntForm(e).amount || 0), total = totals.reduce((s, x) => s + x, 0);
                 if (entType === 'overtime') {
                     const c = overtimeCalc(emps[0], v('ent-hours'), entMult());
@@ -13803,7 +13806,7 @@ window.verifyBackupFile=async function(input) {
             const isCash = entType === 'receipt' && document.getElementById('ent-sub')?.value === 'مرتب (كاش)';
             const docs = emps.map(emp => ({ emp, rec: collectEntForm(emp), ref: '' }));
             const invalid = docs.flatMap(d => validateEntitlementForEmployee(d.rec, d.emp));
-            if (invalid.length) { entDocs = []; document.getElementById('eos-result').innerHTML = ''; return window.showToast([...new Set(invalid)].join('، '), 'warning'); }
+            if (invalid.length) { entDocs = []; document.getElementById('eos-result').innerHTML = ''; window.showToast([...new Set(invalid)].join('، '), 'warning'); if (window.hrEntFixable(invalid)) window.entQuickFix(); return; }
             const r0 = docs[0].rec;
             if (entType === 'overtime' && !r0.hours) return window.showToast('أدخل عدد الساعات', 'warning');
             if (entType === 'assignment' && !r0.desc) return window.showToast('اكتب المهمة المكلَّف بها', 'warning');
@@ -20346,11 +20349,12 @@ window.HRInsurance = (function () {
     const on = ST.items.filter(i => i.checked && i.est && i.est.status === 'ok'), emp = on.reduce((s, i) => s + i.est.employee, 0), co = on.reduce((s, i) => s + i.est.company, 0);
     const sum = $('ins-pl-sum'); if (sum) sum.innerHTML = on.length ? `المحدد: <b>${on.length}</b> موظف · إجمالي خصم الموظفين <b dir="ltr" class="text-red-700">${fmt(emp)}</b> ريال · حصة المنشأة <b dir="ltr">${fmt(co)}</b> ريال` : 'لا موظف محدد.';
   }
-  window.hrInsApplyPlatform = function (month) {
+  window.hrInsApplyPlatform = function (month, opts) {
+    opts = opts || {};
     if (!canFinance()) return toast('هذا الإجراء يتطلب صلاحية مالية', 'warning');
     month = month || (document.getElementById('crx-month-select') || {}).value || thisMonthStr();
-    const rows = payrollRows(month).filter(needs); if (!rows.length) return toast('لا موظفين بحاجة إلى بيان تأمينات لهذا الشهر');
-    ST = { month, items: rows.map(r => { const sg = I().suggestCategory(r.e), est = estimateFor(r.e, month, sg.category); return { e: r.e, cat: sg.category || '', reason: sg.reason, est, checked: est.status === 'ok' }; }) };
+    const rows = payrollRows(month).filter(needs).filter(r => !opts.ids || opts.ids.includes(r.e.id)); if (!rows.length) return toast('لا موظفين بحاجة إلى بيان تأمينات لهذا الشهر');
+    ST = { month, after: opts.after || null, items: rows.map(r => { const sg = I().suggestCategory(r.e), est = estimateFor(r.e, month, sg.category); return { e: r.e, cat: sg.category || '', reason: sg.reason, est, checked: est.status === 'ok' }; }) };
     const body = `<div id="ins-pl-box"><div class="rounded-2xl bg-amber-50 border border-amber-200 p-3 mb-3 text-[11px] font-bold text-amber-900 leading-relaxed">قيم <b>تقديرية</b> تحسبها المنصة من الأجر الخاضع (الأساسي + السكن، بحد أقصى 45,000) ونسب مؤرخة لفئة المشترك. النسب «قاعدة المنصة الحالية — تحتاج مراجعة نظامية». تُعتمد بمرجع «${PREFIX}» وتُطابَق لاحقاً بكشف التأمينات الرسمي من «بيان الشهر» لكل موظف.</div>
       <div id="ins-pl-list" class="space-y-2"></div>
       <label class="flex items-start gap-2 mt-3 text-[11px] font-extrabold text-slate-800"><input type="checkbox" id="ins-pl-ack" class="mt-0.5 w-4 h-4"> راجعتُ الفئات والمبالغ أعلاه وأقرّ باعتمادها كتقدير للمنصة لشهر ${E(monthLabel(month))}.</label><p id="ins-pl-sum" class="mt-2 text-[11px] font-bold text-slate-700" aria-live="polite"></p></div>`;
@@ -20386,7 +20390,7 @@ window.HRInsurance = (function () {
     integrityInvalidate(); try { await loadIntegrityData(); } catch (_) {}
     toast(`اعتُمدت التأمينات (تقدير المنصة) لـ ${ok} موظف${metaOk ? '' : ' — تفاصيل التقدير لم تُحفظ: شغّل migration_insurance_statements.sql'}`, ok ? 'success' : 'warning');
     [...skipped, ...failed].slice(0, 3).forEach(([n, m]) => toast(`${n}: ${m}`, 'warning'));
-    if (ok && window.setSalaryTab) window.setSalaryTab('payroll'); return ok > 0;
+    if (ok && ST.after) { const f = ST.after; setTimeout(() => { try { f(ok); } catch (_) {} }, 150); } else if (ok && window.setSalaryTab) window.setSalaryTab('payroll'); return ok > 0;
   }
 
   // ---------- 3) واجهة سجل المسير ----------
@@ -20677,7 +20681,7 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   const q$ = id => document.getElementById(id);
   const LIMITS = ['حتى 20 موظفاً', 'دون دعوة مستخدمين أو منشآت إضافية', 'دون روابط بوابة الموظفين (وصول عام) أو إقفال المسير', 'دون إرسال رسائل خارجية (بريد أو واتساب أو SMS)', 'تتوقف المساحة بعد 14 يوماً ويعود كل شيء فور الترقية'];
   window.hrTrialLimitsHtml = () => '<ul class="text-right text-[12px] font-bold text-slate-700 space-y-1.5">' + LIMITS.map(x => '<li><i class="fas fa-circle-info ml-1.5 text-slate-400" aria-hidden="true"></i>' + x + '</li>').join('') + '</ul>';
-  window.openTrialLimits = function () { openPolModal('حدود التجربة المجانية', '<p class="text-xs font-bold text-slate-500 mb-3">كل الأقسام متاحة للاستكشاف ببيانات نموذجية، مع هذه الحدود:</p>' + window.hrTrialLimitsHtml(), null); };
+  window.openTrialLimits = function () { openPolModal('حدود التجربة المجانية', '<p class="text-xs font-bold text-slate-500 mb-3">كل الأقسام متاحة للاستكشاف ببيانات نموذجية، مع هذه الحدود:</p>' + window.hrTrialLimitsHtml(), null, false); };
   window.hrTrialExpired = function () {
     if (q$('hr-trial-expired')) return;
     const c = (typeof UPGRADE_CONTACT !== 'undefined' && UPGRADE_CONTACT) || { email: 'info@saudi-hr.com', whatsapp: '' };
@@ -20693,6 +20697,106 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
         <a id="hr-trial-mail" href="mailto:${c.email}?subject=${encodeURIComponent('ترقية اشتراك منصة سعودي HR')}&body=${msg}" style="padding:12px;border-radius:16px;background:#0f172a;color:#fff;font-weight:800;font-size:13px"><i class="fas fa-envelope" aria-hidden="true"></i> ${c.email}</a>
         <button id="hr-trial-out" type="button" style="padding:10px;font-size:12px;font-weight:700;color:#64748b">تسجيل الخروج</button></div></div>`;
     document.body.appendChild(box); q$('hr-trial-out').onclick = () => { try { window.signOut(); } catch (_) {} };
+  };
+})();
+</script>
+
+<script id="hr-quickfix">
+/* (1) سند الصرف (استيراد Excel): التحكم بموضع الجدول من أعلى الورقة مع معاينة حية وحفظ للمنشأة.
+   (2) المستحقات: «حلّ المشكلة الآن» — تشخيص كل موظف محدَّد وحل موانع سند الراتب النقدي من نافذة واحدة. */
+(function () {
+  'use strict';
+  const E = s => escapeHtml(String(s == null ? '' : s)), $ = id => document.getElementById(id), toast = (m, t) => window.showToast(m, t);
+  const canFinance = () => ['owner', 'admin', 'hr', 'accountant'].includes((window.hrViewerGuard && window.hrViewerGuard.role) || '');
+  // ---------- 1) موضع الجدول في سند الصرف ----------
+  const clampTop = v => Math.max(0, Math.min(120, Math.round(Number(v) * 2) / 2));
+  const effTop = () => { const o = IMP.opts, LY = (typeof docLayout === 'function' ? docLayout() : {}), bg = o.letter && impLetterBg(); return Number.isFinite(Number(o.top)) && o.top !== null && o.top !== '' ? clampTop(o.top) : (bg ? (Number(LY.lhTop) || 45) : 14); };
+  window.hrImpEffTop = effTop;
+  window.hrImpPreviewHtml = function () {
+    if (!IMP) return '';
+    const o = IMP.opts, ok = impRows().filter(r => r.amountOk);
+    if (o.layout !== 'full') return '<p class="text-[10px] font-bold text-slate-500">المعاينة الحية لشكل «سند كامل». الأشكال الأخرى تُعاين من زر الطباعة.</p>';
+    if (!ok.length) return '<p class="text-[10px] font-bold text-slate-500">اختر ملفاً بصفوف صالحة لتظهر المعاينة.</p>';
+    let html = ''; try { html = impVoucherHtml(ok[0], impRefBase() + '-0001'); } catch (_) { return ''; }
+    const S = 0.42;
+    return `<div id="imp-preview-box" aria-label="معاينة السند الأول" style="direction:ltr;width:${Math.round(793.7 * S)}px;height:${Math.round(1122.5 * S)}px;overflow:hidden;position:relative;background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.25);border-radius:4px"><div style="width:210mm;height:297mm;transform:scale(${S});transform-origin:top left;position:absolute;top:0;left:0;pointer-events:none">${html}</div></div>`;
+  };
+  let saveTimer = null;
+  function refresh() { const box = $('imp-preview'), inp = $('imp-top'); if (inp && document.activeElement !== inp) inp.value = effTop(); if (box) box.innerHTML = window.hrImpPreviewHtml(); }
+  window.impSetTop = function (v) {
+    if (!IMP || String(v).trim() === '' || isNaN(Number(v))) return refresh(); IMP.opts.top = clampTop(v); refresh();
+    const sv = $('imp-top-save'); if (sv && !sv.checked) return;
+    clearTimeout(saveTimer); saveTimer = setTimeout(async () => { try { const s = JSON.parse(JSON.stringify(policySettings || {})); s.impVoucher = { ...(s.impVoucher || {}), top: IMP.opts.top }; applyPolicySettings(s); await persistPolicySettings(getActiveCompany(), s); } catch (_) { toast('تعذر حفظ موضع الجدول للمنشأة', 'warning'); } }, 700);
+  };
+  window.impTopStep = d => window.impSetTop(effTop() + Number(d));
+  window.impTopReset = function () { if (!IMP) return; IMP.opts.top = null; refresh(); clearTimeout(saveTimer); (async () => { try { const s = JSON.parse(JSON.stringify(policySettings || {})); if (s.impVoucher) { delete s.impVoucher.top; applyPolicySettings(s); await persistPolicySettings(getActiveCompany(), s); } } catch (_) {} })(); };
+  window.impAutoTop = async function () {
+    const comp = getActiveCompany() || {}, src = impLetterBg() || comp.offerPaper || comp.settlementPaper; if (!src) return toast('فعّل الورق الرسمي وارفع صورته من الإعدادات أولاً', 'warning');
+    try { const r = await detectBlankArea(src, [210, 297]); window.impSetTop(r.top); toast(`بدأ الجدول من ${r.top} مم بحسب المساحة الفارغة في الورق الرسمي`); } catch (e) { toast('تعذر تحليل صورة الورق: ' + (e.message || ''), 'error'); }
+  };
+  window.hrImpTopControlsHtml = function () {
+    const o = IMP.opts, full = o.layout === 'full', lh = impLetterBg(), btn = 'px-3 py-2 rounded-xl border border-slate-300 bg-white text-[11px] font-extrabold hover:bg-slate-100';
+    return `<div id="imp-top-box" class="rounded-2xl border border-slate-200 bg-slate-50 p-3 flex flex-wrap items-start gap-4 ${full ? '' : 'opacity-60'}">
+      <div class="flex-1 min-w-[17rem] space-y-2.5"><p class="text-xs font-black text-slate-800"><i class="fas fa-arrows-up-down ml-1 text-slate-400" aria-hidden="true"></i>موضع الجدول من أعلى الورقة <span class="text-slate-500 font-bold">(يُصلح تداخل الشعار مع الجدول)</span></p>
+        <div class="flex flex-wrap items-center gap-2"><button type="button" onclick="window.impTopStep(-3)" ${full ? '' : 'disabled'} class="${btn}" aria-label="رفع الجدول 3 مليمتر"><i class="fas fa-arrow-up ml-1" aria-hidden="true"></i>أعلى</button>
+          <label class="flex items-center gap-1 text-[11px] font-bold text-slate-600"><input id="imp-top" type="number" min="0" max="120" step="0.5" value="${effTop()}" ${full ? '' : 'disabled'} onchange="window.impSetTop(this.value)" aria-label="بداية الجدول من أعلى الورقة بالمليمتر" class="w-20 border border-slate-300 rounded-lg p-2 text-xs font-black text-center"> مم</label>
+          <button type="button" onclick="window.impTopStep(3)" ${full ? '' : 'disabled'} class="${btn}" aria-label="خفض الجدول 3 مليمتر"><i class="fas fa-arrow-down ml-1" aria-hidden="true"></i>أسفل</button></div>
+        <div class="flex flex-wrap items-center gap-2"><button type="button" onclick="window.impAutoTop()" ${full && lh ? '' : 'disabled'} class="${btn} ${full && lh ? '' : 'opacity-50'}" title="${lh ? '' : 'يتطلب تفعيل الورق الرسمي'}"><i class="fas fa-wand-magic-sparkles ml-1" aria-hidden="true"></i>اكتشاف تلقائي من الورق الرسمي</button>
+          <button type="button" onclick="window.impTopReset()" ${full ? '' : 'disabled'} class="${btn}">الافتراضي</button>
+          <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-600"><input id="imp-top-save" type="checkbox" checked class="w-4 h-4"> احفظه للمنشأة</label></div>
+        <p class="text-[10px] font-bold text-slate-500">${full ? 'تتحرك المعاينة فوراً. الخطوة 3 مم، ويمكنك كتابة قيمة دقيقة.' : 'يعمل مع شكل «سند كامل» فقط.'}</p></div>
+      <div id="imp-preview" class="shrink-0">${window.hrImpPreviewHtml()}</div></div>`;
+  };
+
+  // ---------- 2) حل مشكلة سند الراتب النقدي ----------
+  const CASH_RE = /سند الراتب النقدي يتطلب/, STMT_RE = /يلزم بيان تأمينات شهري معتمد/;
+  const CASH_REASONS = ['لا يملك الموظف حساباً بنكياً بعد', 'استثناء نظامي موثق من الإدارة', 'تعذّر حساب الموظف البنكي مؤقتاً', 'أخرى (أكتب السبب)'];
+  const monthLbl = m => { try { return window.hrLeaveMonthLabel ? window.hrLeaveMonthLabel(m) : m; } catch (_) { return m; } };
+  function diagnose() {
+    const month = ($('ent-month') || {}).value || thisMonthStr();
+    return { month, rows: entSelectedIds().map(id => employees.find(e => e.id === id)).filter(Boolean).map(e => { let errs = []; try { errs = validateEntitlementForEmployee(collectEntForm(e), e); } catch (x) { errs = [String(x.message || x)]; } return { e, errs, cash: errs.some(x => CASH_RE.test(x)), stmt: errs.some(x => STMT_RE.test(x)), other: errs.filter(x => !CASH_RE.test(x) && !STMT_RE.test(x)) }; }) };
+  }
+  window.hrEntFixable = errs => (errs || []).some(x => CASH_RE.test(x) || STMT_RE.test(x));
+  const chip = (bad, okT, badT) => `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${bad ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}"><i class="fas ${bad ? 'fa-circle-xmark' : 'fa-circle-check'}" aria-hidden="true"></i>${bad ? badT : okT}</span>`;
+  function body(d) {
+    const nCash = d.rows.filter(r => r.cash).length, nStmt = d.rows.filter(r => r.stmt).length, others = d.rows.filter(r => r.other.length), clear = !nCash && !nStmt && !others.length, fin = canFinance();
+    return `<div id="entqf-box" class="space-y-4"><p class="text-xs font-bold text-slate-600 leading-relaxed">سند الراتب النقدي له شرطان نظاميان في المنصة؛ وهذا ما يخص كل موظف محدَّد. اضغط الزر في كل خطوة وتُحلّ، <b>دون مغادرة هذه الصفحة</b>.</p>
+      <div class="overflow-x-auto rounded-2xl border border-slate-200"><table class="w-full text-right text-[11px]"><thead class="bg-slate-50"><tr><th class="p-2 font-extrabold text-slate-500">الموظف</th><th class="p-2 font-extrabold text-slate-500">الصرف النقدي الموثّق</th><th class="p-2 font-extrabold text-slate-500">بيان تأمينات ${E(monthLbl(d.month))}</th></tr></thead><tbody>${d.rows.map(r => `<tr class="border-t border-slate-100"><td class="p-2 font-black text-slate-800">${E(r.e.name)}${r.other.length ? `<p class="text-[10px] font-bold text-red-700 mt-0.5">${E(r.other.join('، '))}</p>` : ''}</td><td class="p-2">${chip(r.cash, 'موثّق', 'غير موثّق')}</td><td class="p-2">${chip(r.stmt, 'معتمد', 'ناقص')}</td></tr>`).join('')}</tbody></table></div>
+      ${!fin ? '<p class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-[11px] font-extrabold text-amber-900">هذه الإجراءات تتطلب صلاحية مالية (مالك أو مدير أو موارد بشرية أو محاسب).</p>' : ''}
+      ${nCash ? `<section class="rounded-2xl border border-slate-200 p-3 space-y-2" aria-labelledby="entqf-h1"><h4 id="entqf-h1" class="text-xs font-black text-slate-900"><span class="inline-flex w-5 h-5 rounded-full bg-slate-900 text-white items-center justify-center text-[10px] ml-1">1</span>توثيق الصرف النقدي لـ ${nCash} موظف</h4>
+        <p class="text-[11px] font-bold text-slate-500">يُسجَّل أساس الاستثناء في ملف كل موظف وينتقل إلى صنف «كاش» في كشف الصرف.</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2"><label class="block text-[10px] font-extrabold text-slate-600">السبب<select id="entqf-reason" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-bold mt-1 bg-white">${CASH_REASONS.map(x => `<option>${E(x)}</option>`).join('')}</select></label>
+        <label class="block text-[10px] font-extrabold text-slate-600">تفصيل إضافي (اختياري)<input id="entqf-note" maxlength="120" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-bold mt-1"></label></div>
+        <label class="flex items-start gap-2 text-[11px] font-extrabold text-slate-800"><input id="entqf-ack" type="checkbox" class="mt-0.5 w-4 h-4"> أقرّ بصحة هذا الأساس وأتحمّل مسؤولية توثيقه.</label>
+        <button type="button" id="entqf-cash" onclick="window.hrEntFixCash()" ${fin ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-slate-900 text-white text-xs font-extrabold ${fin ? '' : 'opacity-50'}"><i class="fas fa-file-signature ml-1" aria-hidden="true"></i>وثّق لـ ${nCash} موظف</button></section>` : ''}
+      ${nStmt ? `<section class="rounded-2xl border border-slate-200 p-3 space-y-2" aria-labelledby="entqf-h2"><h4 id="entqf-h2" class="text-xs font-black text-slate-900"><span class="inline-flex w-5 h-5 rounded-full bg-slate-900 text-white items-center justify-center text-[10px] ml-1">${nCash ? 2 : 1}</span>بيان التأمينات لشهر ${E(monthLbl(d.month))} لـ ${nStmt} موظف</h4>
+        <p class="text-[11px] font-bold text-slate-500">تحسب المنصة الحصص من الأجر الخاضع وتعرضها لمراجعتك ثم تعتمدها كتقدير يُطابَق لاحقاً بكشف التأمينات الرسمي.</p>
+        <button type="button" id="entqf-ins" onclick="window.hrEntFixIns()" ${fin ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-slate-900 text-white text-xs font-extrabold ${fin ? '' : 'opacity-50'}"><i class="fas fa-shield-halved ml-1" aria-hidden="true"></i>اعتماد التأمينات من المنصة</button></section>` : ''}
+      ${others.length ? `<section class="rounded-2xl border border-red-200 bg-red-50 p-3 space-y-1.5"><h4 class="text-xs font-black text-red-800">موانع أخرى لا تُحلّ بضغطة</h4>${others.map(r => `<p class="text-[11px] font-bold text-red-800"><b>${E(r.e.name)}:</b> ${E(r.other.join('، '))}</p>`).join('')}</section>` : ''}
+      ${clear ? '<div role="status" class="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-center"><p class="text-sm font-black text-emerald-800"><i class="fas fa-circle-check ml-1" aria-hidden="true"></i>كل شيء جاهز — يمكنك إصدار السند الآن</p><button type="button" onclick="window.hrEntQfDone()" class="mt-3 px-6 py-2.5 rounded-full bg-emerald-600 text-white text-xs font-extrabold">إغلاق</button></div>' : ''}</div>`;
+  }
+  function paint() { const host = $('entqf-box'); if (!host) return; const d = diagnose(); host.outerHTML = body(d); try { window.entPreviewCalc(); } catch (_) {} }
+  window.hrEntQfDone = function () { try { window.closePolModal(); } catch (_) {} try { window.entPreviewCalc(); } catch (_) {} };
+  window.entQuickFix = function () {
+    if (!entSelectedIds().length) return toast('حدّد موظفاً أولاً من القائمة', 'warning');
+    openPolModal('حلّ مشكلة سند الراتب النقدي', body(diagnose()), null, false);
+  };
+  window.hrEntFixCash = async function () {
+    if (!canFinance()) return toast('هذا الإجراء يتطلب صلاحية مالية', 'warning');
+    if (!$('entqf-ack') || !$('entqf-ack').checked) return toast('أكّد الإقرار أولاً', 'warning');
+    const d = diagnose(), ids = d.rows.filter(r => r.cash).map(r => r.e.id); if (!ids.length) return paint();
+    const reason = $('entqf-reason').value, extra = ($('entqf-note').value || '').trim().slice(0, 120);
+    if (/^أخرى/.test(reason) && !extra) return toast('اكتب السبب في خانة التفصيل', 'warning');
+    const note = `${/^أخرى/.test(reason) ? '' : reason}${/^أخرى/.test(reason) ? extra : (extra ? ' — ' + extra : '')} — وُثّق في ${today10()} بواسطة ${(currentUser && currentUser.email) || ''}`.slice(0, 300), companyId = activeCompanyId, b = $('entqf-cash'); if (b) b.disabled = true;
+    const { error } = await supabaseClient.from('employees').update({ pay_method: 'cash', pay_method_note: note }).in('id', ids).eq('company_id', companyId);
+    if (error) { if (b) b.disabled = false; return toast('لم يُحفظ التوثيق: ' + (error.message || ''), 'error'); }
+    if (companyId !== activeCompanyId) return;
+    ids.forEach(id => { const e = employees.find(x => x.id === id); if (e) { e.payMethod = 'cash'; e.payMethodNote = note; try { localStorage.setItem(payKey(id), 'cash'); } catch (_) {} } });
+    toast(`وُثّق الصرف النقدي لـ ${ids.length} موظف`); paint();
+  };
+  window.hrEntFixIns = function () {
+    const d = diagnose(), ids = d.rows.filter(r => r.stmt).map(r => r.e.id); if (!ids.length) return paint();
+    window.hrInsApplyPlatform(d.month, { ids, after: () => { try { window.entQuickFix(); } catch (_) {} try { window.entPreviewCalc(); } catch (_) {} } });
   };
 })();
 </script>
