@@ -6854,7 +6854,7 @@ window.verifyBackupFile=async function(input) {
             const area = document.getElementById('eos-print-area'); if (!area) return;
             const name = (employees.find(e => e.id === document.getElementById('eos-emp').value)?.name || 'موظف');
             html2pdf().set({ margin: 8, filename: `مكافأة_نهاية_الخدمة_${name}.pdf`, image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(area).save();
+                html2canvas: { scale: 3, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(area).save();
         };
 
         // ====================================================================
@@ -11200,7 +11200,7 @@ window.verifyBackupFile=async function(input) {
             const st = entPrintSettings(), [page] = entDocPages(i); if (!page) throw new Error('المعاينة غير جاهزة');
             const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:-10000px;top:0'; host.appendChild(page); document.body.appendChild(host);
             try {
-                return await html2pdf().set({ margin: 0, image: { type: 'jpeg', quality: 0.92 }, html2canvas: { scale: 2, useCORS: true },
+                return await html2pdf().set({ margin: 0, image: { type: 'jpeg', quality: 0.92 }, html2canvas: { scale: 3, useCORS: true },
                     jsPDF: { unit: 'mm', format: st.paper, orientation: st.orientation }, pagebreak: { mode: [] } }).from(page).outputPdf('blob');
             } finally { host.remove(); }
         }
@@ -13431,13 +13431,15 @@ window.verifyBackupFile=async function(input) {
         // تنسيق سند الصرف: قالب (كلاسيكي/عصري/مبسّط) + لون الجدول + الحدود + الخط وحجمه. يُقرأ من IMP.opts.style ويُحفظ للمنشأة (policySettings.impVoucher.style)
         function impStyle() {
             const t = impTheme(), st = (IMP && IMP.opts && IMP.opts.style) || {}, hx = v => (typeof v === 'string' && isValidHex(v)) ? v : '';
-            const custom = !!hx(st.color), ACC = hx(st.color) || t.ACC, DK = custom ? mixHex(ACC, '#000000', .45) : t.DK, INK = custom ? readableInk(ACC) : t.INK, TINT = custom ? tintOf(ACC, .9) : t.TINT;
-            const preset = ['classic', 'modern', 'minimal'].includes(st.preset) ? st.preset : 'classic', bw = [0, .5, 1, 1.5, 2, 3].includes(Number(st.bw)) ? Number(st.bw) : 1, bs = ['solid', 'dashed', 'dotted'].includes(st.bs) ? st.bs : 'solid';
-            const bc = hx(st.border) || (preset === 'modern' ? mixHex(ACC, '#ffffff', .6) : '#cfd6d2'), B = bw ? `${bw}px ${bs} ${bc}` : '0 solid transparent';
+            const custom = !!hx(st.color), ACC = hx(st.color) || t.ACC, DK = custom ? mixHex(ACC, '#000000', .45) : t.DK, INK = custom ? readableInk(ACC) : t.INK, TINT0 = custom ? tintOf(ACC, .9) : t.TINT;
+            // وضوح الطباعة: عادي (الخفيف القديم) / واضح (الافتراضي: حدود أغمق وأسماء حقول وقيم أسود أثقل وأكبر) / أعلى وضوح (حدود أسمك وتعبئة عناوين أعمق)
+            const clar = ['standard', 'clear', 'max'].includes(st.clarity) ? st.clarity : 'clear', TINT = clar === 'max' ? mixHex(TINT0, ACC, .1) : TINT0;
+            const preset = ['classic', 'modern', 'minimal'].includes(st.preset) ? st.preset : 'classic', bw = [0, .5, 1, 1.5, 2, 3].includes(Number(st.bw)) ? Number(st.bw) : (clar === 'max' ? 1.5 : 1), bs = ['solid', 'dashed', 'dotted'].includes(st.bs) ? st.bs : 'solid';
+            const bc = hx(st.border) || (preset === 'modern' ? (clar === 'standard' ? mixHex(ACC, '#ffffff', .6) : clar === 'clear' ? mixHex(ACC, '#ffffff', .3) : mixHex(ACC, '#000000', .15)) : (clar === 'standard' ? '#cfd6d2' : clar === 'clear' ? '#7b8794' : '#374151')), B = bw ? `${bw}px ${bs} ${bc}` : '0 solid transparent';
             const fonts = (typeof CF_FONTS !== 'undefined' ? CF_FONTS.slice(1).map(f => f[0]) : ['IBM Plex Sans Arabic']), font = fonts.includes(st.font) ? st.font : 'IBM Plex Sans Arabic', scale = [0.85, 0.9, 1, 1.1, 1.2, 1.3].includes(Number(st.scale)) ? Number(st.scale) : 1, al = ['right', 'center', 'left'].includes(st.align) ? st.align : 'right', jc = { right: 'flex-start', center: 'center', left: 'flex-end' }[al];
-            const min = preset === 'minimal', mod = preset === 'modern', labBg = min ? 'transparent' : TINT, labInk = min ? ACC : DK;
+            const min = preset === 'minimal', mod = preset === 'modern', labBg = min ? 'transparent' : TINT, labInk = min ? ACC : (clar === 'standard' ? DK : clar === 'clear' ? '#0b1220' : '#000');
             const band = min ? `background:transparent;color:${ACC};border-bottom:2px solid ${ACC}` : (mod ? `background:${TINT};color:${DK};border-bottom:3px solid ${ACC}` : `background:${ACC};color:${INK}`);
-            const S = { preset, ACC, bc, bw, bs, font, scale, al, jc, B, ff: `'${font}','Segoe UI',Tahoma,sans-serif`,
+            const S = { preset, clar, lw: clar === 'standard' ? 800 : 900, vw: clar === 'standard' ? 700 : 800, fl: clar === 'standard' ? 11 : 12, flt: clar === 'standard' ? 10 : 11, fv: clar === 'standard' ? 12 : 13, ink: clar === 'standard' ? '#111' : '#000', ACC, bc, bw, bs, font, scale, al, jc, B, ff: `'${font}','Segoe UI',Tahoma,sans-serif`,
                 cb: min ? `border:none;border-bottom:${B}` : `border:${B}`, labBg, labInk, lab: `background:${labBg};color:${labInk}`,
                 band, amt: min ? 'transparent' : (mod ? TINT : '#fbfaf3'), note: min ? `border:none;border-right:4px solid ${ACC};background:transparent` : `border:${B};border-right:4px solid ${ACC};background:${TINT}` };
             return { comp: t.comp, ACC, DK, INK, TINT, B, S };
@@ -13449,7 +13451,7 @@ window.verifyBackupFile=async function(input) {
         function impStampsHtml(comp, h, cfg) {
             const E = escapeHtml, c = (cfg && typeof cfg === 'object') ? cfg : {}, st = IMP.opts.stamp ? docStamps(comp).map(impSafeImg).filter(Boolean) : []; if (!st.length) return '';
             const al = ['right', 'center', 'left'].includes(c.align) ? c.align : 'left', jc = { right: 'flex-start', center: 'center', left: 'flex-end' }[al], dy = Math.max(-120, Math.min(60, Math.round(Number(c.dy)) || 0)), sz = (c.sizes && typeof c.sizes === 'object') ? c.sizes : {};
-            return `<div data-imp-stamps style="display:flex;justify-content:${jc};align-items:center;gap:10px;margin-top:${8 + dy}px;position:relative;z-index:${dy < 0 ? 3 : 1}">${st.map((s, i) => `<img src="${E(s)}" alt="" style="height:${Math.max(20, Math.min(240, Math.round(h * Math.max(30, Math.min(300, Number(sz[i]) || 100)) / 100)))}px;object-fit:contain;opacity:.92">`).join('')}</div>`;
+            return `<div data-imp-stamps style="display:flex;justify-content:${jc};align-items:center;gap:10px;margin-top:${8 + dy}px;position:relative;z-index:${dy < 0 ? 3 : 1}">${st.map((s, i) => `<img src="${E(s)}" alt="" style="height:${Math.max(20, Math.min(240, Math.round(h * Math.max(30, Math.min(300, Number(sz[i]) || 100)) / 100)))}px;object-fit:contain">`).join('')}</div>`;
         }
         // حجم التوقيع: الأساس يتناسب مع عدد الموقّعين (1→84، 2→72، 3→62، 4→54 بكسل) فيملأ العرض بتناسق، ولكل توقيع نسبة مستقلة 50–250% (sizes[i])، ويُقيَّد بـ24–140 بكسل كي لا يخرج عن الصفحة. صفّ الصور بارتفاع أكبر توقيع لتبقى الأسماء على سطر واحد.
         function impSigRow(r, comp, DK, B, h, R, sizes) {
@@ -13505,7 +13507,7 @@ window.verifyBackupFile=async function(input) {
             items.forEach(it => { const full = cols === 1 || D.span[it.k] === 'full' || (D.span[it.k] !== 'half' && it.wide); if (full) { if (pos) fillRow(); cells.push({ it, row, col: 0, span: cols }); row++; pos = 0; } else { cells.push({ it, row, col: pos, span: 1 }); pos++; if (pos === cols) { pos = 0; row++; } } });
             if (pos) fillRow(); const lastRow = row - 1;
             const cellHtml = c => { const it = c.it, bottom = c.row === lastRow, bd = joined ? (min ? (bottom ? '' : `border-bottom:${B};`) : `${bottom ? '' : `border-bottom:${B};`}${c.col === 0 ? '' : `border-inline-start:${B};`}`) : (min ? `border-bottom:${B};` : `border:${B};${rad}overflow:hidden;`), amtBg = it && it.amt && S.amt !== 'transparent' ? `background:${S.amt};` : '';
-                const inner = !it ? '' : label === 'side' ? `<div style="display:flex;align-items:stretch;min-height:32px;height:100%"><div style="flex:0 0 ${c.span > 1 && cols > 1 ? Math.round(60 / cols) : 38}%;${S.lab};font-weight:800;padding:7px 9px;font-size:11px;display:flex;align-items:center;justify-content:${S.jc};${min ? '' : `border-inline-end:${B};`}">${it.l}</div><div style="flex:1;min-width:0;${amtBg}padding:7px 9px;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:${S.jc};gap:10px;flex-wrap:wrap">${it.v}</div></div>` : `<div style="${S.lab};font-weight:800;padding:4px 9px;font-size:10px;text-align:${S.al}">${it.l}</div><div style="${amtBg}padding:6px 9px;font-size:12px;font-weight:700;text-align:${S.al}">${it.v}</div>`;
+                const inner = !it ? '' : label === 'side' ? `<div style="display:flex;align-items:stretch;min-height:32px;height:100%"><div style="flex:0 0 ${c.span > 1 && cols > 1 ? Math.round(60 / cols) : 38}%;${S.lab};font-weight:${S.lw};padding:7px 9px;font-size:${S.fl}px;display:flex;align-items:center;justify-content:${S.jc};${min ? '' : `border-inline-end:${B};`}">${it.l}</div><div style="flex:1;min-width:0;${amtBg}padding:7px 9px;font-size:${S.fv}px;font-weight:${S.vw};color:${S.ink};display:flex;align-items:center;justify-content:${S.jc};gap:10px;flex-wrap:wrap">${it.v}</div></div>` : `<div style="${S.lab};font-weight:${S.lw};padding:4px 9px;font-size:${S.flt}px;text-align:${S.al}">${it.l}</div><div style="${amtBg}padding:6px 9px;font-size:${S.fv}px;font-weight:${S.vw};color:${S.ink};text-align:${S.al}">${it.v}</div>`;
                 return `<div data-fld="${E(it ? it.k : '')}" style="grid-column:span ${c.span};${bd}min-width:0">${inner}</div>`; };
             const grid = `display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));${joined ? '' : `gap:${gap}px;`}`;
             return joined ? `<div style="${min ? '' : `border:${B};`}${rad}${rad ? 'overflow:hidden;' : ''}"><div style="${grid}">${cells.map(cellHtml).join('')}</div></div>` : `<div style="${grid}">${cells.map(cellHtml).join('')}</div>`;
@@ -13522,22 +13524,22 @@ window.verifyBackupFile=async function(input) {
         }
         window.impFitSheets = impFitSheets;
         function impVoucherHtml(r, ref, inner) {
-            const { comp, ACC, DK, INK, TINT, B, S } = impStyle(), o = IMP.opts, E = escapeHtml, D = impDesign(), R = D.radius, rad = R ? `border-radius:${R}px;` : '', cell = (v, x) => `<td style="${S.cb};padding:7px 9px;text-align:${S.al};${x || ''}">${v}</td>`, lab = `${S.lab};font-weight:800;width:18%;font-size:11px`, bg = inner ? '' : (o.letter ? impLetterBg() : ''), hasBg = inner ? !!inner.bg : !!bg, LY = (typeof docLayout === 'function' ? docLayout() : {}) || {};
+            const { comp, ACC, DK, INK, TINT, B, S } = impStyle(), o = IMP.opts, E = escapeHtml, D = impDesign(), R = D.radius, rad = R ? `border-radius:${R}px;` : '', cell = (v, x) => `<td style="${S.cb};padding:7px 9px;text-align:${S.al};${x || ''}">${v}</td>`, lab = `${S.lab};font-weight:${S.lw};width:18%;font-size:${S.fl}px`, bg = inner ? '' : (o.letter ? impLetterBg() : ''), hasBg = inner ? !!inner.bg : !!bg, LY = (typeof docLayout === 'function' ? docLayout() : {}) || {};
             const legacyFields = () => {
                 const pairs = [['الاسم', E(r.name) || '—'], ['الهوية / الإقامة / الجواز', `<bdi dir="ltr">${E(r.id) || '—'}</bdi>`], ...(r.month ? [['شهر الصرف', E(r.month)]] : []), ['طريقة الصرف', E(r.method) || '—'], ...(r.phone ? [['الجوال', `<bdi dir="ltr">${E(r.phone)}</bdi>`]] : []), ...(r.bank ? [['البنك', E(r.bank)]] : []), ...(r.iban ? [['الآيبان', `<bdi dir="ltr">${E(r.iban)}</bdi>`]] : []), ['البيان', E(r.purpose) || '—'], ['تاريخ الصرف', E(impDateTxt(r.date)) || '—'], ...(r.notes ? [['ملاحظات', E(r.notes)]] : []), ...r.extra.map(([h, v]) => [E(h), E(v)])];
-                const rowsHtml = pairs.reduce((a, p, i) => { if (i % 2 === 0) a.push([p]); else a[a.length - 1].push(p); return a; }, []).map(pr => `<tr>${pr.map(p => cell(p[0], lab) + cell(p[1], 'font-weight:700;font-size:12px;width:32%')).join('')}${pr.length === 1 ? `<td colspan="2" style="${S.cb}"></td>` : ''}</tr>`).join('');
+                const rowsHtml = pairs.reduce((a, p, i) => { if (i % 2 === 0) a.push([p]); else a[a.length - 1].push(p); return a; }, []).map(pr => `<tr>${pr.map(p => cell(p[0], lab) + cell(p[1], `font-weight:${S.vw};font-size:${S.fv}px;color:${S.ink};width:32%`)).join('')}${pr.length === 1 ? `<td colspan="2" style="${S.cb}"></td>` : ''}</tr>`).join('');
                 const money = `${r.gross !== null && (r.deduction || r.gross !== r.amount) ? `<tr>${cell('المرتب الشهري', lab)}${cell(`<b><bdi dir="ltr">${E(fmtMoney(r.gross))}</bdi></b>`, 'font-size:13px;width:32%')}${cell('الخصم', lab)}${cell(`<b style="color:#b42318"><bdi dir="ltr">${E(fmtMoney(r.deduction))}</bdi></b>`, 'font-size:13px;width:32%')}</tr>` : ''}<tr>${cell(r.gross !== null && r.deduction ? 'الصافي المستلم' : 'المبلغ', lab)}<td colspan="3" style="${S.cb};padding:9px 10px;text-align:${S.al};background:${S.amt}"><b style="font-size:17px">${E(fmtMoney(r.amount))}</b>${o.words ? `<span style="font-size:11px;font-weight:700;margin-right:12px">${E(tafqeet(r.amount))}</span>` : ''}</td></tr>`;
                 return `<table style="width:100%;border-collapse:collapse">${rowsHtml}${money}</table>`;
             };
             const head = hasBg ? '' : `<div style="border-bottom:3px solid ${ACC};padding-bottom:6px;margin-bottom:10px">${o.logo ? docHeaderHtml(comp, { maxH: 48, maxW: 150, fs: 10 }) : docHeaderHtml({ ...comp, logoBase64: '' }, { fs: 10 })}</div>`;
-            const padTop = (o.top !== null && o.top !== undefined && o.top !== '' && Number.isFinite(Number(o.top))) ? Math.max(0, Math.min(120, Number(o.top))) : (bg ? (Number(LY.lhTop) || 45) : 14), padBot = bg ? (Number(LY.lhBottom) || 30) : 14, bgCss = bg ? `background:#fff url('${bg}') center/100% 100% no-repeat;` : 'background:#fff;';
+            const padTop = (o.top !== null && o.top !== undefined && o.top !== '' && Number.isFinite(Number(o.top))) ? Math.max(0, Math.min(120, Number(o.top))) : (bg ? (Number(LY.lhTop) || 45) : 14), padBot = bg ? (Number(LY.lhBottom) || 30) : 14, bgCss = 'background:#fff;', bgImg = bg ? `<img class="imp-bg" src="${E(bg)}" alt="" decoding="sync" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:fill;z-index:0;pointer-events:none;image-rendering:auto">` : '';
             const band = `<table style="width:100%;border-collapse:${R ? 'separate;border-spacing:0' : 'collapse'};margin-bottom:12px"><tr><td style="${S.band};padding:10px 12px;font-size:17px;font-weight:900;${R ? `border-radius:0 ${R}px ${R}px 0` : ''}">سند صرف</td><td style="${S.band};padding:10px 12px;font-size:10.5px;font-weight:700;text-align:left;white-space:nowrap;${R ? `border-radius:${R}px 0 0 ${R}px` : ''}">المرجع: <bdi dir="ltr">${E(ref)}</bdi>${inner && inner.copy ? ` · ${E(inner.copy)}` : ''}</td></tr></table>`;
             const blocks = { head, band, table: D.active ? impGridHtml(r, S, D) : legacyFields(), text: impTextHtml(r, ref, S, R),
-                note: `<p style="font-size:12.5px;font-weight:700;line-height:2.1;margin-top:14px;${S.note};${rad}padding:10px 12px;text-align:${S.al}">أقر أنا المذكور أعلاه باستلامي من ${E(comp.nameAr || 'المنشأة')} صافي المبلغ الموضّح، وذلك عن: <b>${E(r.purpose)}</b>، ${E(r.method)}، بتاريخ ${E(impDateTxt(r.date))}.</p>`,
+                note: `<p style="font-size:${S.fv + .5}px;font-weight:${S.vw};color:${S.ink};line-height:2.1;margin-top:14px;${S.note};${rad}padding:10px 12px;text-align:${S.al}">أقر أنا المذكور أعلاه باستلامي من ${E(comp.nameAr || 'المنشأة')} صافي المبلغ الموضّح، وذلك عن: <b>${E(r.purpose)}</b>، ${E(r.method)}، بتاريخ ${E(impDateTxt(r.date))}.</p>`,
                 sign: impSigRow(r, comp, DK, B, 'auto', R, o.sigSize), stamp: impStampsHtml(comp, 70, o.stampCfg) };
             const T = impText(), textPage = T.pos === 'page' ? impTextHtml(r, ref, S, R) : '', order = D.blocks.filter(k => !D.hideBlocks.includes(k) && !(k === 'text' && T.pos === 'page')), body = `${textPage}<div style="zoom:${S.scale}">${order.map(k => blocks[k]).join('')}</div>`;
             if (inner) return `<div class="doc-fit" data-imp-fit="1" style="direction:rtl;color:#111;font-family:${S.ff};transform-origin:top right">${body}</div>`;
-            return `<div class="cf-page imp-sheet" data-imp="full" style="width:210mm;height:297mm;overflow:hidden;position:relative;box-sizing:border-box;padding:${padTop}mm 14mm ${padBot}mm;${bgCss}color:#111;direction:rtl;font-family:${S.ff};page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact"><div class="imp-fit" style="transform-origin:top right">${body}</div></div>`;
+            return `<div class="cf-page imp-sheet" data-imp="full" style="width:210mm;height:297mm;overflow:hidden;position:relative;box-sizing:border-box;padding:${padTop}mm 14mm ${padBot}mm;${bgCss}color:#111;direction:rtl;font-family:${S.ff};page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact">${bgImg}<div class="imp-fit" style="transform-origin:top right;position:relative;z-index:1">${body}</div></div>`;
         }
         // بطاقة مضغوطة لشكلي «سندان» و«أربعة» في الصفحة
         function impCardHtml(r, ref, quarter) {
@@ -14058,6 +14060,7 @@ window.verifyBackupFile=async function(input) {
                         <span class="text-[11px] font-bold text-slate-500 ml-auto self-center">${entDocs.length} نموذج · ${entDocs.length * st.copies} صفحة</span>
                         <button onclick="window.entPrintDirect()" class="px-5 py-2.5 rounded-full bg-slate-900 text-white text-xs font-extrabold"><i class="fas fa-print ml-1"></i> طباعة مباشرة</button>
                         <button onclick="window.entDownloadPdf()" class="px-5 py-2.5 rounded-full bg-brand text-brand-ink text-xs font-extrabold shadow"><i class="fas fa-file-pdf ml-1"></i> تحميل PDF</button>
+                        <p class="w-full text-[10px] font-bold text-slate-500 text-left">أوضح مستند: «طباعة مباشرة» ثم اختر «حفظ بصيغة PDF» (نص متجهي حاد). «تحميل PDF» يُحوِّل الصفحة إلى صورة بدقة 300 نقطة/بوصة.</p>
                     </div></div>
                 <div id="ent-send-panel" class="hl-card p-4 mt-4 no-print"></div>
                 <div id="ent-pages" class="mt-4 space-y-4 overflow-x-auto pb-4 flex flex-col items-center">${entPagesHtml(st, bg)}</div>`;
@@ -14090,7 +14093,7 @@ window.verifyBackupFile=async function(input) {
             pg.innerHTML = entSummaryHtml();
             const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:-10000px;top:0'; host.appendChild(pg); document.body.appendChild(host);
             fitDocContent(pg, pg.querySelector('.doc-fit'));
-            html2pdf().set({ margin: 0, filename: `الكشف_المرجعي_${ENT_TITLE[entType]}.pdf`.replace(/\s+/g, '_'), image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 },
+            html2pdf().set({ margin: 0, filename: `الكشف_المرجعي_${ENT_TITLE[entType]}.pdf`.replace(/\s+/g, '_'), image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 3 },
                 jsPDF: { unit: 'mm', format: st.paper, orientation: st.orientation }, pagebreak: { mode: [] } }).from(pg).save().then(() => host.remove());
         };
         function entPagesHtml(st, bg) {
@@ -14104,7 +14107,7 @@ window.verifyBackupFile=async function(input) {
                 if (inner && inner.summary) return `<div class="ent-page bg-white shadow-lg border border-slate-200 shrink-0" style="width:${w}px;min-height:${h}px;height:${h}px;box-sizing:border-box;padding:${st.margin * mm}px;overflow:hidden;position:relative">${inner.html}</div>`;
                 const vOn = st.design === 'voucher' && !!bg && !!(getActiveCompany() || {}).useLetterhead, useBg = (st.design === 'attached' && bg) || vOn, vTop = vOn ? (entVoucherOpts(st).top ?? st.bgTop) : st.bgTop;
                 const pad = useBg ? `${vTop * mm}px ${st.margin * mm}px ${st.bgBottom * mm}px` : `${st.margin * mm}px`;
-                return `<div class="ent-page bg-white shadow-lg border border-slate-200 shrink-0" style="width:${w}px;min-height:${h}px;height:${h}px;box-sizing:border-box;padding:${pad};overflow:hidden;position:relative;${useBg ? `background:url('${bg}') center/100% 100% no-repeat;` : ''}">${inner}</div>`;
+                return `<div class="ent-page bg-white shadow-lg border border-slate-200 shrink-0" style="width:${w}px;min-height:${h}px;height:${h}px;box-sizing:border-box;padding:${pad};overflow:hidden;position:relative">${useBg ? `<img class="ent-bg" src="${escapeHtml(bg)}" alt="" decoding="sync" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:fill;z-index:0;pointer-events:none"><div style="position:relative;z-index:1">${inner}</div>` : inner}</div>`;
             }).join('');
         }
 
@@ -14195,7 +14198,7 @@ window.verifyBackupFile=async function(input) {
             const st = entPrintSettings(); const pages = entCleanPages(4); if (!pages.length) return;
             const title = entDocs.length > 1 ? `${ENT_TITLE[entType]}_${entDocs.length}_موظف` : `${ENT_TITLE[entType]}_${entDocs[0].emp.name || ''}`;
             const opt = { margin: 0, filename: `${title}.pdf`.replace(/\s+/g, '_'), image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: st.paper, orientation: st.orientation }, pagebreak: { mode: [] } };
+                html2canvas: { scale: pages.length > 40 ? 2 : 3, useCORS: true }, jsPDF: { unit: 'mm', format: st.paper, orientation: st.orientation }, pagebreak: { mode: [] } };
             const host = document.createElement('div');
             host.style.cssText = 'position:fixed;left:-10000px;top:0;';
             pages.forEach(p => host.appendChild(p)); document.body.appendChild(host);
@@ -14219,7 +14222,7 @@ window.verifyBackupFile=async function(input) {
                 <style>@page{size:${st.paper.toUpperCase()} ${st.orientation};margin:0} html,body{margin:0;padding:0;background:#fff}
                 body>div{overflow:hidden;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body>${html}</body></html>`);
             w.document.close();
-            setTimeout(() => { w.focus(); w.print(); }, 700);
+            { let done = false; const go = () => { if (done) return; done = true; w.focus(); w.print(); }; const pend = [...w.document.images].filter(i => !i.complete); Promise.all(pend.map(i => new Promise(r => { i.onload = i.onerror = r; }))).then(() => setTimeout(go, 500)); setTimeout(go, 8000); }   // تنتظر الشعار والورق الرسمي والتواقيع قبل الطباعة
         };
         window.printEntDoc = window.entDownloadPdf;
 
@@ -14465,7 +14468,7 @@ window.verifyBackupFile=async function(input) {
             const pages = offerPages(); const host = document.createElement('div');
             host.style.cssText = 'position:fixed;left:-10000px;top:0;'; pages.forEach(p => host.appendChild(p)); document.body.appendChild(host);
             const opt = { margin: 0, filename: `Offer_${r.emp.name}.pdf`, image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: [] } };
+                html2canvas: { scale: 3, useCORS: true, backgroundColor: '#ffffff' }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: [] } };
             window.showToast('جاري تجهيز العرض الوظيفي...', 'warning');
             try {
                 let worker = html2pdf().set(opt).from(pages[0]).toPdf();
@@ -18220,7 +18223,7 @@ window.verifyBackupFile=async function(input) {
                 await html2pdf().set({
                     margin: 0, filename: `Onboarding_Completion_${emp.name || ''}.pdf`,
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff' },
+                    html2canvas: { scale: 3, useCORS: true, allowTaint: false, backgroundColor: '#ffffff' },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                     pagebreak: { mode: 'avoid-all' }
                 }).from(content).save();
@@ -20866,6 +20869,7 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     const sh = box.querySelector('.imp-sheet'), old = $('imp-fit-note'); if (old) old.remove(); const k = sh && sh.getAttribute('data-fit');
     if (k) box.insertAdjacentHTML('beforeend', `<p id="imp-fit-note" class="imp-note" role="status" style="margin-top:6px;color:#b45309;font-weight:800;max-width:${Math.round(793.7 * previewScale())}px">● المحتوى أكبر من مساحة الورقة فصُغِّر إلى ${Math.round(Number(k) * 100)}% — الورقة الرسمية ثابتة لا تتغير.</p>`);
     box.querySelectorAll('img').forEach(i => { if (!i.complete) i.addEventListener('load', fitPreview, { once: true }); });
+    try { window.hrImpPaperFill(); } catch (_) {}
   }
   function refresh() { const box = $('imp-preview'), inp = $('imp-top'); if (inp && document.activeElement !== inp) inp.value = effTop(); if (box) { box.innerHTML = window.hrImpPreviewHtml(); fitPreview(); } }
   function persist() {
@@ -20899,6 +20903,20 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     const comp = getActiveCompany() || {}, src = impLetterBg() || comp.offerPaper || comp.settlementPaper; if (!src) return toast('فعّل الورق الرسمي وارفع صورته من الإعدادات أولاً', 'warning');
     try { const r = await detectBlankArea(src, [210, 297]); window.impSetTop(r.top); toast(`بدأ الجدول من ${r.top} مم بحسب المساحة الفارغة في الورق الرسمي`); } catch (e) { toast('تعذر تحليل صورة الورق: ' + (e.message || ''), 'error'); }
   };
+  // ---------- جودة الورق الرسمي: فحص دقة الصورة (A4 عرضه 8.27 بوصة) وتحذير إن كانت منخفضة أو بنسبة مختلفة ----------
+  const PAPER_Q = {};
+  const paperQ = url => PAPER_Q[url] || (PAPER_Q[url] = new Promise(res => { const im = new Image(); im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => res(null); im.src = url; }));
+  window.hrImpPaperHtml = function () {
+    if (!IMP || !IMP.opts.letter || !impLetterBg()) return '';
+    return card('imp-paper-box', 'fa-image', 'جودة الورق الرسمي', 'دقة صورة الورق التي تُطبع عليها السندات', '<div id="imp-paper-q" class="imp-note" aria-live="polite">جارٍ فحص الدقة…</div>');
+  };
+  window.hrImpPaperFill = async function () {
+    const el = $('imp-paper-q'); if (!el || !IMP) return; const url = impLetterBg(); if (!url) return; const q = await paperQ(url); if (!$('imp-paper-q') || impLetterBg() !== url) return;
+    if (!q || !q.w) { $('imp-paper-q').innerHTML = '<b style="color:#b91c1c">تعذّر قراءة صورة الورق الرسمي.</b>'; return; }
+    const dpi = Math.round(q.w / 8.27), ratioOff = Math.abs(q.w / q.h - 210 / 297) > 0.02;
+    const lv = dpi >= 230 ? ['ممتازة', '#047857', 'مناسبة للطباعة الحادة.'] : dpi >= 150 ? ['جيدة', '#047857', 'مقبولة للطباعة العادية.'] : dpi >= 110 ? ['متوسطة', '#b45309', 'قد يظهر الشعار والخطوط الدقيقة ناعمة.'] : ['منخفضة', '#b91c1c', 'ستظهر الصورة باهتة ومفتّتة عند الطباعة.'];
+    $('imp-paper-q').innerHTML = `<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:900;color:${lv[1]}"><i class="fas ${dpi >= 150 ? 'fa-circle-check' : 'fa-triangle-exclamation'}" aria-hidden="true"></i> الدقة ${lv[0]}: ${q.w}×${q.h} بكسل ≈ ${dpi} نقطة/بوصة</span><span>${lv[2]}</span>${dpi < 150 ? '<span>للأوضح: ارفع صورة الورق بمقاس <b>2480×3508</b> بكسل (300 نقطة/بوصة) بصيغة PNG أو JPG عالية الجودة من «الأوراق الرسمية».</span>' : ''}${ratioOff ? '<span style="color:#b45309;font-weight:800">نسبة الصورة لا تطابق A4، لذا تُمَطّ لتملأ الورقة وقد تتشوه.</span>' : ''}</div>`;
+  };
   window.hrImpPosHtml = function () {
     const o = IMP.opts, full = o.layout === 'full', lh = impLetterBg();
     return card('imp-pos-box', 'fa-arrows-up-down', 'موضع الجدول من أعلى الورقة', 'يُصلح تداخل الشعار أو الترويسة مع الجدول', `
@@ -20914,6 +20932,8 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   const BW = [['0', 'بلا حدود'], ['0.5', 'رفيعة جداً'], ['1', 'عادية'], ['1.5', 'سميكة'], ['2', 'أسمك'], ['3', 'غليظة']], BS = [['solid', 'متصلة'], ['dashed', 'متقطعة'], ['dotted', 'منقّطة']], SC = [[0.85, '85%'], [0.9, '90%'], [1, '100%'], [1.1, '110%'], [1.2, '120%'], [1.3, '130%']];
   window.hrImpStyleHtml = function () {
     const o = IMP.opts, S = impStyle().S, custom = o.layout === 'custom', sel = 'class="imp-in"';
+    const CL = [['standard', 'عادي', 'خفيف: حدود رمادية فاتحة وخط أصغر'], ['clear', 'واضح', 'موصى به: حدود أغمق، وأسماء الحقول والقيم سوداء ثقيلة وأكبر'], ['max', 'أعلى وضوح', 'للطابعات الضعيفة أو الورق الرسمي الغامق: حدود أسمك وتعبئة عناوين أعمق']];
+    const z = card('imp-st-z', 'fa-eye', 'وضوح الطباعة', 'يجعل الحدود وأسماء الحقول أوضح على الورق المطبوع', seg(CL.map(x => [x[0], x[1]]), S.clar, k => `window.impStyleSet('clarity','${k}')`, 'وضوح الطباعة') + `<p class="imp-note" id="imp-clar-note">${CL.find(x => x[0] === S.clar)[2]}</p>`);
     const a = card('imp-st-a', 'fa-swatchbook', 'القالب والمحاذاة', custom ? 'للنموذج المخصص تنسيقه الخاص من المنشئ' : 'شكل الجدول العام ومحاذاة النصوص', `<div class="imp-grid3" role="group" aria-label="قالب التنسيق">${PRESETS.map(([k, l, d]) => `<button type="button" class="imp-btn${S.preset === k ? ' on' : ''}" style="flex-direction:column;gap:1px" onclick="window.impStyleSet('preset','${k}')" aria-pressed="${S.preset === k}">${l}<small style="font-size:9px;font-weight:700;opacity:.75">${d}</small></button>`).join('')}</div>
       <div><span class="imp-lbl">محاذاة النص</span><div class="imp-seg" role="group" aria-label="محاذاة النص">${[['right', 'يمين', 'fa-align-right'], ['center', 'وسط', 'fa-align-center'], ['left', 'يسار', 'fa-align-left']].map(([k, l, ic]) => `<button type="button" class="imp-btn${S.al === k ? ' on' : ''}" onclick="window.impStyleSet('align','${k}')" aria-pressed="${S.al === k}"><i class="fas ${ic}" aria-hidden="true"></i>${l}</button>`).join('')}</div></div>`);
     const b = card('imp-st-b', 'fa-fill-drip', 'لون الجدول', 'يُشتق منه لون العناوين والنص تلقائياً', `<div class="imp-chips" style="align-items:center"><input type="color" id="imp-st-color" value="${S.ACC}" aria-label="لون الجدول" oninput="window.impStyleSet('color',this.value,true)" onchange="window.impStyleSet('color',this.value)" style="width:42px;height:32px;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer">${SWATCH.map(c => `<button type="button" aria-label="اللون ${c}" onclick="window.impStyleSet('color','${c}')" style="background:${c}" class="imp-sw${S.ACC.toLowerCase() === c ? ' on' : ''}"></button>`).join('')}<button type="button" class="imp-chip" onclick="window.impStyleSet('color','')">لون المنشأة</button></div>`);
@@ -20923,11 +20943,12 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     const d = card('imp-st-d', 'fa-font', 'الخط', 'نوع الخط وحجمه', `<div class="imp-grid2"><label><span class="imp-lbl">نوع الخط</span><select onchange="window.impStyleSet('font',this.value)" ${sel} aria-label="الخط">${CF_FONTS.slice(1).map(([v, l]) => `<option value="${E(v)}" ${v === S.font ? 'selected' : ''}>${E(l)}</option>`).join('')}</select></label>
       <label><span class="imp-lbl">حجم الخط</span><select onchange="window.impStyleSet('scale',this.value)" ${sel}>${SC.map(([v, l]) => `<option value="${v}" ${v === S.scale ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
       <button type="button" class="imp-btn" onclick="window.impStyleReset()">إعادة التنسيق الافتراضي</button>`);
-    return `<div id="imp-style-box" class="imp-stack${custom ? ' imp-dis' : ''}" ${custom ? 'aria-disabled="true"' : ''}>${a}${b}${c}${d}</div>`;
+    return `<div id="imp-style-box" class="imp-stack${custom ? ' imp-dis' : ''}" ${custom ? 'aria-disabled="true"' : ''}>${z}${a}${b}${c}${d}</div>`;
   };
   window.impStyleSet = function (k, v, live) {
     if (!IMP) return; const st = { ...(IMP.opts.style || {}) };
     if (k === 'align' && !['right', 'center', 'left'].includes(v)) return;
+    if (k === 'clarity') { if (!['standard', 'clear', 'max'].includes(v)) return; if (v === 'clear') v = ''; }   // الواضح هو الافتراضي فلا يُخزَّن
     if (v === '' || v === null || v === undefined) delete st[k]; else st[k] = (k === 'bw' || k === 'scale') ? Number(v) : v;
     if (k === 'font' && typeof cfEnsureFonts === 'function') { try { cfEnsureFonts({ font: v, blocks: [] }); } catch (_) {} }
     IMP.opts.style = st; refresh(); if (live) return;
@@ -21140,7 +21161,7 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     return `<div id="imp-top-box" class="imp-studio" style="--studio-h:${opts.designer ? '100%' : H + 'px'}">
       <div id="imp-controls" class="imp-studio-ctl">
         <div class="imp-tabs" role="tablist" aria-label="أقسام تحرير السند" onkeydown="window.impTabKey(event)">${TABS.map(([k, ic, l]) => `<button type="button" role="tab" id="imp-tab-${k}" class="imp-tab${t === k ? ' on' : ''}" data-tab="${k}" aria-selected="${t === k}" aria-controls="imp-pane-${k}" tabindex="${t === k ? 0 : -1}" onclick="window.impStudioTab('${k}')"><i class="fas ${ic}" aria-hidden="true"></i><span>${l}</span></button>`).join('')}</div>
-        ${pane('t1', window.hrImpModelsHtml() + window.hrImpPosHtml() + window.hrImpYearHtml())}
+        ${pane('t1', window.hrImpModelsHtml() + window.hrImpPosHtml() + window.hrImpPaperHtml() + window.hrImpYearHtml())}
         ${pane('t2', window.hrImpDesignHtml())}
         ${pane('t3', window.hrImpBlocksHtml() + window.hrImpTextHtml())}
         ${pane('t4', window.hrImpSigHtml() + window.hrImpStampHtml())}
