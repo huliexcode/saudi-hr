@@ -1314,6 +1314,35 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
   input[type="checkbox"],input[type="radio"]{min-width:20px;min-height:20px}
 }
 </style>
+<style id="hr-z-layers">
+/* طبقات موحّدة: مربعات التأكيد وإدخال النص والإشعارات تظهر فوق كل النوافذ والصفحات (ومنها المخطط التنظيمي z-75 وقوائمه) */
+#pol-modal{z-index:100040!important}
+#custom-confirm-modal{z-index:100050!important}
+#pin-modal,#pin-recovery,#pin-required-modal,#nops-dialog{z-index:100060!important}
+#toast-container{z-index:100100!important}
+</style>
+<style id="hr-ess-css">
+.ess-req-btn,.ess-menu-btn{display:flex;align-items:center;gap:.5rem;width:100%;padding:.75rem;border-radius:1rem;border:1px solid #e2e8f0;background:#fff;color:#334155;font-size:12px;font-weight:800;cursor:pointer;text-align:start;min-height:44px}
+.ess-req-btn:hover,.ess-menu-btn:hover{background:#f8fafc}
+.ess-menu-btn:focus-visible,.ess-req-btn:focus-visible,.ess-menu-item:focus-visible{outline:2px solid #0f172a;outline-offset:2px}
+.ess-menu-btn .ess-chev{margin-inline-start:auto;font-size:10px;color:#94a3b8;transition:transform .15s}.ess-menu-btn[aria-expanded="true"] .ess-chev{transform:rotate(180deg)}
+.ess-menu-wrap{position:relative}
+.ess-menu{margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:1rem;box-shadow:0 8px 24px rgba(15,23,42,.12);padding:.25rem}
+.ess-menu-wrap:has(.ess-menu:not([hidden])){grid-column:1/-1}   /* القائمة المفتوحة تتمدد في التدفق وبعرض الصف فلا يقتطعها إطار البطاقة */
+.ess-menu[hidden]{display:none}
+.ess-menu-item{display:flex;align-items:center;gap:.5rem;width:100%;padding:.6rem .75rem;border-radius:.75rem;border:0;background:transparent;color:#1e293b;font-size:12px;font-weight:800;cursor:pointer;text-align:start;min-height:40px}
+.ess-menu-item:hover{background:#f1f5f9}
+</style>
+<style id="hr-signers-css">
+.imp-sg-table{display:flex;flex-direction:column;gap:6px}
+.imp-sg-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,62px);gap:6px;align-items:center;border:1px solid #e2e8f0;border-radius:12px;background:#fff;padding:6px 8px}
+.imp-sg-head{background:#f8fafc;border-color:transparent;font-size:10.5px;font-weight:900;color:#475569;text-align:center}.imp-sg-head span:first-child{text-align:start}
+.imp-sg-name{display:flex;flex-direction:column;min-width:0}.imp-sg-name b{font-size:12px;font-weight:900;color:#0f172a}.imp-sg-name small{font-size:10.5px;font-weight:700;color:#64748b;line-height:1.5}
+.imp-sg-chk{display:flex;justify-content:center;align-items:center;min-height:36px;cursor:pointer}.imp-sg-chk input{width:20px;height:20px;accent-color:#0f172a;cursor:pointer}
+.imp-sg-edit{display:flex;flex-direction:column;gap:6px;min-width:0}.imp-sg-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.imp-sg-thumb{height:30px;max-width:80px;object-fit:contain;border:1px solid #e2e8f0;border-radius:6px;background:#fff}
+.imp-sg-add{display:flex;gap:6px;flex-wrap:wrap}.imp-sg-add .imp-in{flex:1;min-width:9rem;width:auto}
+label.imp-btn input[type=file]{display:none}
+</style>
 </head>
 <body class="h-screen flex overflow-hidden text-slate-900 ">
     <!-- بيانات التجربة المجانية -->
@@ -5398,7 +5427,7 @@ window.verifyBackupFile=async function(input) {
             const byStage = {};
             portalDocsData.forEach(d => { (byStage[d.stage] = byStage[d.stage] || []).push(d); });
 
-            list.innerHTML = stagesData.map(stage => {
+            list.innerHTML = (doneCount ? `<div class="flex justify-end"><button type="button" id="portal-dl-all" onclick="window.portalDownloadAll()" class="px-4 py-2 rounded-full text-[11px] font-extrabold bg-slate-900 text-white hover:opacity-90"><i class="fas fa-file-zipper ml-1" aria-hidden="true"></i>تحميل الكل في ملف واحد (${doneCount})</button></div>` : '') + stagesData.map(stage => {
                 const docs = byStage[stage.id] || [];
                 if (!docs.length) return '';
                 const rows = docs.map(d => {
@@ -5417,6 +5446,7 @@ window.verifyBackupFile=async function(input) {
                                 class="shrink-0 px-3.5 py-2 rounded-full text-[11px] font-extrabold transition ${up ? 'bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100' : 'bg-brand text-brand-ink hover:opacity-90 shadow'}">
                             ${up ? 'استبدال' : 'رفع'}
                         </button>
+                        ${up ? `<button type="button" onclick="window.portalDownloadDoc('${d.key}')" aria-label="تحميل ${escapeHtml(d.label)}" class="shrink-0 px-3.5 py-2 rounded-full text-[11px] font-extrabold bg-slate-900 text-white hover:opacity-90"><i class="fas fa-download ml-1" aria-hidden="true"></i>تحميل</button>` : ''}
                     </div>`;
                 }).join('');
                 const upN = docs.filter(d => uploaded[d.key]).length, ratio = Math.round(100 * upN / docs.length), fullSt = upN === docs.length;
@@ -5522,12 +5552,50 @@ window.verifyBackupFile=async function(input) {
         const ESS_REQ_TYPES = [
             { key: 'leave', label: 'إجازة', icon: 'fa-umbrella-beach' },
             { key: 'permission', label: 'مغادرة', icon: 'fa-person-walking-arrow-right' },
-            { key: 'leave_allowance', label: 'بدل الإجازة', icon: 'fa-money-bill-wave' },
-            { key: 'overtime', label: 'العمل الإضافي', icon: 'fa-business-time' },
             { key: 'wfh', label: 'العمل من المنزل', icon: 'fa-house-laptop' },
-            { key: 'financial_claim', label: 'مطالبة مالية', icon: 'fa-file-invoice-dollar' },
-            { key: 'letter', label: 'خطاب تعريف بالراتب', icon: 'fa-envelope-open-text' }
+            { key: 'exit_reentry', label: 'تأشيرة خروج وعودة', icon: 'fa-passport' },
+            { key: 'letter', label: 'خطاب تعريف بالراتب', icon: 'fa-envelope-open-text' },
+            // تُطلب من قائمة «المطالبات المالية» و«توثيق» (بلا أزرار مستقلة)، وتبقى هنا لتسمية الطلبات
+            { key: 'leave_allowance', label: 'بدل الإجازة', icon: 'fa-money-bill-wave', menu: 'fin' },
+            { key: 'overtime', label: 'العمل الإضافي', icon: 'fa-business-time', menu: 'fin' },
+            { key: 'financial_claim', label: 'مطالبة مالية', icon: 'fa-file-invoice-dollar', menu: 'fin' },
+            { key: 'attestation', label: 'توثيق', icon: 'fa-stamp', menu: 'att' }
         ];
+        // قائمة «المطالبات المالية»: [نوع الطلب، النوع الفرعي، العنوان، الأيقونة]
+        const ESS_FIN_ITEMS = [
+            ['leave_allowance', '', 'بدل إجازة', 'fa-money-bill-wave'],
+            ['overtime', '', 'بدل العمل الإضافي', 'fa-business-time'],
+            ['financial_claim', 'سلفة', 'سلفة', 'fa-hand-holding-dollar'],
+            ['financial_claim', '', 'مطالبة مالية أخرى', 'fa-file-invoice-dollar']
+        ];
+        // قائمة «توثيق»: مستندات يُطلب توثيقها لدى غرفة القصيم التجارية (تتولى الموارد البشرية المتابعة؛ وقد تختلف اشتراطات الغرفة بحسب المستند)
+        const ESS_ATTEST_DOCS = ['عقد العمل', 'شهادة الخبرة', 'خطاب التعريف بالراتب', 'شهادة الراتب للسفارات والتأشيرات', 'إخلاء الطرف / إنهاء الخدمة', 'المؤهل الدراسي / الشهادة العلمية', 'تفويض أو وكالة', 'إقرار أو تعهد', 'مستند آخر (اذكره في الملاحظات)'];
+        const ESS_QUICK = [
+            { key: 'leave', label: 'إجازة', icon: 'fa-umbrella-beach' }, { key: 'permission', label: 'مغادرة', icon: 'fa-person-walking-arrow-right' },
+            { key: 'wfh', label: 'العمل من المنزل', icon: 'fa-house-laptop' }, { key: 'financial_claim', sub: 'سلفة', label: 'سلفة', icon: 'fa-hand-holding-dollar' },
+            { key: 'exit_reentry', label: 'تأشيرة خروج وعودة', icon: 'fa-passport' }, { key: 'letter', label: 'خطاب تعريف بالراتب', icon: 'fa-envelope-open-text' }
+        ];
+        // قائمة منسدلة بسيطة بوصولية كاملة: زر (aria-haspopup/expanded) + قائمة role=menu، تُغلق بالنقر خارجها أو Esc، وتنقّل بالأسهم
+        function essMenu(id, label, icon, items) {
+            return `<div class="ess-menu-wrap" data-ess-menu><button type="button" id="ess-m-${id}" class="ess-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="ess-menu-${id}" onclick="window.essToggleMenu('${id}')"><i class="fas ${icon} text-slate-400" aria-hidden="true"></i><span>${label}</span><i class="fas fa-chevron-down ess-chev" aria-hidden="true"></i></button>
+                <div id="ess-menu-${id}" role="menu" aria-labelledby="ess-m-${id}" class="ess-menu" hidden>${items.map(([l, js, ic]) => `<button type="button" role="menuitem" class="ess-menu-item" onclick="${js}">${ic ? `<i class="fas ${ic} text-slate-400" aria-hidden="true"></i>` : ''}${escapeHtml(l)}</button>`).join('')}</div></div>`;
+        }
+        function essCloseMenus() { document.querySelectorAll('.ess-menu').forEach(m => { m.hidden = true; }); document.querySelectorAll('.ess-menu-btn').forEach(b => b.setAttribute('aria-expanded', 'false')); }
+        window.essToggleMenu = function (id) { const m = document.getElementById('ess-menu-' + id), b = document.getElementById('ess-m-' + id); if (!m || !b) return; const open = m.hidden; essCloseMenus(); if (open) { m.hidden = false; b.setAttribute('aria-expanded', 'true'); const f = m.querySelector('[role="menuitem"]'); if (f) f.focus(); } };
+        document.addEventListener('click', e => { if (!(e.target.closest && e.target.closest('[data-ess-menu]'))) essCloseMenus(); });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { const open = document.querySelector('.ess-menu:not([hidden])'); if (open) { const b = document.getElementById(open.getAttribute('aria-labelledby')); essCloseMenus(); if (b) b.focus(); } return; }
+            const it = e.target.closest && e.target.closest('.ess-menu [role="menuitem"]'); if (!it || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return; e.preventDefault();
+            const all = [...it.closest('.ess-menu').querySelectorAll('[role="menuitem"]')], i = all.indexOf(it); all[e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length].focus();
+        });
+        function essRequestButtons() {
+            const simple = k => { const t = ESS_REQ_TYPES.find(x => x.key === k); return `<button type="button" onclick="window.essNewRequest('${k}')" class="ess-req-btn"><i class="fas ${t.icon} text-slate-400" aria-hidden="true"></i>${t.label}</button>`; };
+            return simple('leave') + simple('permission') + simple('wfh')
+                + essMenu('fin', 'المطالبات المالية', 'fa-file-invoice-dollar', ESS_FIN_ITEMS.map((x, i) => [x[2], `window.essPickFin(${i})`, x[3]]))
+                + simple('exit_reentry') + essMenu('att', 'توثيق', 'fa-stamp', ESS_ATTEST_DOCS.map((l, i) => [l, `window.essPickAtt(${i})`])) + simple('letter');
+        }
+        window.essPickFin = function (i) { const x = ESS_FIN_ITEMS[i]; if (!x) return; essCloseMenus(); window.essNewRequest(x[0], x[1]); };
+        window.essPickAtt = function (i) { if (!ESS_ATTEST_DOCS[i]) return; essCloseMenus(); window.essNewRequest('attestation', ESS_ATTEST_DOCS[i]); };
         const ESS_STATUS = {
             pending: ['قيد المراجعة', 'bg-amber-50 text-amber-700'], approved: ['معتمد', 'bg-emerald-50 text-emerald-700'],
             rejected: ['مرفوض', 'bg-red-50 text-red-700'], cancelled: ['ملغي', 'bg-slate-100 text-slate-500']
@@ -5667,8 +5735,8 @@ window.verifyBackupFile=async function(input) {
                                 <div class="bg-slate-50 rounded-2xl p-3"><p class="text-[11px] font-bold text-slate-400">ختم الدخول</p><p class="font-black text-slate-900 text-lg" dir="ltr">${essTime(todayRec?.check_in)}</p></div>
                                 <div class="bg-slate-50 rounded-2xl p-3"><p class="text-[11px] font-bold text-slate-400">ختم الخروج</p><p class="font-black text-slate-900 text-lg" dir="ltr">${essTime(todayRec?.check_out)}</p></div>
                             </div>${punchHtml}`)}
-                        ${essCard('الوصول السريع', `<div class="grid grid-cols-2 gap-2">${ESS_REQ_TYPES.slice(0, 6).map(t =>
-                            `<button onclick="window.essNewRequest('${t.key}')" class="p-3 rounded-2xl border border-slate-200 hover:bg-slate-50 text-xs font-extrabold text-slate-700 flex items-center gap-2"><i class="fas ${t.icon} text-slate-400"></i>${t.label}</button>`).join('')}</div>`)}
+                        ${essCard('الوصول السريع', `<div class="grid grid-cols-2 gap-2">${ESS_QUICK.map(t =>
+                            `<button onclick="window.essNewRequest('${t.key}', '${t.sub || ''}')" class="p-3 rounded-2xl border border-slate-200 hover:bg-slate-50 text-xs font-extrabold text-slate-700 flex items-center gap-2"><i class="fas ${t.icon} text-slate-400"></i>${t.label}</button>`).join('')}</div>`)}
                     </div>`;
             } else if (essTab === 'profile') {
                 box.innerHTML = essCard('المعلومات الشخصية', essInfo([
@@ -5702,8 +5770,7 @@ window.verifyBackupFile=async function(input) {
                             : '<p class="text-center text-xs font-bold text-slate-400 py-6">لا يوجد بيانات</p>')}
                     </div>`;
             } else if (essTab === 'requests') {
-                box.innerHTML = essCard('أريد أن أطلب', `<div class="grid grid-cols-2 md:grid-cols-4 gap-2">${ESS_REQ_TYPES.map(t =>
-                        `<button onclick="window.essNewRequest('${t.key}')" class="p-3 rounded-2xl border border-slate-200 hover:bg-slate-50 text-xs font-extrabold text-slate-700 flex items-center gap-2"><i class="fas ${t.icon} text-slate-400"></i>${t.label}</button>`).join('')}</div>
+                box.innerHTML = essCard('أريد أن أطلب', `<div class="grid grid-cols-2 md:grid-cols-4 gap-2">${essRequestButtons()}</div>
                         <div id="ess-req-form" class="mt-4"></div>`)
                     + essCard('طلباتي', reqs.length ? `<div class="overflow-x-auto"><table class="w-full text-right text-xs min-w-[560px]"><thead><tr class="text-slate-400"><th class="pb-2">الرقم المرجعي</th><th class="pb-2">نوع الطلب</th><th class="pb-2">التفاصيل</th><th class="pb-2">تاريخ الطلب</th><th class="pb-2">الحالة</th><th></th></tr></thead><tbody>
                         ${reqs.map(r => { const st = ESS_STATUS[r.status] || ESS_STATUS.pending; const t = ESS_REQ_TYPES.find(x => x.key === r.request_type);
@@ -5718,13 +5785,16 @@ window.verifyBackupFile=async function(input) {
                 const month = withHours.filter(a => String(a.work_date).startsWith(monthPrefix));
                 const totalH = month.reduce((s, a) => s + a.hrs, 0);
                 const hh = Math.floor(totalH), mm = Math.round((totalH - hh) * 60);
-                box.innerHTML = `<div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                const lcfg = attCfg(essData.company && essData.company.policy_settings), lateOf = a => attLateMin(a.check_in, lcfg), lateRows = month.filter(a => lateOf(a) > 0), lateTotal = lateRows.reduce((s, a) => s + lateOf(a), 0);
+                box.innerHTML = `<div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
                         ${essKpi('إجمالي ساعات العمل (الشهر)', `${hh}:${String(mm).padStart(2, '0')} س`, 'fa-clock', 'bg-sky-50 text-sky-600')}
                         ${essKpi('أيام الحضور', month.filter(a => a.check_in).length, 'fa-calendar-check', 'bg-emerald-50 text-emerald-600')}
                         ${essKpi('أيام بدون ختم خروج', month.filter(a => a.check_in && !a.check_out && String(a.work_date) !== today).length, 'fa-triangle-exclamation', 'bg-amber-50 text-amber-600')}
                         ${essKpi('إجازات معتمدة', reqs.filter(r => r.request_type === 'leave' && r.status === 'approved').length, 'fa-umbrella-beach', 'bg-violet-50 text-violet-600')}
-                    </div>` + essCard('سجل الحضور (آخر شهرين)', withHours.length ? `<div class="overflow-x-auto"><table class="w-full text-right text-xs min-w-[480px]"><thead><tr class="text-slate-400"><th class="pb-2">التاريخ</th><th class="pb-2">ختم الدخول</th><th class="pb-2">ختم الخروج</th><th class="pb-2">الفترة</th></tr></thead><tbody>
-                        ${withHours.map(a => `<tr class="border-t border-slate-100"><td class="py-2.5 font-black">${a.work_date}</td><td class="font-bold" dir="ltr">${essTime(a.check_in)}</td><td class="font-bold" dir="ltr">${essTime(a.check_out)}</td><td class="font-bold">${a.hrs ? a.hrs.toFixed(2) + ' س' : '—'}</td></tr>`).join('')}
+                        ${essKpi('أيام التأخير (الشهر)', lcfg.start === null ? '—' : lateRows.length, 'fa-hourglass-half', 'bg-rose-50 text-rose-600')}
+                        ${essKpi('دقائق التأخير (الشهر)', lcfg.start === null ? '—' : lateTotal + ' د', 'fa-stopwatch', 'bg-rose-50 text-rose-600')}
+                    </div><p id="ess-late-note" class="text-[10px] font-bold text-slate-400 mt-2">${lcfg.start === null ? 'لم تُضبط ساعات الدوام في المنشأة بعد، لذا لا يُحتسب التأخير.' : `التأخير محسوب من بدء الدوام <b dir="ltr">${lcfg.label}</b>${lcfg.grace ? ` بعد سماح ${lcfg.grace} دقيقة` : ''} (بتوقيت الرياض).`}</p>` + essCard('سجل الحضور (آخر شهرين)', withHours.length ? `<div class="overflow-x-auto"><table class="w-full text-right text-xs min-w-[480px]"><thead><tr class="text-slate-400"><th class="pb-2">التاريخ</th><th class="pb-2">ختم الدخول</th><th class="pb-2">ختم الخروج</th><th class="pb-2">الفترة</th><th class="pb-2">التأخير</th></tr></thead><tbody>
+                        ${withHours.map(a => `<tr class="border-t border-slate-100"><td class="py-2.5 font-black">${a.work_date}</td><td class="font-bold" dir="ltr">${essTime(a.check_in)}</td><td class="font-bold" dir="ltr">${essTime(a.check_out)}</td><td class="font-bold">${a.hrs ? a.hrs.toFixed(2) + ' س' : '—'}</td><td class="font-bold ${lateOf(a) ? 'text-rose-600' : 'text-slate-400'}">${lcfg.start === null ? '—' : lateOf(a) ? lateOf(a) + ' دقيقة' : '—'}</td></tr>`).join('')}
                         </tbody></table></div>` : '<p class="text-center text-xs font-bold text-slate-400 py-6"><i class="fas fa-calendar-check text-3xl block mb-2 text-slate-300"></i>لا يوجد بيانات</p>');
             } else {
                 box.innerHTML = essCard('مستنداتي', '<div id="portal-docs-list" class="space-y-6"></div>');
@@ -5735,29 +5805,42 @@ window.verifyBackupFile=async function(input) {
             }
         }
 
-        window.essNewRequest = function (type) {
+        window.essNewRequest = function (type, sub) {
             if (essTab !== 'requests') { essTab = 'requests'; renderEss(); }
             const form = document.getElementById('ess-req-form'); if (!form) return;
-            const t = ESS_REQ_TYPES.find(x => x.key === type);
+            sub = sub || '';
+            const t = ESS_REQ_TYPES.find(x => x.key === type); if (!t) return;
+            window.__essReq = { type, sub };
+            const isFin = ['leave_allowance', 'overtime', 'financial_claim'].includes(type), advance = type === 'financial_claim' && sub === 'سلفة';
+            const finIdx = isFin ? Math.max(0, ESS_FIN_ITEMS.findIndex(x => x[0] === type && x[1] === (type === 'financial_claim' ? (advance ? 'سلفة' : '') : ''))) : -1;
             // تُعرض فقط الأنواع النشطة والمسموح طلبها من الخدمة الذاتية حسب سياسات المنشأة
             const leaveOpts = [...HR_REF.leavesPaid, ...HR_REF.leavesPaidNoBalance, ...HR_REF.leavesUnpaid].filter(l => l.selfService && l.active !== false).map(l => l.name);
             const permOpts = HR_REF.permissions.filter(p => p.active !== false).map(p => p.name);
             const input = 'w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-black';
-            const sub = type === 'leave' ? leaveOpts : type === 'permission' ? permOpts : null;
+            const lbl = 'block text-[11px] font-bold text-slate-500 mb-1', fld = (id, label, inner, cls) => `<div class="${cls || ''}"><label for="${id}" class="${lbl}">${label}</label>${inner}</div>`;
+            const subOpts = type === 'leave' ? leaveOpts : type === 'permission' ? permOpts : type === 'exit_reentry' ? ['خروج وعودة — لمرة واحدة', 'خروج وعودة — متعددة'] : type === 'attestation' ? ESS_ATTEST_DOCS : null;
+            const title = isFin ? ESS_FIN_ITEMS[finIdx][2] : t.label;
+            const hasFrom = !['letter', 'attestation'].includes(type) && !advance, hasTo = ['leave', 'wfh', 'exit_reentry'].includes(type);
             form.innerHTML = `<div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                <p class="font-black text-slate-800 text-sm"><i class="fas ${t.icon} ml-1 text-slate-400"></i>طلب ${t.label}</p>
+                <p class="font-black text-slate-800 text-sm"><i class="fas ${isFin ? ESS_FIN_ITEMS[finIdx][3] : t.icon} ml-1 text-slate-400" aria-hidden="true"></i>طلب ${escapeHtml(title)}</p>
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    ${sub ? `<div class="md:col-span-2"><label class="block text-[11px] font-bold text-slate-500 mb-1">النوع</label><select id="ess-f-sub" class="${input}">${sub.map(o => `<option>${escapeHtml(o)}</option>`).join('')}</select></div>` : ''}
-                    ${type !== 'letter' ? `<div><label class="block text-[11px] font-bold text-slate-500 mb-1">من تاريخ</label><input type="date" id="ess-f-from" class="${input}" onchange="window.essCalcDays()"></div>` : ''}
-                    ${['leave', 'wfh'].includes(type) ? `<div><label class="block text-[11px] font-bold text-slate-500 mb-1">إلى تاريخ</label><input type="date" id="ess-f-to" class="${input}" onchange="window.essCalcDays()"></div>` : ''}
-                    ${['permission', 'overtime'].includes(type) ? `<div><label class="block text-[11px] font-bold text-slate-500 mb-1">عدد الساعات</label><input type="number" step="0.25" min="0" id="ess-f-hours" class="${input}"></div>` : ''}
-                    ${['financial_claim', 'leave_allowance'].includes(type) ? `<div><label class="block text-[11px] font-bold text-slate-500 mb-1">المبلغ (ريال)</label><input type="number" step="0.01" min="0" id="ess-f-amount" class="${input}"></div>` : ''}
+                    ${isFin ? fld('ess-f-fin', 'نوع المطالبة', `<select id="ess-f-fin" class="${input}" onchange="window.essPickFin(+this.value)">${ESS_FIN_ITEMS.map((x, i) => `<option value="${i}" ${i === finIdx ? 'selected' : ''}>${x[2]}</option>`).join('')}</select>`, 'md:col-span-2') : ''}
+                    ${subOpts ? fld('ess-f-sub', type === 'attestation' ? 'المستند المطلوب توثيقه (غرفة القصيم)' : type === 'exit_reentry' ? 'نوع التأشيرة' : 'النوع', `<select id="ess-f-sub" class="${input}">${subOpts.map(o => `<option ${o === sub ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>`, 'md:col-span-2') : ''}
+                    ${hasFrom ? fld('ess-f-from', type === 'exit_reentry' ? 'تاريخ السفر' : 'من تاريخ', `<input type="date" id="ess-f-from" class="${input}" onchange="window.essCalcDays()">`) : ''}
+                    ${hasTo ? fld('ess-f-to', type === 'exit_reentry' ? 'تاريخ العودة' : 'إلى تاريخ', `<input type="date" id="ess-f-to" class="${input}" onchange="window.essCalcDays()">`) : ''}
+                    ${type === 'exit_reentry' ? fld('ess-f-dest', 'الوجهة (الدولة / المدينة)', `<input id="ess-f-dest" maxlength="60" class="${input}" placeholder="مثال: مصر — القاهرة">`, 'md:col-span-2') : ''}
+                    ${['permission', 'overtime'].includes(type) ? fld('ess-f-hours', 'عدد الساعات', `<input type="number" step="0.25" min="0" id="ess-f-hours" class="${input}">`) : ''}
+                    ${isFin ? fld('ess-f-amount', advance ? 'مبلغ السلفة (ريال)' : 'المبلغ (ريال)', `<input type="number" step="0.01" min="0" id="ess-f-amount" class="${input}">`) : ''}
+                    ${advance ? fld('ess-f-inst', 'عدد الأقساط المطلوبة (شهراً)', `<select id="ess-f-inst" class="${input}">${[1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => `<option>${n}</option>`).join('')}</select>`) : ''}
+                    ${type === 'attestation' ? fld('ess-f-copies', 'عدد النسخ', `<input type="number" min="1" max="20" value="1" id="ess-f-copies" class="${input}">`) : ''}
                 </div>
-                <p id="ess-f-days" class="text-[11px] font-bold text-slate-500"></p>
-                <textarea id="ess-f-notes" rows="2" placeholder="ملاحظات / سبب الطلب" class="${input} resize-none"></textarea>
+                ${type === 'attestation' ? '<p class="text-[11px] font-bold text-slate-500 leading-6"><i class="fas fa-circle-info ml-1 text-slate-400" aria-hidden="true"></i>يُرفع الطلب إلى الموارد البشرية لمتابعة توثيق المستند لدى غرفة القصيم التجارية، وتتواصل معك لتسليم الأصل أو استلام النسخة الموثّقة. وقد تختلف اشتراطات الغرفة بحسب المستند.</p>' : ''}
+                ${type === 'exit_reentry' ? '<p class="text-[11px] font-bold text-slate-500 leading-6"><i class="fas fa-circle-info ml-1 text-slate-400" aria-hidden="true"></i>تُصدر الموارد البشرية التأشيرة من المنصات الحكومية بعد اعتماد الطلب، ويُنصح بتقديمه قبل السفر بمدة كافية.</p>' : ''}
+                <p id="ess-f-days" class="text-[11px] font-bold text-slate-500" aria-live="polite"></p>
+                <textarea id="ess-f-notes" rows="2" aria-label="ملاحظات / سبب الطلب" placeholder="ملاحظات / سبب الطلب" class="${input} resize-none"></textarea>
                 <div class="flex gap-2 justify-end">
-                    <button onclick="document.getElementById('ess-req-form').innerHTML=''" class="px-4 py-2 rounded-full border border-slate-300 text-xs font-extrabold">إلغاء</button>
-                    <button id="ess-f-submit" onclick="window.essSubmitRequest('${type}')" class="px-5 py-2 rounded-full bg-brand text-brand-ink text-xs font-extrabold shadow">إرسال الطلب</button>
+                    <button type="button" onclick="document.getElementById('ess-req-form').innerHTML=''" class="px-4 py-2 rounded-full border border-slate-300 text-xs font-extrabold">إلغاء</button>
+                    <button type="button" id="ess-f-submit" onclick="window.essSubmitRequest('${type}')" class="px-5 py-2 rounded-full bg-brand text-brand-ink text-xs font-extrabold shadow">إرسال الطلب</button>
                 </div></div>`;
             form.scrollIntoView({ behavior: 'smooth', block: 'center' });
         };
@@ -5770,16 +5853,23 @@ window.verifyBackupFile=async function(input) {
 
         window.essSubmitRequest = async function (type) {
             const v = id => document.getElementById(id)?.value || '';
-            const from = v('ess-f-from') || null, to = v('ess-f-to') || from;
+            const R = window.__essReq && window.__essReq.type === type ? window.__essReq : { type, sub: '' }, advance = type === 'financial_claim' && R.sub === 'سلفة', isFin = ['leave_allowance', 'overtime', 'financial_claim'].includes(type);
+            const from = v('ess-f-from') || null, to = v('ess-f-to') || from, multi = ['leave', 'wfh', 'exit_reentry'].includes(type);
             const days = from && to ? daysBetween(toGregorianDate(from), toGregorianDate(to)) + 1 : null;
-            if (['leave', 'wfh', 'permission', 'overtime'].includes(type) && !from) return window.showToast('حدد التاريخ', 'warning');
+            if (['leave', 'wfh', 'permission', 'overtime', 'exit_reentry'].includes(type) && !from) return window.showToast(type === 'exit_reentry' ? 'حدد تاريخ السفر' : 'حدد التاريخ', 'warning');
+            if (type === 'exit_reentry' && !v('ess-f-to')) return window.showToast('حدد تاريخ العودة', 'warning');
             if (days !== null && days <= 0) return window.showToast('تاريخ النهاية قبل البداية', 'warning');
+            const amount = parseFloat(v('ess-f-amount')) || null; if (isFin && !(amount > 0)) return window.showToast('أدخل المبلغ', 'warning');
+            let notes = v('ess-f-notes').trim(), pSub = v('ess-f-sub');
+            if (advance) { pSub = 'سلفة'; notes = `الأقساط المطلوبة: ${v('ess-f-inst') || 1} شهر${notes ? ' — ' + notes : ''}`; }
+            if (type === 'exit_reentry') { const dest = v('ess-f-dest').trim(); if (!dest) return window.showToast('اكتب الوجهة', 'warning'); notes = `الوجهة: ${dest}${notes ? ' — ' + notes : ''}`; }
+            if (type === 'attestation') { const copies = Math.max(1, Math.min(20, parseInt(v('ess-f-copies')) || 1)); notes = `عدد النسخ: ${copies}${notes ? ' — ' + notes : ''}`; }
             const btn = document.getElementById('ess-f-submit'); if (btn) { btn.disabled = true; btn.innerText = 'جاري الإرسال...'; }
             try {
                 const res = await essRpc('portal_submit_request', {
-                    p_type: type, p_sub_type: v('ess-f-sub'), p_from: from, p_to: ['leave', 'wfh'].includes(type) ? to : from,
-                    p_days: ['leave', 'wfh'].includes(type) ? days : null, p_hours: parseFloat(v('ess-f-hours')) || null,
-                    p_amount: parseFloat(v('ess-f-amount')) || null, p_notes: v('ess-f-notes')
+                    p_type: type, p_sub_type: pSub, p_from: from, p_to: multi ? to : from,
+                    p_days: multi ? days : null, p_hours: parseFloat(v('ess-f-hours')) || null,
+                    p_amount: amount, p_notes: notes
                 });
                 if (!res?.ok) throw new Error(res?.error === 'not_enabled' ? 'البوابة غير مفعّلة بعد' : 'تعذر إرسال الطلب');
                 window.showToast('تم إرسال طلبك إلى الموارد البشرية');
@@ -5793,6 +5883,70 @@ window.verifyBackupFile=async function(input) {
         window.essCancelRequest = async function (id) {
             try { await essRpc('portal_cancel_request', { p_request_id: id }); window.showToast('تم إلغاء الطلب'); await loadSelfService(); }
             catch (err) { window.showToast('تعذر الإلغاء: ' + (err.message || ''), 'error'); }
+        };
+
+
+        // ====================================================================
+        // التأخير: وقت بدء الدوام وسماح التأخير من إعدادات المنشأة (policySettings.attendance). الدقائق تُحتسب من بدء الدوام إذا تجاوز الدخول فترة السماح (بتوقيت الرياض)
+        // ====================================================================
+        function attCfg(ps) { const a = (ps && ps.attendance) || {}, m = String(a.start || '').match(/^([01]?\d|2[0-3]):([0-5]\d)$/); return { start: m ? (+m[1] * 60 + +m[2]) : null, label: m ? String(a.start) : '', grace: Math.max(0, Math.min(120, Math.round(Number(a.grace)) || 0)) }; }
+        const attRiyadhMin = ts => { try { const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ts)); return (+p.find(x => x.type === 'hour').value) * 60 + (+p.find(x => x.type === 'minute').value); } catch (_) { return null; } };
+        function attLateMin(ts, cfg) { if (!ts || !cfg || cfg.start === null) return 0; const m = attRiyadhMin(ts); return (m !== null && m > cfg.start + cfg.grace) ? m - cfg.start : 0; }
+        window.attCfgForTest = attCfg; window.attLateMinForTest = attLateMin;
+        // ====================================================================
+        // تنزيل المستندات: ملف واحد (ZIP بلا ضغط — الصور وPDF مضغوطة أصلاً) بدون مكتبات خارجية
+        // ====================================================================
+        const HR_CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+        function hrCrc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = HR_CRC_TABLE[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+        function hrZip(files) {   // files: [{ name, data: Uint8Array }]
+            const enc = new TextEncoder(), parts = [], central = [], used = new Set(); let offset = 0; const d = new Date(), dosT = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), dosD = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+            files.forEach(f => {
+                let name = String(f.name || 'file').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120) || 'file', base = name, n = 1;
+                while (used.has(name)) { const dot = base.lastIndexOf('.'); n++; name = dot > 0 ? base.slice(0, dot) + '_' + n + base.slice(dot) : base + '_' + n; } used.add(name);
+                const nb = enc.encode(name), data = f.data, crc = hrCrc32(data), sz = data.length;
+                const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(10, dosT, true); lh.setUint16(12, dosD, true); lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, nb.length, true);
+                parts.push(new Uint8Array(lh.buffer), nb, data);
+                const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(12, dosT, true); ch.setUint16(14, dosD, true); ch.setUint32(16, crc, true); ch.setUint32(20, sz, true); ch.setUint32(24, sz, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, offset, true);
+                central.push(new Uint8Array(ch.buffer), nb); offset += 30 + nb.length + sz;
+            });
+            const cdSize = central.reduce((s, p) => s + p.length, 0), end = new DataView(new ArrayBuffer(22)); end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+            return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
+        }
+        function hrSaveBlob(blob, filename) { const a = document.createElement('a'), u = URL.createObjectURL(blob); a.href = u; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+        window.hrZip = hrZip; window.hrSaveBlob = hrSaveBlob; window.hrCrc32 = hrCrc32;
+        const hrDocFileName = (label, fileName) => { const ext = (String(fileName || '').match(/\.[A-Za-z0-9]{1,6}$/) || [''])[0]; return String(label || 'مستند').replace(/[\\/:*?"<>|]+/g, '_') + ext; };
+        // بوابة الموظف (بلا حساب): يتحقق الخادم من الرابط وآخر 4 أرقام ثم يعيد روابط موقّعة قصيرة العمر
+        async function portalFetchFiles(docKey) {
+            const { data, error } = await supabaseClient.functions.invoke('portal-doc-url', { body: { token: portalState.token, last4: portalState.last4, doc_key: docKey || null } });
+            if (error || !data || !data.ok) throw new Error(data && data.error === 'invalid' ? 'تعذر التحقق من الرابط' : 'خدمة تحميل المستندات غير متاحة حالياً — حاول لاحقاً');
+            return data.files || [];
+        }
+        const portalDocLabel = k => (portalDocsData.find(d => d.key === k) || {}).label || k;
+        window.portalDownloadDoc = async function (key) {
+            try {
+                window.showToast('جاري تجهيز الملف...', 'warning'); const f = (await portalFetchFiles(key))[0]; if (!f) return window.showToast('لا يوجد ملف مرفوع لهذا المستند', 'warning');
+                const r = await fetch(f.url); if (!r.ok) throw new Error('تعذر تحميل الملف'); hrSaveBlob(await r.blob(), hrDocFileName(portalDocLabel(f.doc_key), f.file_name));
+            } catch (e) { window.showToast(e.message || 'تعذر التحميل', 'error'); }
+        };
+        window.portalDownloadAll = async function () {
+            try {
+                window.showToast('جاري تجميع المستندات في ملف واحد...', 'warning'); const files = await portalFetchFiles(null); if (!files.length) return window.showToast('لا توجد مستندات مرفوعة', 'warning');
+                const out = []; for (const f of files) { const r = await fetch(f.url); if (!r.ok) throw new Error('تعذر تحميل ' + (f.file_name || '')); out.push({ name: hrDocFileName(portalDocLabel(f.doc_key), f.file_name), data: new Uint8Array(await r.arrayBuffer()) }); }
+                hrSaveBlob(hrZip(out), `مستنداتي_${String((essData && essData.employee && essData.employee.name) || 'الموظف').replace(/[\\/:*?"<>|\s]+/g, '_')}.zip`); window.showToast(`تم تنزيل ${out.length} مستند في ملف واحد`);
+            } catch (e) { window.showToast(e.message || 'تعذر التحميل', 'error'); }
+        };
+        // الإدارة (حساب المالك يقرأ التخزين مباشرة)
+        window.empDocDownload = async function (path, label, name) {
+            const { data, error } = await supabaseClient.storage.from('employee-docs').download(path); if (error || !data) return window.showToast('تعذر تحميل المستند: ' + (error?.message || ''), 'error');
+            hrSaveBlob(data, hrDocFileName(label, name));
+        };
+        window.empDocDownloadAll = async function () {
+            const cur = window.__empDocsCur; if (!cur || !cur.rows.length) return window.showToast('لا توجد مستندات مرفوعة', 'warning');
+            try {
+                window.showToast('جاري تجميع المستندات في ملف واحد...', 'warning'); const out = [];
+                for (const d of cur.rows) { const { data, error } = await supabaseClient.storage.from('employee-docs').download(d.file_path); if (error || !data) throw new Error('تعذر تحميل ' + (d.file_name || d.doc_key)); out.push({ name: hrDocFileName(portalDocLabel(d.doc_key), d.file_name), data: new Uint8Array(await data.arrayBuffer()) }); }
+                hrSaveBlob(hrZip(out), `مستندات_${String(cur.emp.name || 'الموظف').replace(/[\\/:*?"<>|\s]+/g, '_')}.zip`); window.showToast(`تم تنزيل ${out.length} مستند في ملف واحد`);
+            } catch (e) { window.showToast(e.message || 'تعذر التحميل', 'error'); }
         };
 
 
@@ -5924,6 +6078,18 @@ window.verifyBackupFile=async function(input) {
             [/violates foreign key constraint "?([\w.]+)"?/i,
                 'السجل مرتبط بسجل آخر غير موجود أو يعتمد عليه سجل آخر ({1})', 'تأكد من وجود القسم/الموظف المرتبط، أو احذف السجلات المرتبطة أولاً',
                 'The record is linked to a missing record, or another record depends on it ({1})', 'Check the linked department/employee exists, or delete dependent records first'],
+            [/User denied Geolocation|PERMISSION_DENIED|اسمح للمتصفح بالوصول لموقعك/i,
+                'الموقع محجوب أو مرفوض لهذه الصفحة', 'اسمح بالموقع من إعدادات المتصفح (رمز القفل بجانب العنوان ← الموقع ← السماح) ثم أعد المحاولة',
+                'Location access is blocked for this page', 'Allow location in the browser site settings (lock icon → Location → Allow) and try again'],
+            [/استغرق تحديد الموقع|Timeout expired|geolocation[^\n]*time ?out/i,
+                'استغرق تحديد موقعك وقتاً طويلاً', 'شغّل خدمة الموقع (GPS) في الجهاز واسمح بها للمتصفح، ثم اقترب من نافذة أو مكان مكشوف أو اتصل بالواي فاي وأعد المحاولة',
+                'Finding your location took too long', 'Turn on device location (GPS), allow it for the browser, move near a window or an open area (or join Wi-Fi) and try again'],
+            [/تعذر تحديد موقعك|POSITION_UNAVAILABLE|المتصفح لا يدعم تحديد الموقع/i,
+                'تعذّر تحديد موقعك', 'شغّل خدمة الموقع في الجهاز وجرّب من مكان مكشوف أو من متصفح آخر (Chrome أو Safari)',
+                'Your location could not be determined', 'Turn on device location and try from an open area or another browser (Chrome or Safari)'],
+            [/جلسة الدخول غير سارية|انتهت جلسة الدخول — سجّل|الحساب المسجّل في المتصفح تغيّر/i,
+                'جلسة الدخول لم تعد سارية لهذا الحساب', 'سجّل الخروج ثم سجّل الدخول من جديد وأعد العملية (وإن كانت المنصة مفتوحة في أكثر من تبويب فأغلق الباقي)',
+                'Your sign-in session is no longer valid for this account', 'Sign out, sign in again and repeat the operation (close other tabs of the platform if open)'],
             [/null value in column "?(\w+)"? .*violates not-null constraint/i,
                 'حقل إلزامي فارغ: {1}', 'عبّئ هذا الحقل ثم أعد المحاولة',
                 'Required field is empty: {1}', 'Fill in this field and try again'],
@@ -7118,7 +7284,7 @@ window.verifyBackupFile=async function(input) {
         // ====================================================================
         let hrRequests = [], hrAttendance = [], requestsTab = 'requests', reqFilter = 'pending', hrReqLoaded = false;
         const REQ_TYPE_LABEL = { leave: 'إجازة', permission: 'مغادرة', leave_allowance: 'بدل الإجازة', overtime: 'العمل الإضافي',
-            wfh: 'العمل من المنزل', financial_claim: 'مطالبة مالية', letter: 'خطاب تعريف بالراتب', other: 'أخرى' };
+            wfh: 'العمل من المنزل', financial_claim: 'مطالبة مالية', letter: 'خطاب تعريف بالراتب', exit_reentry: 'تأشيرة خروج وعودة', attestation: 'توثيق (غرفة القصيم)', other: 'أخرى' };
 
         async function loadHrRequests() {
     const requestCompany=activeCompanyId,revision=companyRevision;
@@ -7726,7 +7892,7 @@ window.verifyBackupFile=async function(input) {
                 if (rec.hours > possible) errors.push(`الإضافي (${rec.hours} ساعة) يتجاوز الحد الممكن نظاماً (${possible} ساعة): المادة 101 لا تسمح ببقاء العامل في مكان العمل أكثر من 12 ساعة يومياً شاملة ساعات جدوله`);
             }
             if (rec.type === 'receipt' && rec.sub === 'سلفة' && rec.payroll) {
-                const check=repayCheck(emp,rec.amount,rec.installments,rec.month);
+                const check=repayCheck(emp,rec.amount,rec.installments,rec.month,undefined,undefined,rec.monthly);
                 if(!check.ok) errors.push('تزاحم أقساط السلفة يتجاوز المتاح في أحد الأشهر؛ راجع جدول السداد الكامل');
             }
             if (rec.type === 'receipt' && rec.sub === 'مرتب (كاش)') {
@@ -7843,14 +8009,16 @@ window.verifyBackupFile=async function(input) {
         // ====================================================================
         // السلف والأقساط: جدول سداد دقيق (القسط الأخير يستوعب فرق الكسور) — يستعمله المسير والنموذج والتقرير
         // ====================================================================
-        function repaySchedule(amount,n,startMonth) {
+        function repaySchedule(amount,n,startMonth,monthly){
     if(!HRIntegrity.validNumber(amount)||Number(amount)<=0||!Number.isInteger(Number(n))||Number(n)<1||Number(n)>120||!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(startMonth||'')))return [];
-    const cents=Math.round(Number(amount)*100),count=Number(n),base=Math.floor(cents/count),rows=[],[year,month]=startMonth.split('-').map(Number);
+    const cents=Math.round(Number(amount)*100),count=Number(n),rows=[],[year,month]=startMonth.split('-').map(Number);
+    // قسط شهري محدد (مثلاً 300 من 1000 على 4 أقساط): الأقساط الكاملة بهذا المبلغ والأخير يأخذ الباقي. إن كان غير صالح يُوزَّع المبلغ بالتساوي كما كان
+    const m=Math.round(Number(monthly||0)*100),useM=count>1&&m>0&&m*(count-1)<cents&&Math.ceil(cents/m)===count,base=useM?m:Math.floor(cents/count);
     for(let i=0;i<count;i++)rows.push({month:HRCore.iso(new Date(Date.UTC(year,month-1+i,1))).slice(0,7),amount:(i===count-1?cents-base*(count-1):base)/100});
     return rows;
 }
         window.repaySchedule = repaySchedule;
-        const repayRowsOf = o => repaySchedule(o.amount, o.data?.installments, o.effective_month);
+        const repayRowsOf = o => repaySchedule(o.amount, o.data?.installments, o.effective_month, o.data?.monthly);
         function repayInstallmentForMonth(o, month) { const r = repayRowsOf(o).find(x => x.month === month); return r ? r.amount : 0; }
         // استثناء من سقف الحسم الشهري 10% (حالات خاصة): سبب + مرجع موافقة العامل الكتابية + اعتماد مالك أو مدير، بحد أقصى تحدده المنشأة، والسقف العام للحسميات قائم.
         const LOAN_EXC_DEFAULT_MAX = 25;
@@ -7859,8 +8027,8 @@ window.verifyBackupFile=async function(input) {
         const loanExcRole = () => { try { const c = getActiveCompany(); if (c && currentUser && c.ownerId === currentUser.id) return 'owner'; } catch (_) {} return (window.hrViewerGuard && window.hrViewerGuard.role) || null; };
         const loanExcAllowed = () => ['owner', 'admin'].includes(loanExcRole());
         // حد الحسم الشهري لقروض صاحب العمل = 10% من الأجر (المادة 92)، بعد القروض الأخرى النشطة في الشهر نفسه؛ وعند الاستثناء المعتمد تُستعمل نسبته excPct
-        function repayCheck(emp,amount,n,startMonth,excludeId,excPct) {
-    const pct=Number(excPct)>10?Number(excPct):10,rows=repaySchedule(amount,n,startMonth),out=[];let ok=rows.length>0,baseOk=rows.length>0,needPct=0;
+        function repayCheck(emp,amount,n,startMonth,excludeId,excPct,monthly) {
+    const pct=Number(excPct)>10?Number(excPct):10,rows=repaySchedule(amount,n,startMonth,monthly),out=[];let ok=rows.length>0,baseOk=rows.length>0,needPct=0;
     const others=hrOps.filter(o=>o.company_id===activeCompanyId&&o.employee_id===emp?.id&&o.module==='fin_repay'&&!['stopped','cancelled','rejected'].includes(o.status)&&!['cancelled','rejected'].includes(o.data?.flow?.state)&&o.id!==excludeId);
     for(const r of rows) {
         const e=HRIntegrity.compensation(emp,r.month),cb=HRContracts.monthBase(emp,r.month,employmentEnd(emp),{insurance:false,requests:hrRequests}),wage=cb.legacy?Number(e.financials?.total):cb.monthlyTotal,ratio=employeeServicePeriod(e,r.month).ratio;
@@ -7875,9 +8043,9 @@ window.verifyBackupFile=async function(input) {
 }
         window.repayCheck = repayCheck;
 
-        function opsRepayInstallment(o) { const n = Math.max(1, Number(o.data?.installments) || 1); return Number(((Number(o.amount) || 0) / n).toFixed(2)); }
+        function opsRepayInstallment(o) { const m = Number(o.data?.monthly); if (m > 0) return Number(m.toFixed(2)); const n = Math.max(1, Number(o.data?.installments) || 1); return Number(((Number(o.amount) || 0) / n).toFixed(2)); }
         function opsRepayRemaining(o, fromMonth) {
-            const start = o.effective_month || fromMonth, rows = repaySchedule(o.amount, o.data?.installments, start);
+            const start = o.effective_month || fromMonth, rows = repaySchedule(o.amount, o.data?.installments, start, o.data?.monthly);
             return Math.round(((Number(o.amount) || 0) - rows.filter(r => r.month < fromMonth).reduce((s, r) => s + r.amount, 0)) * 100) / 100;
         }
         function payrollFor(emp,month,adjustments) {
@@ -9529,7 +9697,9 @@ window.verifyBackupFile=async function(input) {
         const getPos = (opts) => new Promise((res, rej) => { if (!navigator.geolocation) return rej(new Error('المتصفح لا يدعم تحديد الموقع'));
             const c = geoLoad(); if (c && !(opts && opts.fresh) && Date.now() - c.at < GEO_TTL) return res({ lat: c.lat, lng: c.lng, acc: c.acc, cached: true });
             const ask = (hi, to, age) => new Promise((ok, no) => navigator.geolocation.getCurrentPosition(p => { geoStore(p); ok({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }); }, no, { enableHighAccuracy: hi, timeout: to, maximumAge: age }));
-            ask(false, 4000, 120000).then(res).catch(() => ask(true, 8000, 0).then(res).catch(e => rej(geoErr(e)))); });
+            // محاولتان بالتوازي: سريعة بدقة منخفضة (شبكة/واي فاي) ودقيقة (GPS)؛ تنجح الأولى المنتهية، ولا يُعلَن الفشل إلا إذا فشلتا (مهلة أطول من قبل: 10 و20 ثانية)
+                let left = 2, last = null; const fin = e => { last = e || last; if (--left === 0) rej(geoErr(last)); };
+                ask(false, 10000, 120000).then(res, fin); ask(true, 20000, 0).then(res, fin); });
         let essPos = null;
         // فحص الموقع وتفعيل زر البصمة فقط داخل النطاق
         window.essCheckGeo = async function () {
@@ -9564,7 +9734,7 @@ window.verifyBackupFile=async function(input) {
         // إعدادات مقر المنشأة في صفحة الإعدادات
         window.renderGeoSettings = function () {
             const box = document.getElementById('geo-settings'); if (!box) return;
-            const g = policySettings?.geo || {};
+            const g = policySettings?.geo || {}, att = policySettings?.attendance || {};
             const inp = 'w-full border border-slate-200 p-2.5 rounded-xl text-sm font-bold';
             box.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                     <div><label class="block text-[11px] font-bold text-slate-600 mb-1">خط العرض (Latitude)</label><input id="geo-lat" dir="ltr" value="${g.lat ?? ''}" class="${inp}"></div>
@@ -9577,7 +9747,17 @@ window.verifyBackupFile=async function(input) {
                     ${g.lat ? `<a href="https://www.google.com/maps?q=${g.lat},${g.lng}" target="_blank" rel="noopener" class="text-xs font-extrabold text-sky-700 underline"><i class="fas fa-map-location-dot ml-1"></i>عرض المقر على الخريطة</a>` : ''}
                     <button type="button" onclick="window.geoSave()" class="mr-auto px-5 py-2 rounded-full bg-brand text-brand-ink text-xs font-extrabold shadow">حفظ مقر المنشأة</button>
                 </div>
-                <p class="text-[10px] font-bold text-slate-400 mt-2">افتح هذه الصفحة من داخل مقر العمل واضغط "استخدام موقعي الحالي". زر الحضور والانصراف في رابط الموظف يتفعّل فقط داخل النطاق، ويتحقق الخادم من الموقع أيضاً.</p>`;
+                <p class="text-[10px] font-bold text-slate-400 mt-2">افتح هذه الصفحة من داخل مقر العمل واضغط "استخدام موقعي الحالي". زر الحضور والانصراف في رابط الموظف يتفعّل فقط داخل النطاق، ويتحقق الخادم من الموقع أيضاً.</p>
+                <div class="mt-5 pt-4 border-t border-slate-100"><p class="text-xs font-black text-slate-800 mb-2"><i class="fas fa-clock ml-1 text-slate-400" aria-hidden="true"></i>وقت الدوام وسماح التأخير <span class="text-[10px] font-bold text-slate-400">(لاحتساب أيام ودقائق التأخير في حضور الموظف وصفحة الغياب)</span></p>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 items-end"><div><label for="att-start" class="block text-[11px] font-bold text-slate-600 mb-1">بدء الدوام</label><input id="att-start" type="time" dir="ltr" value="${escapeHtml(att.start || '')}" class="${inp}"></div>
+                        <div><label for="att-grace" class="block text-[11px] font-bold text-slate-600 mb-1">سماح التأخير (دقيقة)</label><input id="att-grace" type="number" min="0" max="120" value="${att.grace ?? 0}" class="${inp}"></div>
+                        <button type="button" onclick="window.attSave()" class="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-extrabold">حفظ وقت الدوام</button></div></div>`;
+        };
+        window.attSave = async function () {
+            const start = String(document.getElementById('att-start')?.value || '').trim(), grace = Math.max(0, Math.min(120, Math.round(Number(document.getElementById('att-grace')?.value)) || 0));
+            if (start && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(start)) return window.showToast('وقت بدء الدوام غير صحيح', 'warning');
+            const s = JSON.parse(JSON.stringify(policySettings || {})); if (start) s.attendance = { start, grace }; else delete s.attendance;
+            applyPolicySettings(s); await persistPolicySettings(getActiveCompany(), s); window.renderGeoSettings(); window.showToast(start ? `تم حفظ بدء الدوام ${start} مع سماح ${grace} دقيقة` : 'أُزيل وقت الدوام — لن يُحتسب التأخير');
         };
         window.geoUseMine = async function () {
             try { const p = await getPos(); document.getElementById('geo-lat').value = p.lat.toFixed(6); document.getElementById('geo-lng').value = p.lng.toFixed(6);
@@ -9774,7 +9954,7 @@ window.verifyBackupFile=async function(input) {
             const B = '1px solid #cfd6d2', H = `background:${ACC};color:${comp.brandColorSet ? readableInk(ACC) : '#fff'}`, L = `background:${comp.brandColorSet ? tintOf(ACC, .9) : '#eef3f0'};font-weight:800;color:${DK}`;
             const cell = (v, extra) => `<td style="border:${B};padding:7px 9px;${extra || ''}">${v}</td>`;
             const info = [['اسم الموظف', escapeHtml(emp.name || '')], ['الرقم الوظيفي', escapeHtml(emp.empNumber || '—')], ['رقم الهوية', escapeHtml(emp.nid || '—')], ['المسمى الوظيفي', escapeHtml(emp.jobTitle || '—')]];
-            const signers = [[rec.type === 'assignment' ? 'الموظف المكلَّف' : 'المستلم', d.emp.name, ''], ...docSigners(comp).map(x => [x.label, x.name, x.img])];
+            const signers = [...(signerRecvOn('forms') ? [[rec.type === 'assignment' ? 'الموظف المكلَّف' : 'المستلم', d.emp.name, '']] : []), ...docSigners(comp, 'forms').map(x => [x.label, x.name, x.img])];
             const sigRow = st.sign ? `<tr>${signers.map(s => cell(`<div style="font-size:10px;font-weight:800;color:${DK}">${escapeHtml(s[0] || '')}</div><div style="height:38px;display:flex;align-items:flex-end;justify-content:center">${s[2] ? `<img src="${s[2]}" style="max-height:${Math.round(34 * docScale('sign'))}px;object-fit:contain">` : ''}</div><div style="border-top:1px dashed #9aa;font-size:10px;font-weight:800;padding-top:2px">${escapeHtml(s[1] || '')}</div>`, 'text-align:center;vertical-align:top')).join('')}</tr>` : '';
             const header = `<div style="border-bottom:3px solid ${ACC};padding-bottom:6px;margin-bottom:10px">${st.logo ? docHeaderHtml(comp, { maxH: 48, maxW: 150, fs: 10 }) : docHeaderHtml({ ...comp, logoBase64: '' }, { fs: 10 })}</div>
                 <table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tr><td style="${H};padding:9px 12px;font-size:16px;font-weight:900">${escapeHtml(title)}</td>
@@ -10030,6 +10210,7 @@ window.verifyBackupFile=async function(input) {
             const s = JSON.parse(JSON.stringify(policySettings || {})); s.extraSigners = list;
             applyPolicySettings(s);
             clearTimeout(signersSaveT); signersSaveT = setTimeout(() => persistPolicySettings(getActiveCompany(), s), 500);
+            try { if (window.hrImpSignersChanged) window.hrImpSignersChanged(); } catch (_) {}
         }
         function ensureEmpNamesDatalist() {
             let dl = document.getElementById('emp-names-dl');
@@ -10075,17 +10256,43 @@ window.verifyBackupFile=async function(input) {
             }; img.src = r.result; }; r.readAsDataURL(f);
         };
         // كل الموقّعين (الأساسيان + الإضافيون) لخانات التوقيع في النماذج
-        function docSigners(comp) {
-            const base = [{ label: comp.sign1Title || 'منسق الموارد البشرية', name: comp.sign1Name, img: comp.hrSignBase64 },
-                          { label: comp.sign2Title || 'المشرف العام', name: comp.sign2Name, img: comp.mgrSignBase64 }];
-            extraSigners().filter(x => x.kind !== 'stamp' && (x.name || x.title)).forEach(x => base.push({ label: x.title || '', name: x.name, img: x.kind === 'sign' ? x.image : '' }));
-            return base;
+        // قواعد ظهور كل موقّع في كل مستند: policySettings.signerRules = { <مفتاح>: { stmt: false, voucher: false, forms: false } }؛ الغائب = يظهر.
+        // الأسطح: stmt = كشف الصرف (وكشف المستحقات)، voucher = سند الصرف، forms = النماذج (مستندات المستحقات والعهدة والعروض والعقود…).
+        // المفاتيح: recv (المستلم/المُعِدّ)، hr، mgr، ثم معرّف كل موقّع إضافي.
+        const SIGNER_SURFACES = ['stmt', 'voucher', 'forms'];
+        const signerRules = () => (policySettings && policySettings.signerRules && typeof policySettings.signerRules === 'object') ? policySettings.signerRules : {};
+        const signerOn = (key, surface) => { if (!surface) return true; const r = signerRules()[key]; return !r || r[surface] !== false; };
+        const signerRecvOn = surface => signerOn('recv', surface);
+        function docSigners(comp, surface) {
+            const base = [{ key: 'hr', label: comp.sign1Title || 'منسق الموارد البشرية', name: comp.sign1Name, img: comp.hrSignBase64 },
+                          { key: 'mgr', label: comp.sign2Title || 'المشرف العام', name: comp.sign2Name, img: comp.mgrSignBase64 }];
+            extraSigners().forEach((x, i) => { if (x.kind !== 'stamp' && (x.name || x.title)) base.push({ key: x.id || ('i' + i), label: x.title || '', name: x.name, img: x.kind === 'sign' ? x.image : '', extraIndex: i }); });
+            return surface ? base.filter(x => signerOn(x.key, surface)) : base;
         }
+        const signerOrder = comp => ['recv', ...docSigners(comp).map(x => x.key)];
+        window.hrSignerRecvOn = signerRecvOn; window.hrSignerOn = signerOn; window.hrSignerRules = signerRules; window.hrSignerOrder = signerOrder;
+        window.hrSetSignerRule = function (key, surface, on) {
+            if (!/^[A-Za-z0-9_-]{1,40}$/.test(String(key)) || !SIGNER_SURFACES.includes(surface)) return false;
+            const s = JSON.parse(JSON.stringify(policySettings || {})), rules = { ...(s.signerRules || {}) }, r = { ...(rules[key] || {}) };
+            if (on) delete r[surface]; else r[surface] = false;
+            if (Object.keys(r).length) rules[key] = r; else delete rules[key];
+            if (Object.keys(rules).length) s.signerRules = rules; else delete s.signerRules;
+            applyPolicySettings(s); clearTimeout(signersSaveT); signersSaveT = setTimeout(() => persistPolicySettings(getActiveCompany(), s), 500);
+            try { if (window.hrImpSignersChanged) window.hrImpSignersChanged(); } catch (_) {} return true;
+        };
+        // إضافة موقّع إضافي بصفته واسمه (حتى 8 موقّعين إضافيين)
+        window.hrAddSignerNamed = function (title, name) {
+            title = String(title || '').trim().slice(0, 60); name = String(name || '').trim().slice(0, 80); if (!title && !name) return false;
+            const list = extraSigners(); if (list.filter(x => x.kind !== 'stamp').length >= 8) { window.showToast('الحد الأقصى 8 موقّعين إضافيين', 'warning'); return false; }
+            if (list.some(x => x.kind === 'sign' && (x.title || '') === title && (x.name || '') === name)) { window.showToast('هذا الموقّع مضاف مسبقاً', 'warning'); return false; }
+            persistSigners([...list, { id: 'sg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), kind: 'sign', name, title, image: '' }]);
+            try { window.renderExtraSigners(); } catch (_) {} return true;
+        };
         function docStamps(comp) { return [comp.stampBase64, ...extraSigners().filter(x => x.kind === 'stamp' && x.image).map(x => x.image)].filter(Boolean); }
         window.docSigners = docSigners; window.docStamps = docStamps;
         // خانات التوقيع الموحّدة للعرض الوظيفي ونموذج الإلحاق
         function signersRowHtml(comp, signCol, marginTop) {
-            const list = docSigners(comp), stamps = docStamps(comp), w = Math.max(18, Math.floor(96 / list.length));
+            const list = docSigners(comp, 'forms'), stamps = docStamps(comp), w = Math.max(18, Math.floor(96 / Math.max(1, list.length)));
             return `<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 0;margin-top:${marginTop}px;position:relative">
                 ${list.map(s => signCol(s.label, s.name, s.img).replace('width:45%', `width:${w}%`)).join('')}
                 ${stamps.map((st, i) => `<img src="${st}" style="position:absolute;left:${50 + (i - (stamps.length - 1) / 2) * 22}%;transform:translateX(-50%);bottom:-6px;height:${Math.round(56 * docScale('stamp'))}px;opacity:.7;mix-blend-mode:multiply">`).join('')}
@@ -10370,7 +10577,8 @@ window.verifyBackupFile=async function(input) {
                 const leave = new Set(); (hrRequests || []).filter(r => r.employee_id === emp.id && r.request_type === 'leave' && r.status === 'approved').forEach(r => {
                     for (let d = toGregorianDate(r.date_from); d && d <= (toGregorianDate(r.date_to || r.date_from) || d); d = new Date(d.getTime() + 864e5)) leave.add(d.toISOString().slice(0, 10)); });
                 const absentDays = work.filter(d => !present.has(d) && !leave.has(d));
-                return { emp, absenceDates: absentDays, days: absentDays.length, note: absentDays.length ? `أيام: ${absentDays.map(d => d.slice(8)).join('، ')}` : '', detail: `عمل ${work.length} · حضور ${[...present].filter(d => work.includes(d)).length} · إجازة ${[...leave].filter(d => work.includes(d)).length}` };
+                const lcfg = attCfg(policySettings), lateList = att.filter(a => a.employee_id === emp.id && a.check_in).map(a => attLateMin(a.check_in, lcfg)).filter(x => x > 0);
+                return { emp, lateDays: lateList.length, lateMin: lateList.reduce((t, x) => t + x, 0), absenceDates: absentDays, days: absentDays.length, note: absentDays.length ? `أيام: ${absentDays.map(d => d.slice(8)).join('، ')}` : '', detail: `عمل ${work.length} · حضور ${[...present].filter(d => work.includes(d)).length} · إجازة ${[...leave].filter(d => work.includes(d)).length}` };
             });
             absenceDraft = { month, source: 'fingerprint', rows };
             renderAbsenceCard();
@@ -10479,11 +10687,12 @@ window.verifyBackupFile=async function(input) {
                         <div class="flex items-center gap-2"><span id="abs-draft-total" class="text-[11px] font-black text-slate-700"></span>
                         <button onclick="window.cancelAbsenceDraft()" class="px-3 py-1.5 rounded-full border border-slate-300 text-[11px] font-extrabold bg-white">إلغاء</button>
                         <button onclick="window.applyAbsenceDraft()" class="px-4 py-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-extrabold">اعتماد الخصم</button></div></div>
-                    <div class="overflow-x-auto max-h-[50vh]"><table class="w-full text-right crx-table min-w-[700px]"><thead style="background: rgb(var(--s-50))"><tr><th>الموظف</th><th>التفاصيل</th><th>أيام الغياب</th><th>قيمة الخصم</th><th>ملاحظات</th></tr></thead><tbody>
+                    <div class="overflow-x-auto max-h-[50vh]"><table class="w-full text-right crx-table min-w-[700px]"><thead style="background: rgb(var(--s-50))"><tr><th>الموظف</th><th>التفاصيل</th><th>أيام الغياب</th><th>قيمة الخصم</th><th>أيام التأخير</th><th>دقائق التأخير</th><th>ملاحظات</th></tr></thead><tbody>
                     ${absenceDraft.rows.map((r, i) => `<tr class="${r.days ? '' : 'opacity-60'}"><td class="font-black">${escapeHtml(r.emp.name || '')}<br><span class="text-[10px] text-slate-400">${escapeHtml(r.emp.empNumber || '')}</span></td>
                         <td class="text-[10px] font-bold text-slate-500">${escapeHtml(r.detail || '')}</td>
                         <td><input type="number" min="0" max="31" value="${r.days}" onfocus="this.select()" oninput="window.absDraftSet(${i}, 'days', this.value); this.closest('tr').querySelector('.abs-amt').innerText = (${Number(r.emp.financials?.total) || 0} / 30 * (Number(this.value) || 0)).toFixed(2)" class="${inp}"></td>
                         <td class="abs-amt font-black text-red-600">${n((Number(r.emp.financials?.total) || 0) / 30 * r.days)}</td>
+                        <td class="text-center font-black ${r.lateDays ? 'text-rose-600' : 'text-slate-400'}">${r.lateDays === undefined || attCfg(policySettings).start === null ? '—' : r.lateDays}</td><td class="text-center font-black ${r.lateMin ? 'text-rose-600' : 'text-slate-400'}">${r.lateMin === undefined || attCfg(policySettings).start === null ? '—' : r.lateMin}</td>
                         <td><input value="${escapeHtml(r.note || '')}" oninput="window.absDraftSet(${i}, 'note', this.value)" class="w-full border rounded-lg p-1 text-[11px] font-bold"></td></tr>`).join('')}
                     </tbody></table></div></div>` : ''}
                 <div class="overflow-x-auto"><table class="w-full text-right crx-table min-w-[640px]"><thead style="background: rgb(var(--s-50))"><tr><th>الموظف</th><th>المصدر</th><th>أيام الغياب</th><th>قيمة الخصم</th><th>ملاحظات</th><th></th></tr></thead><tbody>
@@ -13359,14 +13568,24 @@ window.verifyBackupFile=async function(input) {
             else wb = XLSX.read(buf, { type: 'array', cellDates: true, cellFormula: true });
             if (!wb.SheetNames.length) throw new Error('الملف لا يحوي أوراقاً'); return wb;
         }
+        // أسطر التوقيع الختامية في الملف (مثلاً: «المشرف العام | إعداد النماذج والتدقيق» ثم أسماؤهم): بلا أرقام وفيها مسمّيات وظيفية؛ تُقترن بالعمود فتصير (صفة، اسم)
+        function impSplitFooterSigners(rows) {
+            const ROLE = /(مشرف|مدير|إعداد|اعداد|تدقيق|مراجع|اعتماد|إعتماد|محاسب|الموارد|رئيس|مسؤول|المالية|مستلم|توقيع)/, noDigit = r => r.some(c => impCell(c) !== '') && !r.some(c => /\d/.test(String(c)));
+            let end = rows.length; while (end > 1 && rows.length - end < 3 && noDigit(rows[end - 1])) end--;
+            const tail = rows.slice(end); if (!tail.length || end < 1 || !tail.some(r => r.some(c => ROLE.test(String(c))))) return { rows, found: [] };
+            const found = [], width = Math.max(...tail.map(r => r.length));
+            for (let c = 0; c < width; c++) { const t = tail.map(r => impCell(r[c])).filter(Boolean); if (t.length >= 2) found.push({ title: t[0].slice(0, 60), name: t[1].slice(0, 80) }); else if (t.length === 1 && ROLE.test(t[0])) found.push({ title: t[0].slice(0, 60), name: '' }); }
+            return { rows: rows.slice(0, end), found };
+        }
+        window.impSplitFooterSignersForTest = impSplitFooterSigners;
         function impLoadSheet(wb, name) {
             const ws = wb.Sheets[name], aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
             let formulaMissing = 0, formulas = 0; Object.keys(ws).forEach(k => { if (k[0] !== '!' && ws[k] && ws[k].f) { formulas++; if (ws[k].v === undefined || ws[k].v === null || ws[k].v === '') formulaMissing++; } });
             const at = aoa.findIndex(r => r.filter(c => impCell(c) !== '').length >= 2); const hi = at >= 0 ? at : aoa.findIndex(r => r.some(c => impCell(c) !== ''));
             if (hi < 0) return { headers: [], rows: [], formulas, formulaMissing };
             const seen = {}, headers = aoa[hi].map((c, i) => { let h = impCell(c) || ('عمود ' + (i + 1)); if (seen[h]) h += ' (' + (++seen[h]) + ')'; else seen[h] = 1; return h; });
-            const rows = aoa.slice(hi + 1).filter(r => r.some(c => impCell(c) !== '')).map(r => headers.map((_, i) => r[i] === undefined ? '' : r[i]));
-            return { headers, rows, formulas, formulaMissing };
+            const all = aoa.slice(hi + 1).filter(r => r.some(c => impCell(c) !== '')).map(r => headers.map((_, i) => r[i] === undefined ? '' : r[i])), sp = impSplitFooterSigners(all), rows = sp.rows;
+            return { headers, rows, sigRows: sp.found, formulas, formulaMissing };
         }
         window.openImportEntitlements = function () {
             let m = document.getElementById('imp-modal'); if (!m) { m = document.createElement('div'); m.id = 'imp-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.className = 'fixed inset-0 z-[10001] bg-slate-900/60 flex items-center justify-center p-2 sm:p-4'; document.body.appendChild(m); m.addEventListener('keydown', e => { if (e.key === 'Escape') window.impClose(); }); }
@@ -13379,7 +13598,7 @@ window.verifyBackupFile=async function(input) {
             catch (e) { window.showToast('تعذر قراءة الملف: ' + (e.message || e), 'error'); }
         };
         function impApplySheet() {
-            const { headers, rows, formulas, formulaMissing } = impLoadSheet(IMP.wb, IMP.sheet); IMP.truncated = rows.length > IMP_MAX_ROWS; IMP.headers = headers; IMP.rows = rows.slice(0, IMP_MAX_ROWS); IMP.formulas = formulas; IMP.formulaMissing = formulaMissing; IMP.map = impDetect(headers, IMP.rows); impRender();
+            const { headers, rows, sigRows, formulas, formulaMissing } = impLoadSheet(IMP.wb, IMP.sheet); IMP.sigRows = sigRows || []; IMP.truncated = rows.length > IMP_MAX_ROWS; IMP.headers = headers; IMP.rows = rows.slice(0, IMP_MAX_ROWS); IMP.formulas = formulas; IMP.formulaMissing = formulaMissing; IMP.map = impDetect(headers, IMP.rows); impRender();
             if (!headers.length) window.showToast('الورقة فارغة', 'warning'); else if (!IMP.rows.length) window.showToast('لا توجد صفوف بيانات تحت العناوين في هذه الورقة', 'warning');
         }
         window.impSheet = s => { IMP.sheet = s; IMP.opts.netMode = null; impApplySheet(); };
@@ -13423,6 +13642,7 @@ window.verifyBackupFile=async function(input) {
                 <div class="px-5 py-3 border-t flex flex-wrap justify-end gap-2"><button type="button" id="imp-vouchers" onclick="window.impPrintVouchers()" ${canPrint ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-brand text-brand-ink text-xs font-extrabold disabled:bg-slate-200 disabled:text-slate-600 disabled:opacity-100 disabled:cursor-not-allowed"><i class="fas fa-print ml-1"></i>طباعة السندات (${ok.length})</button><button type="button" id="imp-statement" onclick="window.impPrintStatement()" ${ok.length ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-slate-900 text-white text-xs font-extrabold disabled:bg-slate-200 disabled:text-slate-600 disabled:opacity-100 disabled:cursor-not-allowed"><i class="fas fa-table-list ml-1"></i>كشف الصرف</button><button type="button" id="imp-export" onclick="window.impExportExcel()" ${rows.length ? '' : 'disabled'} class="px-5 py-2.5 rounded-full bg-emerald-800 text-white text-xs font-extrabold disabled:bg-slate-200 disabled:text-slate-600 disabled:opacity-100 disabled:cursor-not-allowed"><i class="fas fa-file-excel ml-1"></i>تصدير Excel</button><button type="button" onclick="window.impClose()" class="px-5 py-2.5 rounded-full border border-slate-300 text-xs font-extrabold">إغلاق</button></div></div>`;
             try { if (window.hrImpBindDesign) window.hrImpBindDesign(); } catch (_) {}
             try { if (window.hrImpFitPreview) window.hrImpFitPreview(); } catch (_) {}
+            try { if (window.hrImpFooterNotice) window.hrImpFooterNotice(); } catch (_) {}
             const __b = m.querySelector('.p-5.overflow-y-auto'); if (__b && __sc) __b.scrollTop = __sc;   // لا يقفز التمرير إلى الأعلى عند تغيير خيار
         }
         window.impRender = impRender; window.impRowsForTest = impRows; window.impDetectForTest = impDetect; Object.defineProperty(window, 'IMP_STATE', { get: () => IMP });
@@ -13453,12 +13673,20 @@ window.verifyBackupFile=async function(input) {
             const al = ['right', 'center', 'left'].includes(c.align) ? c.align : 'left', jc = { right: 'flex-start', center: 'center', left: 'flex-end' }[al], dy = Math.max(-120, Math.min(60, Math.round(Number(c.dy)) || 0)), sz = (c.sizes && typeof c.sizes === 'object') ? c.sizes : {};
             return `<div data-imp-stamps style="display:flex;justify-content:${jc};align-items:center;gap:10px;margin-top:${8 + dy}px;position:relative;z-index:${dy < 0 ? 3 : 1}">${st.map((s, i) => `<img src="${E(s)}" alt="" style="height:${Math.max(20, Math.min(240, Math.round(h * Math.max(30, Math.min(300, Number(sz[i]) || 100)) / 100)))}px;object-fit:contain">`).join('')}</div>`;
         }
-        // حجم التوقيع: الأساس يتناسب مع عدد الموقّعين (1→84، 2→72، 3→62، 4→54 بكسل) فيملأ العرض بتناسق، ولكل توقيع نسبة مستقلة 50–250% (sizes[i])، ويُقيَّد بـ24–140 بكسل كي لا يخرج عن الصفحة. صفّ الصور بارتفاع أكبر توقيع لتبقى الأسماء على سطر واحد.
-        function impSigRow(r, comp, DK, B, h, R, sizes) {
-            if (!IMP.opts.sign) return ''; const E = escapeHtml, rad = Number(R) > 0, signers = [['المستلم', r.name, ''], ...docSigners(comp).map(x => [x.label, x.name, IMP.opts.sigimg ? impSafeImg(x.img) : ''])].slice(0, 4), n = signers.length;
-            const base = h === 'auto' ? ({ 1: 84, 2: 72, 3: 62, 4: 54 }[n] || 54) : h, sz = (sizes && typeof sizes === 'object') ? sizes : {}, hs = signers.map((_, i) => Math.max(24, Math.min(140, Math.round(base * Math.max(50, Math.min(250, Number(sz[i]) || 100)) / 100)))), H = Math.max(...hs);
-            const td = (s, i) => `<td style="width:${(100 / n).toFixed(3)}%;border:${B};${rad ? `border-radius:${R}px;` : ''}padding:6px;text-align:center;vertical-align:top;overflow:hidden"><div style="font-size:${base > 60 ? 11 : 9}px;font-weight:800;color:${DK}">${E(s[0] || '')}</div><div style="height:${H}px;display:flex;align-items:center;justify-content:center">${s[2] ? `<img src="${E(s[2])}" alt="" style="max-height:${hs[i] - 6}px;max-width:100%;object-fit:contain">` : ''}</div><div style="border-top:1px solid #111;padding-top:3px;${s[1] ? `font-size:${base > 60 ? 12.5 : 11}px;font-weight:900;color:#000` : `font-size:${base > 60 ? 10 : 8}px;color:#777`}">${E(s[1] || '') || 'الاسم / التوقيع'}</div></td>`;
-            return `<table style="table-layout:fixed;${rad ? 'width:calc(100% + 12px);margin-inline:-6px;border-collapse:separate;border-spacing:6px 0' : 'width:100%;border-collapse:collapse'};margin-top:${base > 60 ? 24 : 10}px"><tr>${signers.map(td).join('')}</tr></table>`;
+        // التواقيع: حتى 6 موقّعين (4 كحد أقصى في الصف، وما فوق يُوزَّع على صفين). حقل التوقيع ثابت، والذي يكبر هو صورة التوقيع نفسها فوق الخط (من 50% إلى 250%) دون أن تتضخم الخانة أو تتمدد الصفحة.
+        // الخانة بلا صورة (المستلم) لا تُكبَّر صورتها لعدم وجودها، فتكبر مساحتها للتوقيع بخط اليد بالنسبة.
+        // surface: voucher (سند الصرف، الافتراضي) | stmt (كشف الصرف) | forms (النماذج) — لتطبيق قواعد «من يظهر في كل مستند».
+        function impSigRow(r, comp, DK, B, h, R, sizes, surface) {
+            surface = surface || 'voucher'; if (!IMP.opts.sign) return '';
+            const E = escapeHtml, rad = Number(R) > 0, sz = (sizes && typeof sizes === 'object') ? sizes : {}, order = signerOrder(comp);
+            const list = [...(signerRecvOn(surface) ? [{ key: 'recv', label: 'المستلم', name: r.name, img: '' }] : []), ...docSigners(comp, surface).map(x => ({ key: x.key, label: x.label, name: x.name, img: IMP.opts.sigimg ? impSafeImg(x.img) : '' }))].slice(0, 6), n = list.length;
+            if (!n) return '';
+            const cols = n <= 4 ? n : Math.ceil(n / 2), base = h === 'auto' ? ({ 1: 84, 2: 72, 3: 62, 4: 54 }[cols] || 54) : h;
+            const pct = x => Math.max(50, Math.min(250, Number(sz[x.key] !== undefined ? sz[x.key] : sz[order.indexOf(x.key)]) || 100));
+            const rowsOf = []; for (let i = 0; i < n; i += cols) rowsOf.push(list.slice(i, i + cols));
+            const td = (x, H) => `<td style="width:${(100 / cols).toFixed(3)}%;border:${B};${rad ? `border-radius:${R}px;` : ''}padding:6px;text-align:center;vertical-align:top;overflow:visible"><div style="font-size:${base > 60 ? 11 : 9}px;font-weight:800;color:${DK};position:relative;z-index:3">${E(x.label || '')}</div><div data-sig-area style="height:${H}px;display:flex;align-items:flex-end;justify-content:center;overflow:visible;position:relative">${x.img ? `<img data-sig-img src="${E(x.img)}" alt="" style="max-height:${base - 4}px;max-width:92%;object-fit:contain;transform:scale(${(pct(x) / 100).toFixed(2)});transform-origin:50% 100%;position:relative;z-index:2;mix-blend-mode:multiply">` : ''}</div><div style="border-top:1px solid #111;padding-top:3px;${x.name ? `font-size:${base > 60 ? 12.5 : 11}px;font-weight:900;color:#000` : `font-size:${base > 60 ? 10 : 8}px;color:#777`}">${E(x.name || '') || 'الاسم / التوقيع'}</div></td>`;
+            const body = rowsOf.map(row => { const H = Math.max(30, ...row.map(x => x.img ? base : Math.min(140, Math.round(base * pct(x) / 100)))); return `<tr>${row.map(x => td(x, H)).join('')}${row.length < cols ? `<td colspan="${cols - row.length}" style="border:0"></td>` : ''}</tr>`; }).join('');
+            return `<table style="table-layout:fixed;${rad ? 'width:calc(100% + 12px);margin-inline:-6px;border-collapse:separate;border-spacing:6px 6px' : 'width:100%;border-collapse:collapse'};margin-top:${base > 60 ? 24 : 10}px">${body}</table>`;
         }
         // ---------- أشكال الجدول: عدد الأعمدة، متصل/منفصل، مكان العنوان، تنعيم الحواف، ترتيب الحقول وإخفاؤها (يُحفظ في policySettings.impVoucher.design) ----------
         const IMP_SHAPES = { classic: { cols: 2, gap: 0, label: 'side' }, one: { cols: 1, gap: 0, label: 'side' }, cards2: { cols: 2, gap: 8, label: 'top' }, cards3: { cols: 3, gap: 8, label: 'top' }, list: { cols: 1, gap: 6, label: 'side' } };
@@ -13536,7 +13764,7 @@ window.verifyBackupFile=async function(input) {
             const band = `<table style="width:100%;border-collapse:${R ? 'separate;border-spacing:0' : 'collapse'};margin-bottom:12px"><tr><td style="${S.band};padding:10px 12px;font-size:17px;font-weight:900;${R ? `border-radius:0 ${R}px ${R}px 0` : ''}">سند صرف</td><td style="${S.band};padding:10px 12px;font-size:10.5px;font-weight:700;text-align:left;white-space:nowrap;${R ? `border-radius:${R}px 0 0 ${R}px` : ''}">المرجع: <bdi dir="ltr">${E(ref)}</bdi>${inner && inner.copy ? ` · ${E(inner.copy)}` : ''}</td></tr></table>`;
             const blocks = { head, band, table: D.active ? impGridHtml(r, S, D) : legacyFields(), text: impTextHtml(r, ref, S, R),
                 note: `<p style="font-size:${S.fv + .5}px;font-weight:${S.vw};color:${S.ink};line-height:2.1;margin-top:14px;${S.note};${rad}padding:10px 12px;text-align:${S.al}">أقر أنا المذكور أعلاه باستلامي من ${E(comp.nameAr || 'المنشأة')} صافي المبلغ الموضّح، وذلك عن: <b>${E(r.purpose)}</b>، ${E(r.method)}، بتاريخ ${E(impDateTxt(r.date))}.</p>`,
-                sign: impSigRow(r, comp, DK, B, 'auto', R, o.sigSize), stamp: impStampsHtml(comp, 70, o.stampCfg) };
+                sign: impSigRow(r, comp, DK, B, 'auto', R, o.sigSize, inner ? 'forms' : 'voucher'), stamp: impStampsHtml(comp, 70, o.stampCfg) };
             const T = impText(), textPage = T.pos === 'page' ? impTextHtml(r, ref, S, R) : '', order = D.blocks.filter(k => !D.hideBlocks.includes(k) && !(k === 'text' && T.pos === 'page')), body = `${textPage}<div style="zoom:${S.scale}">${order.map(k => blocks[k]).join('')}</div>`;
             if (inner) return `<div class="doc-fit" data-imp-fit="1" style="direction:rtl;color:#111;font-family:${S.ff};transform-origin:top right">${body}</div>`;
             return `<div class="cf-page imp-sheet" data-imp="full" style="width:210mm;height:297mm;overflow:hidden;position:relative;box-sizing:border-box;padding:${padTop}mm 14mm ${padBot}mm;${bgCss}color:#111;direction:rtl;font-family:${S.ff};page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact">${bgImg}<div class="imp-fit" style="transform-origin:top right;position:relative;z-index:1">${body}</div></div>`;
@@ -13590,7 +13818,7 @@ window.verifyBackupFile=async function(input) {
                 pages.push(`<div class="cf-page" data-imp="statement" style="width:210mm;min-height:297mm;box-sizing:border-box;padding:12mm;background:#fff;color:#111;direction:rtl;font-family:${S.ff};page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact"><div style="zoom:${S.scale}"><div style="border-bottom:3px solid ${ACC};padding-bottom:6px;margin-bottom:8px">${o.logo ? docHeaderHtml(comp, { maxH: 44, maxW: 140, fs: 10 }) : docHeaderHtml({ ...comp, logoBase64: '' }, { fs: 10 })}</div>
                     <table style="width:100%;border-collapse:collapse;margin-bottom:8px"><tr><td style="${S.band};padding:8px 10px;font-size:15px;font-weight:900">كشف صرف مستحقات${hasM && new Set(ok.map(r => r.month)).size === 1 ? ' — ' + E(ok[0].month) : ''}</td><td style="${S.band};padding:8px 10px;font-size:10px;font-weight:700;text-align:left">${E(impDateTxt(o.date))} · صفحة ${p + 1} من ${pagesN}</td></tr></table>
                     <table style="width:100%;border-collapse:collapse;font-size:10.5px"><thead><tr>${cols.map(c => `<th style="${S.cb};${S.lab};padding:6px 5px;font-weight:900">${c[0]}</th>`).join('')}</tr></thead><tbody>${chunk.map(r => `<tr style="height:26px">${cols.map(c => `<td style="${S.cb};padding:4px 6px;${c[2]}">${c[1](r)}</td>`).join('')}</tr>`).join('')}${last ? `<tr>${cols.map((c, i) => i === 0 ? `<td colspan="${cols.findIndex(x => x[0] === (hasG ? 'المرتب' : 'الصافي'))}" style="${S.cb};background:${S.labBg};padding:7px;font-weight:900">الإجمالي (${ok.length} مستفيد)</td>` : (i < (hasG ? cols.findIndex(x => x[0] === 'المرتب') : lab) ? '' : `<td style="${S.cb};background:${S.labBg};padding:7px;text-align:left;font-weight:900">${c[0] === 'المرتب' ? `<bdi dir="ltr">${impMoney(sum('gross'))}</bdi>` : c[0] === 'الخصم' ? `<bdi dir="ltr">${impMoney(sum('deduction'))}</bdi>` : c[0] === 'الصافي' ? `<bdi dir="ltr">${impMoney(total)}</bdi>` : ''}</td>`)).join('')}</tr>` : ''}</tbody></table>
-                    ${last && o.words ? `<p style="font-size:11px;font-weight:800;margin-top:8px">${E(tafqeet(total))}</p>` : ''}${last ? impSigRow({ name: '' }, comp, DK, B, 44).replace('المستلم', 'أعدّه') : ''}${last ? impStampsHtml(comp, 70) : ''}</div></div>`); }
+                    ${last && o.words ? `<p style="font-size:11px;font-weight:800;margin-top:8px">${E(tafqeet(total))}</p>` : ''}${last ? impSigRow({ name: '' }, comp, DK, B, 44, 0, undefined, 'stmt').replace('المستلم', 'أعدّه') : ''}${last ? impStampsHtml(comp, 70) : ''}</div></div>`); }
             impOpenPrint(pages, 'كشف الصرف'); window.showToast(`تم تجهيز كشف صرف لـ ${ok.length} مستفيد`);
         };
         // ---------- تصدير Excel بدوال حيّة (الإجمالي = المرتب − الخصم) ----------
@@ -13769,7 +13997,8 @@ window.verifyBackupFile=async function(input) {
                       + entF('المبلغ لكل موظف (ريال)', `<input type="number" step="0.01" min="0" id="ent-amount" dir="ltr" value="" oninput="window.entPreviewCalc()" class="${entInp}">`)
                       + entF('طريقة التسليم', `<select id="ent-method" class="${entInp}"><option>نقداً</option><option>تحويل بنكي</option><option>شيك</option></select>`)
                       + entF('تاريخ التسليم', `<input type="date" id="ent-from" value="${today10()}" class="${entInp}">`)
-                      + (sub === 'سلفة' ? entF('عدد أقساط السداد', `<input type="number" min="1" id="ent-inst" value="1" class="${entInp}">`)
+                      + (sub === 'سلفة' ? entF('عدد أقساط السداد', `<input type="number" min="1" max="120" step="1" id="ent-inst" value="1" oninput="window.entSyncInst('count')" onchange="window.entSyncInst('count')" class="${entInp}">`)
+                           + entF('مبلغ القسط الشهري (ريال)', `<input type="number" min="0" step="0.01" id="ent-inst-m" dir="ltr" placeholder="يُحسب تلقائياً" data-driver="count" oninput="window.entSyncInst('monthly')" onchange="window.entSyncInst('monthly')" class="${entInp}"><p id="ent-inst-note" class="text-[10px] font-bold text-slate-500 mt-1" aria-live="polite"></p>`)
                           + entF('أول قسط في شهر', `<select id="ent-month" class="${entInp}">${window.hrMonthOptions(nextMonthStr())}</select>`)
                           + `<label class="md:col-span-6 flex items-center gap-2 text-xs font-bold text-slate-700 mt-5"><input type="checkbox" id="ent-payroll" checked class="w-4 h-4"> تسجيلها في "إدارة التسديدات" لتُخصم أقساطها تلقائياً من الراتب</label>` : '')
                       + entF('البيان', `<input id="ent-desc" placeholder="${escapeHtml(sub)}" class="${entInp}">`, 'md:col-span-12')
@@ -13870,7 +14099,30 @@ window.verifyBackupFile=async function(input) {
         }
         function entSelectedIds() { return Array.from(document.querySelectorAll('#ent-multi input:checked')).map(c => c.value); }
 
+        // مزامنة عدد الأقساط ومبلغ القسط الشهري: أيّهما يُعدَّل يحسب الآخر. المصدر الفعلي للعدد هو #ent-inst (يُقرأ عند الإصدار)
+        window.entSyncInst = function (src) {
+            const iN = document.getElementById('ent-inst'), iM = document.getElementById('ent-inst-m'), note = document.getElementById('ent-inst-note');
+            if (!iN || !iM) return;
+            const A = Math.round((Number(document.getElementById('ent-amount')?.value) || 0) * 100);
+            let driver = src || iM.dataset.driver || 'count';
+            if (driver === 'monthly') {
+                const M = Math.round((Number(iM.value) || 0) * 100);
+                if (A > 0 && M > 0) iN.value = String(Math.max(1, Math.ceil(A / M)));
+            } else {
+                const n = Math.max(1, Math.floor(Number(iN.value) || 1));
+                if (A > 0 && document.activeElement !== iM) iM.value = (Math.floor(A / n) / 100).toFixed(2);
+            }
+            iM.dataset.driver = driver;
+            const n = Math.max(1, Math.floor(Number(iN.value) || 1));
+            if (!note) return;
+            if (!A) { note.innerText = ''; return; }
+            if (n > 120) { note.innerHTML = '<span class="text-red-600">عدد الأقساط لا يتجاوز 120 قسطاً؛ زد مبلغ القسط الشهري</span>'; return; }
+            const mUser = driver === 'monthly' ? Math.round((Number(iM.value) || 0) * 100) : 0, useM = mUser > 0 && mUser * (n - 1) < A && Math.ceil(A / mUser) === n;
+            const base = (useM ? mUser : Math.floor(A / n)) / 100, last = (A - (useM ? mUser : Math.floor(A / n)) * (n - 1)) / 100;
+            note.innerText = n === 1 ? 'قسط واحد بكامل المبلغ' : `${n} أقساط: القسط ${base.toFixed(2)} ريال، وآخر قسط ${last.toFixed(2)} ريال`;
+        };
         window.entPreviewCalc = function () {
+            if (document.getElementById('ent-inst')) { try { window.entSyncInst(document.getElementById('ent-inst-m')?.dataset.driver || 'count'); } catch (_) {} }
             if (cfIsCustomType(entType)) { const c = document.getElementById('ent-ms-count'); if (c) { const n = entSelectedIds().length; c.innerText = n ? `— محدَّد ${n}` : ''; } return; }
             const box = document.getElementById('ent-calc'); if (!box) return;
             const v = id => document.getElementById(id)?.value;
@@ -13903,6 +14155,7 @@ window.verifyBackupFile=async function(input) {
                 daytype: v('ent-daytype'), holiday: entHolidayLabel, transport: v('ent-transport'), transportAmount: Number(v('ent-tamount')) || 0, method: v('ent-method'), month: v('ent-month'),
                 hours: Number(v('ent-hours')) || 0, daily: Number(v('ent-daily')) || 0, installments: Number(v('ent-inst')) || 1,
                 payroll: !!document.getElementById('ent-payroll')?.checked, date: today10() };
+            if (rec.sub === 'سلفة') { const im = document.getElementById('ent-inst-m'); if (im && im.dataset.driver === 'monthly' && Number(im.value) > 0) rec.monthly = Number(Number(im.value).toFixed(2)); }
             if (entType === 'overtime') { try { Object.assign(rec, overtimeCalc(emp, rec.hours, entMult())); } catch (_) { rec.amount = NaN; } }
             else if (entType === 'assignment') { rec.days = entDays(rec.from, rec.to); rec.dailyTotal = Number((rec.days * rec.daily).toFixed(2)); rec.amount = Number((rec.dailyTotal + rec.transportAmount).toFixed(2)); }
             else if (rec.sub === 'مرتب (كاش)') rec.amount = Number(entSalaryNet(emp, rec.month).toFixed(2));
@@ -13933,7 +14186,7 @@ window.verifyBackupFile=async function(input) {
                         amount: rec.amount, days: rec.type === 'overtime' ? rec.hoursEff : (rec.days || null), start_date: rec.from || null, end_date: rec.to || null,
                         effective_month: (rec.type !== 'receipt' && rec.payroll) ? rec.month : null, status: rec.type === 'receipt' ? 'done' : 'active',
                         notes: rec.desc || null, data: { form: rec, ack: false, auto: true }, employee_id: d.emp.id, company_id: companyId, owner_id: currentUser.id };
-                    const loan=rec.type==='receipt'&&rec.sub==='سلفة'&&rec.payroll?{amount:rec.amount,effective_month:rec.month||nextMonthStr(),data:{installments:rec.installments}}:null;
+                    const loan=rec.type==='receipt'&&rec.sub==='سلفة'&&rec.payroll?{amount:rec.amount,effective_month:rec.month||nextMonthStr(),data:{installments:rec.installments,...(rec.monthly>0?{monthly:rec.monthly}:{})}}:null;
                     const token=await integrityEntitlementToken({companyId,row,loan});
                     const {data,error}=await supabaseClient.rpc('hr_create_entitlement',{p_company_id:companyId,p_row:row,p_loan:loan,p_request_id:token.id});
                     if(error||!data?.ok)throw new Error(error?.message||'لم يؤكد الخادم حفظ المستحق؛ احتفظت بمفتاح إعادة المحاولة');integrityConfirmEntitlementToken(token);d.ref=String(data.ref_no);
@@ -14085,7 +14338,7 @@ window.verifyBackupFile=async function(input) {
                     <td style="border:1px solid #e2e2dc;padding:6px;text-align:center;font-weight:800">${fmtMoney(d.rec.amount || 0)}</td><td style="border:1px solid #e2e2dc;padding:6px;width:22%"></td></tr>`).join('')}
                 <tr style="background:#f1f1ec;font-weight:900"><td colspan="4" style="border:1px solid #d6d6cf;padding:7px">الإجمالي</td><td style="border:1px solid #d6d6cf;padding:7px;text-align:center">${fmtMoney(total)}</td><td style="border:1px solid #d6d6cf"></td></tr></tbody></table>
                 <p style="margin-top:10px;font-size:11px;font-weight:800">${tafqeet(total)}</p>
-                <div style="display:grid;grid-template-columns:repeat(${Math.min(4, docSigners(comp).length)},1fr);gap:18px;margin-top:34px">${docSigners(comp).map(sg => `<div style="text-align:center"><p style="font-size:11px;font-weight:900;margin-bottom:30px">${escapeHtml(sg.label || '')}</p><div style="border-top:1px solid #999;padding-top:3px;font-size:10px;font-weight:800">${escapeHtml(sg.name || '')}</div></div>`).join('')}</div></div>`;
+                <div style="display:grid;grid-template-columns:repeat(${Math.max(1, Math.min(4, docSigners(comp, 'stmt').length))},1fr);gap:18px;margin-top:34px">${docSigners(comp, 'stmt').map(sg => `<div style="text-align:center"><p style="font-size:11px;font-weight:900;margin-bottom:30px">${escapeHtml(sg.label || '')}</p><div style="border-top:1px solid #999;padding-top:3px;font-size:10px;font-weight:800">${escapeHtml(sg.name || '')}</div></div>`).join('')}</div></div>`;
         }
         window.entPrintSummaryOnly = function () {
             const st = entPrintSettings(), [w0, h0] = PAPER[st.paper] || PAPER.a4, [w, h] = st.orientation === 'landscape' ? [h0, w0] : [w0, h0];
@@ -14126,7 +14379,7 @@ window.verifyBackupFile=async function(input) {
                 + `<p style="font-size:12px;font-weight:700;margin-top:14px">على الموظف تنفيذ المهمة وتقديم تقرير بما أُنجز فور انتهائها.</p>` };
             return { title: `سند تسليم — ${rec.sub}`, amount: rec.amount, body: `<p style="font-size:13px;font-weight:700;line-height:2.1">أقرّ أنا الموظف المذكور أعلاه بأنني استلمت من ${escapeHtml(comp.nameAr || 'المنشأة')} المبلغ الموضّح أدناه، وذلك عن:
                 <b>${escapeHtml(rec.desc || rec.sub)}</b>${rec.sub === 'مرتب (كاش)' && rec.month ? ` لراتب شهر ${escapeHtml(rec.month)}` : ''}، ${escapeHtml(rec.method || 'نقداً')} بتاريخ ${fmtDate(toGregorianDate(rec.from))}.</p>
-                ${rec.sub === 'سلفة' ? `<p style="font-size:12px;font-weight:700;margin-top:8px">وأتعهد بسدادها على ${rec.installments} قسط شهري تُخصم من راتبي بدءاً من راتب ${escapeHtml(rec.month || '')}، بقيمة ${fmtMoney((rec.amount || 0) / Math.max(1, rec.installments))} للقسط.</p>` : ''}` };
+                ${rec.sub === 'سلفة' ? `<p style="font-size:12px;font-weight:700;margin-top:8px">وأتعهد بسدادها على ${rec.installments} قسط شهري تُخصم من راتبي بدءاً من راتب ${escapeHtml(rec.month || '')}، بقيمة ${fmtMoney(rec.monthly > 0 ? rec.monthly : (rec.amount || 0) / Math.max(1, rec.installments))} للقسط.</p>` : ''}` };
         }
 
         // «سند مصمَّم»: نفس محرّك سندات الاستيراد (القالب واللون والحدود والخط والحواف وترتيب الحقول والنص والتواقيع والنماذج المحفوظة) على مستندات المستحقات.
@@ -14162,8 +14415,8 @@ window.verifyBackupFile=async function(input) {
                 ? `<div style="margin-top:14px;padding:14px 16px;border-radius:16px;background:rgb(24 24 22);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:22px;font-weight:900;color:rgb(245 199 0)">${fmtMoney(amount)}</span>${st.words ? `<span style="font-size:11px;font-weight:800">${tafqeet(amount)}</span>` : ''}</div>`
                 : `<div style="margin-top:12px;padding:${compact ? 8 : 12}px 14px;border:2px solid #18181a;border-radius:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:${compact ? 16 : 20}px;font-weight:900">${fmtMoney(amount)}</span>${st.words ? `<span style="font-size:11px;font-weight:800">${tafqeet(amount)}</span>` : ''}</div>`) : '';
             const sig = (l, img, nm) => `<div style="text-align:center"><p style="font-size:11px;font-weight:900;margin-bottom:${compact ? 26 : 38}px">${escapeHtml(l || '')}</p>${img && st.sign ? `<img src="${img}" style="height:${Math.round(40 * docScale('sign'))}px;margin:-${Math.round(36 * docScale('sign'))}px auto 2px;display:block;object-fit:contain">` : ''}<div style="border-top:1px solid #999;padding-top:3px;font-size:${nm ? 10 : 9}px;color:${nm ? '#333' : '#888'};font-weight:${nm ? 800 : 400}">${nm ? escapeHtml(nm) : 'الاسم والتوقيع'}</div></div>`;
-            const signersAll = [[rec.type === 'assignment' ? 'الموظف المكلَّف' : 'المستلم', '', d.emp.name], ...docSigners(comp).map(x => [x.label, x.img, x.name])];
-            const sigs = st.sign ? `<div style="display:grid;grid-template-columns:repeat(${Math.min(4, signersAll.length)},1fr);gap:18px;margin-top:${compact ? 22 : 40}px">${signersAll.map(a => sig(a[0], a[1], a[2])).join('')}</div>` : '';
+            const signersAll = [...(signerRecvOn('forms') ? [[rec.type === 'assignment' ? 'الموظف المكلَّف' : 'المستلم', '', d.emp.name]] : []), ...docSigners(comp, 'forms').map(x => [x.label, x.img, x.name])];
+            const sigs = st.sign && signersAll.length ? `<div style="display:grid;grid-template-columns:repeat(${Math.min(4, signersAll.length)},1fr);gap:18px;margin-top:${compact ? 22 : 40}px">${signersAll.map(a => sig(a[0], a[1], a[2])).join('')}</div>` : '';
             const stamp = st.stamp && docStamps(comp).length ? `<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:6px">${docStamps(comp).map(sp => `<img src="${sp}" style="height:${Math.round((compact ? 56 : 76) * docScale('stamp'))}px;object-fit:contain;opacity:.9">`).join('')}</div>` : '';
             const logo = st.logo && comp.logoBase64 ? `<img src="${comp.logoBase64}" style="height:${compact ? 38 : 52}px;object-fit:contain">` : '';
             let header;
@@ -15141,12 +15394,15 @@ window.verifyBackupFile=async function(input) {
         window.createNewCompany = async function(e) {
             e.preventDefault();
             const name = document.getElementById('nc-name')?.value || 'منشأة جديدة';
+            // الجلسة الفعلية هي مرجع الصلاحية (سياسة قاعدة البيانات: owner_id = auth.uid()): إن انتهت أو تغيّر الحساب فلا فائدة من الإرسال
+            let uid = currentUser && currentUser.id;
+            try { const { data: sd } = await supabaseClient.auth.getSession(), su = sd && sd.session && sd.session.user; if (!su) return window.showToast('انتهت جلسة الدخول — سجّل الدخول من جديد ثم أنشئ المنشأة', 'error'); if (currentUser && su.id !== currentUser.id) return window.showToast('الحساب المسجّل في المتصفح تغيّر — أعد تحميل الصفحة ثم حاول مجدداً', 'error'); uid = su.id; } catch (_) {}
             const { data, error } = await supabaseClient.from('companies').insert({
-                owner_id: currentUser.id, name_ar: name, name_en: name,
+                owner_id: uid, name_ar: name, name_en: name,
                 sign1_name: 'مدير الموارد البشرية', sign1_title: 'الموارد البشرية',
                 sign2_name: 'المدير العام', sign2_title: 'المشرف العام'
             }).select().single();
-            if (error) { window.showToast('تعذر إنشاء المنشأة: ' + error.message, 'error'); return; }
+            if (error) { window.showToast(/row-level security|42501/i.test(String(error.message || '') + String(error.code || '')) ? 'تعذر إنشاء المنشأة: جلسة الدخول غير سارية لهذا الحساب — سجّل الخروج ثم الدخول وأعد المحاولة' : 'تعذر إنشاء المنشأة: ' + error.message, 'error'); return; }
 
             const newComp = mapCompanyFromDb(data);
             companies.push(newComp);
@@ -15992,7 +16248,8 @@ window.verifyBackupFile=async function(input) {
             renderOnboardingReadiness(emp);
             if (count) count.innerText = `${(data || []).length} / ${portalDocsData.length}`;
 
-            list.innerHTML = portalDocsData.map(d => {
+            window.__empDocsCur = { emp, rows: (data || []).filter(x => x.file_path) };
+            list.innerHTML = ((data || []).length ? `<div class="col-span-full flex justify-end"><button type="button" id="emp-dl-all" onclick="window.empDocDownloadAll()" class="px-4 py-2 rounded-full text-[11px] font-extrabold bg-slate-900 text-white hover:opacity-90"><i class="fas fa-file-zipper ml-1" aria-hidden="true"></i>تحميل الكل في ملف واحد (${(data || []).length})</button></div>` : '') + portalDocsData.map(d => {
                 const up = byKey[d.key];
                 return `<div class="flex items-center gap-3 p-3 rounded-2xl border ${up ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}">
                     <div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${up ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-200 text-slate-300'}">
@@ -16002,7 +16259,7 @@ window.verifyBackupFile=async function(input) {
                         <div class="text-[11px] font-extrabold text-slate-800 truncate">${escapeHtml(d.label)}</div>
                         <div class="text-[10px] font-bold ${up ? 'text-emerald-700' : 'text-slate-400'} truncate">${up ? escapeHtml(up.file_name || '') : 'لم يُرفع'}</div>
                     </div>
-                    ${up ? `<button onclick="window.openEmployeeDoc(${escapeHtml(JSON.stringify(up.file_path))})" class="shrink-0 px-3 py-1.5 rounded-full bg-white border border-emerald-300 text-emerald-700 text-[10px] font-extrabold hover:bg-emerald-100">فتح</button>` : ''}
+                    ${up ? `<button onclick="window.openEmployeeDoc(${escapeHtml(JSON.stringify(up.file_path))})" class="shrink-0 px-3 py-1.5 rounded-full bg-white border border-emerald-300 text-emerald-700 text-[10px] font-extrabold hover:bg-emerald-100">فتح</button><button onclick="window.empDocDownload(${escapeHtml(JSON.stringify(up.file_path))}, ${escapeHtml(JSON.stringify(d.label))}, ${escapeHtml(JSON.stringify(up.file_name || ''))})" aria-label="تحميل ${escapeHtml(d.label)}" class="shrink-0 px-3 py-1.5 rounded-full bg-slate-900 text-white text-[10px] font-extrabold hover:opacity-90"><i class="fas fa-download ml-1" aria-hidden="true"></i>تحميل</button>` : ''}
                 </div>`;
             }).join('');
         }
@@ -19288,7 +19545,7 @@ if (typeof module !== 'undefined') module.exports = HRContactCore;
     const ACC = comp.brandColorSet && isValidHex(comp.brandColor) ? comp.brandColor : '#0f3d2e', INK = comp.brandColorSet ? readableInk(ACC) : '#fff', TINT = comp.brandColorSet ? tintOf(ACC, .9) : '#eef3f0', DK = comp.brandColorSet ? mixHex(ACC, '#000000', .45) : '#1f3b30';
     const dept = (departments || []).find(d => d.id === emp.departmentId)?.name || '—', today = today10();
     const imgOk = s => /^(data:image\/[a-z+]+;base64,[A-Za-z0-9+\/=]+|https:\/\/[^\s"'()]+)$/.test(s || '') ? s : '';
-    const signers = [[ret ? 'المُسلِّم (الموظف)' : 'المستلِم (الموظف)', emp.name, ''], ...docSigners(comp).map(x => [x.label, x.name, imgOk(x.img)])].slice(0, 4), stamps = docStamps(comp).map(imgOk).filter(Boolean);
+    const signers = [...(signerRecvOn('forms') ? [[ret ? 'المُسلِّم (الموظف)' : 'المستلِم (الموظف)', emp.name, '']] : []), ...docSigners(comp, 'forms').map(x => [x.label, x.name, imgOk(x.img)])].slice(0, 6), stamps = docStamps(comp).map(imgOk).filter(Boolean);
     const cell = (v, x) => `<td style="border:${B};padding:7px 9px;${x || ''}">${v}</td>`, lab = `background:${TINT};font-weight:800;color:${DK};width:18%;font-size:11px`;
     return `<div class="cf-page" data-custody="${E(emp.id)}" style="width:210mm;min-height:297mm;box-sizing:border-box;padding:14mm;background:#fff;color:#111;direction:rtl;font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact">
       <div style="border-bottom:3px solid ${ACC};padding-bottom:6px;margin-bottom:10px">${docHeaderHtml(comp, { maxH: 48, maxW: 150, fs: 10 })}</div>
@@ -21037,15 +21294,61 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     if (p === 'page') t.pos = 'page'; else { delete t.pos; const b = curDesign().blocks.filter(k => k !== 'text'), i = p === 'top' ? b.indexOf('head') + 1 : p === 'bottom' ? b.length : b.indexOf('table') + 1, nb = [...b.slice(0, i), 'text', ...b.slice(i)]; putDesign('blocks', nb.join() === DEF_BLOCKS ? [] : nb); }
     IMP.opts.text = t; afterDesign();
   };
-  // ---------- أحجام التواقيع ----------
+  // ---------- الموقّعون: من يظهر في (كشف الصرف / سند الصرف / النماذج) + إضافة موقّعين عند الحاجة ----------
+  const SURF = [['stmt', 'الكشف'], ['voucher', 'سند الصرف'], ['forms', 'النماذج']], SURF_FULL = { stmt: 'كشف الصرف', voucher: 'سند الصرف', forms: 'النماذج' };
+  const sigCompany = () => getActiveCompany() || {};
+  const signerRows = () => [{ key: 'recv', label: 'المستلم / المُعِدّ', sub: 'اسم المستفيد يُملأ تلقائياً (وفي الكشف «أعدّه»)', kind: 'recv' }, ...docSigners(sigCompany()).map(x => ({ key: x.key, label: x.label || '', sub: x.name || '', kind: x.extraIndex === undefined ? 'base' : 'extra', ei: x.extraIndex, img: x.img }))];
+  window.hrImpSignersHtml = function () {
+    const rows = signerRows(), counts = SURF.map(([k, l]) => [k, l, rows.filter(r => window.hrSignerOn(r.key, k)).length]), over = counts.filter(c => c[2] > 6 && c[0] !== 'stmt');
+    const head = `<div class="imp-sg-row imp-sg-head"><span>الموقّع</span>${SURF.map(([k, l]) => `<span>${l}</span>`).join('')}</div>`;
+    const body = rows.map(r => {
+      const nameCell = r.kind === 'extra'
+        ? `<div class="imp-sg-edit"><input class="imp-in" value="${E(r.label)}" maxlength="60" placeholder="الصفة / المنصب" aria-label="صفة الموقّع" onchange="window.updateSignerItem(${r.ei}, 'title', this.value)"><input class="imp-in" list="emp-names-dl" value="${E(r.sub)}" maxlength="80" placeholder="الاسم" aria-label="اسم الموقّع" onchange="window.updateSignerItem(${r.ei}, 'name', this.value)">
+            <span class="imp-sg-tools">${r.img ? `<img src="${E(impSafeImg(r.img))}" alt="" class="imp-sg-thumb">` : ''}<label class="imp-btn sm" title="رفع صورة التوقيع (PNG شفاف)"><i class="fas fa-image" aria-hidden="true"></i>${r.img ? 'استبدال' : 'رفع التوقيع'}<input type="file" accept="image/png,image/jpeg,image/webp" hidden onchange="window.uploadSignerImage(${r.ei}, this)"></label><button type="button" class="imp-btn sm danger" onclick="window.removeSignerItem(${r.ei})" aria-label="حذف الموقّع ${E(r.label || r.sub)}"><i class="fas fa-trash-can" aria-hidden="true"></i></button></span></div>`
+        : `<div class="imp-sg-name"><b>${E(r.label || '—')}</b>${r.sub ? `<small>${E(r.sub)}</small>` : ''}</div>`;
+      return `<div class="imp-sg-row" data-sg-key="${E(r.key)}">${nameCell}${SURF.map(([k, l]) => `<label class="imp-sg-chk"><input type="checkbox" ${window.hrSignerOn(r.key, k) ? 'checked' : ''} onchange="window.hrSetSignerRule('${E(r.key)}','${k}',this.checked)" aria-label="${E(r.label || r.sub || 'الموقّع')} — يظهر في ${SURF_FULL[k]}"></label>`).join('')}</div>`;
+    }).join('');
+    return card('imp-signers-box', 'fa-users-line', 'الموقّعون', 'حدّد بالتأشير من يظهر في كل مستند، وأضف موقّعين عند الحاجة', `
+      <div class="imp-sg-table" role="group" aria-label="من يظهر في كل مستند">${head}${body}</div>
+      <p class="imp-note" id="imp-sg-count" aria-live="polite">الظاهرون: ${counts.map(c => `${c[1]} <b>${c[2]}</b>`).join(' · ')}${over.length ? ` — <span style="color:#b45309;font-weight:800">يُطبع أول 6 موقّعين فقط في ${over.map(c => SURF_FULL[c[0]]).join(' و')}</span>` : ''}</p>
+      <div class="imp-sg-add"><input id="imp-sg-new-title" class="imp-in" maxlength="60" placeholder="الصفة (مثال: المدير المالي)" aria-label="صفة الموقّع الجديد"><input id="imp-sg-new-name" class="imp-in" list="emp-names-dl" maxlength="80" placeholder="الاسم (اختر من الموظفين أو اكتب)" aria-label="اسم الموقّع الجديد"><button type="button" class="imp-btn pri" onclick="window.hrImpAddSigner()"><i class="fas fa-plus" aria-hidden="true"></i>إضافة موقّع</button></div>
+      <p class="imp-note">الموقّعون المضافون يظهرون في كل المستندات افتراضياً، وتُلغي التأشير عمّن لا تريده في مستند معيّن. الصفة والاسم الأساسيان يُعدَّلان من إعدادات المنشأة.</p>`);
+  };
+  function repaintSigners() {
+    const b = $('imp-signers-box'); if (!b) return; const t = $('imp-sg-new-title'), n = $('imp-sg-new-name'), tv = t ? t.value : '', nv = n ? n.value : '', ae = document.activeElement, lab = ae && ae.getAttribute && ae.closest && ae.closest('#imp-signers-box') ? ae.getAttribute('aria-label') : null;
+    try { ensureEmpNamesDatalist(); } catch (_) {}
+    b.outerHTML = window.hrImpSignersHtml(); const t2 = $('imp-sg-new-title'), n2 = $('imp-sg-new-name'); if (t2) t2.value = tv; if (n2) n2.value = nv;
+    if (lab) { const f = [...document.querySelectorAll('#imp-signers-box [aria-label]')].find(x => x.getAttribute('aria-label') === lab); if (f) f.focus(); }
+  }
+  window.hrImpAddSigner = function () {
+    const t = $('imp-sg-new-title'), n = $('imp-sg-new-name'); if (!t || !n) return;
+    if (!window.hrAddSignerNamed(t.value, n.value)) { if (!t.value.trim() && !n.value.trim()) window.showToast('اكتب الصفة أو الاسم أولاً', 'warning'); return; }
+    // الإضافة تُعيد رسم البطاقة (فتُستبدل الحقول)، فنُفرّغ الحقول الحالية لا المراجع القديمة
+    const t2 = $('imp-sg-new-title'), n2 = $('imp-sg-new-name'); if (t2) t2.value = ''; if (n2) n2.value = ''; window.showToast('أُضيف الموقّع — ارفع صورة توقيعه إن لزم'); if (t2) t2.focus();
+  };
+  // يُستدعى من persistSigners وقواعد الظهور: يعيد رسم الموقّعين وأحجامهم والمعاينة
+  window.hrImpSignersChanged = function () { if (!IMP) return; repaintSigners(); repaintSig(); refresh(); };
+  // أسطر التوقيع المستبعدة من آخر ملف Excel: اقتراح إضافتها موقّعين
+  window.hrImpFooterNotice = function () {
+    const old = $('imp-footer-sig'); if (old) old.remove(); if (!IMP || !IMP.sigRows || !IMP.sigRows.length) return; const box = $('imp-top-box'); if (!box) return;
+    box.insertAdjacentHTML('beforebegin', `<div id="imp-footer-sig" role="status" class="imp-card" style="margin-bottom:12px;border-color:#fcd34d;background:#fffbeb"><p class="imp-card-tt" style="margin:0 0 6px"><b>استُبعد ${IMP.sigRows.length} ${IMP.sigRows.length === 1 ? 'سطر' : 'أسطر'} توقيع من آخر الملف</b><small>لم تُحسب موظفين. هل تريد إضافتها موقّعين؟</small></p><ul class="imp-list" style="margin-bottom:8px">${IMP.sigRows.map(x => `<li class="imp-row"><span class="nm">${E(x.title)}${x.name ? ' — ' + E(x.name) : ''}</span></li>`).join('')}</ul><div class="imp-seg"><button type="button" class="imp-btn pri" onclick="window.impAddFooterSigners()"><i class="fas fa-plus" aria-hidden="true"></i>إضافة كموقّعين</button><button type="button" class="imp-btn" onclick="window.impDismissFooterSigners()">تجاهل</button></div></div>`);
+  };
+  window.impAddFooterSigners = function () {
+    if (!IMP || !IMP.sigRows) return; const list = IMP.sigRows; IMP.sigRows = []; let added = 0; list.forEach(x => { if (window.hrAddSignerNamed(x.title, x.name)) added++; });
+    const n = $('imp-footer-sig'); if (n) n.remove(); window.showToast(added ? `أُضيف ${added} موقّع — اختر أين يظهرون من تبويب «التواقيع والختم»` : 'لم يُضَف أحد (مضافون مسبقاً)', added ? 'success' : 'warning');
+  };
+  window.impDismissFooterSigners = function () { if (IMP) IMP.sigRows = []; const n = $('imp-footer-sig'); if (n) n.remove(); };
+  // ---------- أحجام التواقيع: تكبر صورة التوقيع نفسها لا خانته ----------
   window.hrImpSigHtml = function () {
-    const o = IMP.opts, comp = getActiveCompany() || {}, names = ['المستلم', ...docSigners(comp).map(x => x.label)].slice(0, 4), sz = o.sigSize || {}, off = !o.sign || curDesign().hideBlocks.includes('sign');
-    return card('imp-sig-box', 'fa-signature', 'حجم كل توقيع', off ? 'التواقيع مخفية — فعّلها من «ترتيب أقسام السند»' : 'مستقل لكل توقيع، ويبقى متناسقاً مع الصفحة', names.map((nm, i) => { const v = Math.max(50, Math.min(250, Number(sz[i]) || 100)); return `<label class="imp-slide"><span class="nm">${E(nm)}</span><input type="range" min="50" max="250" step="10" value="${v}" oninput="window.impSigSet(${i}, +this.value, true)" onchange="window.impSigSet(${i}, +this.value)" aria-label="حجم توقيع ${E(nm)}"><output id="imp-sig-out-${i}">${v}%</output></label>`; }).join('') + '<button type="button" class="imp-btn" onclick="window.impSigReset()">الحجم المتناسق التلقائي</button>', off ? 'imp-dis' : '');
+    const o = IMP.opts, comp = sigCompany(), sz = o.sigSize || {}, order = window.hrSignerOrder(comp), off = !o.sign || curDesign().hideBlocks.includes('sign');
+    const list = [...(window.hrSignerRecvOn('voucher') ? [{ key: 'recv', label: 'المستلم (مساحة التوقيع بخط اليد)' }] : []), ...docSigners(comp, 'voucher').map(x => ({ key: x.key, label: x.label || x.name || 'موقّع' }))].slice(0, 6);
+    return card('imp-sig-box', 'fa-signature', 'حجم كل توقيع', off ? 'التواقيع مخفية — فعّلها من «ترتيب أقسام السند»' : 'تكبر صورة التوقيع نفسها (لا خانته) فتبقى الصفحة والخانات ثابتة', list.map(x => { const v = Math.max(50, Math.min(250, Number(sz[x.key] !== undefined ? sz[x.key] : sz[order.indexOf(x.key)]) || 100)); return `<label class="imp-slide"><span class="nm">${E(x.label)}</span><input type="range" min="50" max="250" step="10" value="${v}" oninput="window.impSigSet('${E(x.key)}', +this.value, true)" onchange="window.impSigSet('${E(x.key)}', +this.value)" aria-label="حجم توقيع ${E(x.label)}"><output id="imp-sig-out-${E(x.key)}">${v}%</output></label>`; }).join('') + '<button type="button" class="imp-btn" onclick="window.impSigReset()">الحجم المتناسق التلقائي</button>', off ? 'imp-dis' : '');
   };
   function repaintSig() { const b = $('imp-sig-box'); if (b) b.outerHTML = window.hrImpSigHtml(); }
   window.impSigSet = function (i, v, live) {
-    if (!IMP) return; const sz = { ...(IMP.opts.sigSize || {}) }; if (Number(v) === 100) delete sz[i]; else sz[i] = Number(v); IMP.opts.sigSize = sz;
-    const out = $('imp-sig-out-' + i); if (out) out.textContent = Number(v) + '%'; refresh(); if (live) return; persist(); refreshModels();
+    if (!IMP) return; const order = window.hrSignerOrder(sigCompany()), key = typeof i === 'number' ? order[i] : String(i); if (!key) return; const idx = order.indexOf(key);
+    const sz = { ...(IMP.opts.sigSize || {}) }; delete sz[idx]; if (Number(v) === 100) delete sz[key]; else sz[key] = Number(v); IMP.opts.sigSize = sz;
+    const out = $('imp-sig-out-' + key); if (out) out.textContent = Number(v) + '%'; refresh(); if (live) return; persist(); refreshModels();
   };
   window.impSigReset = function () { if (!IMP) return; IMP.opts.sigSize = {}; repaintSig(); refresh(); persist(); refreshModels(); };
   // ---------- الختم: مكان وحجم لكل ختم ----------
@@ -21164,7 +21467,7 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
         ${pane('t1', window.hrImpModelsHtml() + window.hrImpPosHtml() + window.hrImpPaperHtml() + window.hrImpYearHtml())}
         ${pane('t2', window.hrImpDesignHtml())}
         ${pane('t3', window.hrImpBlocksHtml() + window.hrImpTextHtml())}
-        ${pane('t4', window.hrImpSigHtml() + window.hrImpStampHtml())}
+        ${pane('t4', window.hrImpSignersHtml() + window.hrImpSigHtml() + window.hrImpStampHtml())}
         ${pane('t5', window.hrImpStyleHtml())}
         ${opts.designer ? '' : '<div class="imp-savebar"><label class="imp-slide"><input id="imp-top-save" type="checkbox" checked style="width:16px;height:16px"> احفظ الموضع والتنسيق للمنشأة (يبقيان في المرات القادمة)</label></div>'}
       </div>
