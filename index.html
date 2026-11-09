@@ -13611,7 +13611,7 @@ window.verifyBackupFile=async function(input) {
         }
         window.openImportEntitlements = function () {
             let m = document.getElementById('imp-modal'); if (!m) { m = document.createElement('div'); m.id = 'imp-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.className = 'fixed inset-0 z-[10001] bg-slate-900/60 flex items-center justify-center p-2 sm:p-4'; document.body.appendChild(m); m.addEventListener('keydown', e => { if (e.key === 'Escape') window.impClose(); }); }
-            IMP = { fileName: '', wb: null, sheet: '', headers: [], rows: [], map: {}, opts: { purpose: 'صرف مستحقات', date: today10(), method: 'تحويل بنكي', layout: 'full', formId: '', netMode: null, logo: true, stamp: true, sign: true, sigimg: true, words: true, letter: false, sigDy: ((policySettings && policySettings.impVoucher && policySettings.impVoucher.sigDy && typeof policySettings.impVoucher.sigDy === 'object') ? JSON.parse(JSON.stringify(policySettings.impVoucher.sigDy)) : {}), sigDx: ((policySettings && policySettings.impVoucher && policySettings.impVoucher.sigDx && typeof policySettings.impVoucher.sigDx === 'object') ? JSON.parse(JSON.stringify(policySettings.impVoucher.sigDx)) : {}), stampCfg: (policySettings && policySettings.impVoucher && policySettings.impVoucher.stamp && typeof policySettings.impVoucher.stamp === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.stamp)) : {}), text: (policySettings && policySettings.impVoucher && policySettings.impVoucher.text && typeof policySettings.impVoucher.text === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.text)) : {}), sigSize: (policySettings && policySettings.impVoucher && policySettings.impVoucher.sigSize && typeof policySettings.impVoucher.sigSize === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.sigSize)) : {}), modelId: (policySettings && policySettings.impVoucher && typeof policySettings.impVoucher.modelId === 'string' ? policySettings.impVoucher.modelId : ''), addYear: !(policySettings && policySettings.impVoucher && policySettings.impVoucher.addYear === false), year: (policySettings && policySettings.impVoucher && /^\d{4}$/.test(String(policySettings.impVoucher.year || '')) ? String(policySettings.impVoucher.year) : ''), design: (policySettings && policySettings.impVoucher && policySettings.impVoucher.design && typeof policySettings.impVoucher.design === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.design)) : {}), style: (policySettings && policySettings.impVoucher && policySettings.impVoucher.style && typeof policySettings.impVoucher.style === 'object' ? { ...policySettings.impVoucher.style } : {}), top: (policySettings && policySettings.impVoucher && Number.isFinite(Number(policySettings.impVoucher.top)) ? Number(policySettings.impVoucher.top) : null) } }; m.classList.remove('hidden'); impRender();
+            IMP = { fileName: '', wb: null, sheet: '', headers: [], rows: [], map: {}, opts: { purpose: 'صرف مستحقات', date: today10(), method: 'تحويل بنكي', layout: 'full', formId: '', netMode: null, logo: true, stamp: true, sign: true, sigimg: true, words: true, letter: false, stmt: ((policySettings && policySettings.impVoucher && policySettings.impVoucher.stmt && typeof policySettings.impVoucher.stmt === 'object') ? JSON.parse(JSON.stringify(policySettings.impVoucher.stmt)) : {}), sigDy: ((policySettings && policySettings.impVoucher && policySettings.impVoucher.sigDy && typeof policySettings.impVoucher.sigDy === 'object') ? JSON.parse(JSON.stringify(policySettings.impVoucher.sigDy)) : {}), sigDx: ((policySettings && policySettings.impVoucher && policySettings.impVoucher.sigDx && typeof policySettings.impVoucher.sigDx === 'object') ? JSON.parse(JSON.stringify(policySettings.impVoucher.sigDx)) : {}), stampCfg: (policySettings && policySettings.impVoucher && policySettings.impVoucher.stamp && typeof policySettings.impVoucher.stamp === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.stamp)) : {}), text: (policySettings && policySettings.impVoucher && policySettings.impVoucher.text && typeof policySettings.impVoucher.text === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.text)) : {}), sigSize: (policySettings && policySettings.impVoucher && policySettings.impVoucher.sigSize && typeof policySettings.impVoucher.sigSize === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.sigSize)) : {}), modelId: (policySettings && policySettings.impVoucher && typeof policySettings.impVoucher.modelId === 'string' ? policySettings.impVoucher.modelId : ''), addYear: !(policySettings && policySettings.impVoucher && policySettings.impVoucher.addYear === false), year: (policySettings && policySettings.impVoucher && /^\d{4}$/.test(String(policySettings.impVoucher.year || '')) ? String(policySettings.impVoucher.year) : ''), design: (policySettings && policySettings.impVoucher && policySettings.impVoucher.design && typeof policySettings.impVoucher.design === 'object' ? JSON.parse(JSON.stringify(policySettings.impVoucher.design)) : {}), style: (policySettings && policySettings.impVoucher && policySettings.impVoucher.style && typeof policySettings.impVoucher.style === 'object' ? { ...policySettings.impVoucher.style } : {}), top: (policySettings && policySettings.impVoucher && Number.isFinite(Number(policySettings.impVoucher.top)) ? Number(policySettings.impVoucher.top) : null) } }; m.classList.remove('hidden'); impRender();
         };
         window.impClose = () => { const m = document.getElementById('imp-modal'); if (m) { m.classList.add('hidden'); m.innerHTML = ''; } IMP = null; };   // تفريغ المحتوى: لا معرّفات مكررة (imp-preview…) مع نافذة التعديل
         window.impPick = function () { const i = document.createElement('input'); i.type = 'file'; i.accept = '.xlsx,.xls,.csv'; i.id = 'imp-file'; i.style.display = 'none'; i.onchange = () => { const f = i.files?.[0]; i.remove(); if (f) window.impHandleFile(f); }; document.body.appendChild(i); i.click(); };
@@ -13737,9 +13737,9 @@ window.verifyBackupFile=async function(input) {
             const t = (IMP && IMP.opts && IMP.opts.text) || {}; return { t: typeof t.t === 'string' ? t.t.slice(0, 300) : '', align: ['right', 'center', 'left'].includes(t.align) ? t.align : 'center', size: Math.max(9, Math.min(32, Math.round(Number(t.size)) || 14)), bold: t.bold !== false, frame: !!t.frame, pos: t.pos === 'page' ? 'page' : '', color: (typeof t.color === 'string' && isValidHex(t.color)) ? t.color : '' };
         }
         window.impTextForTest = impText;
-        function impTextHtml(r, ref, S, R) {
-            const T = impText(); if (!T.t.trim()) return ''; const E = escapeHtml, map = { 'الاسم': r.name, 'المبلغ': fmtMoney(r.amount), 'البيان': r.purpose, 'التاريخ': impDateTxt(r.date), 'الشهر': r.month, 'الهوية': r.id, 'المرجع': ref };
-            const body = E(T.t).replace(/\{(الاسم|المبلغ|البيان|التاريخ|الشهر|الهوية|المرجع)\}/g, (m, k) => E(map[k] == null ? '' : map[k]));
+        function impTextHtml(r, ref, S, R, extra) {
+            const T = impText(); if (!T.t.trim()) return ''; const E = escapeHtml, map = { 'الاسم': r.name, 'المبلغ': fmtMoney(r.amount), 'البيان': r.purpose, 'التاريخ': impDateTxt(r.date), 'الشهر': r.month, 'الهوية': r.id, 'المرجع': ref, 'العدد': '1', ...(extra || {}) };
+            const body = E(T.t).replace(/\{(الاسم|المبلغ|البيان|التاريخ|الشهر|الهوية|المرجع|العدد)\}/g, (m, k) => E(map[k] == null ? '' : map[k]));
             return `<div data-imp-text style="margin:12px 0;text-align:${T.align};font-size:${T.size}px;font-weight:${T.bold ? 900 : 600};line-height:1.9;white-space:pre-wrap;color:${T.color || '#111'};${T.frame ? `border:${S.B};${R ? `border-radius:${R}px;` : ''}padding:8px 12px;` : ''}">${body}</div>`;
         }
         function impFieldItems(r) {
@@ -13838,19 +13838,40 @@ window.verifyBackupFile=async function(input) {
             else pages = ok.map((r, i) => impVoucherHtml(r, ref(i)));
             impOpenPrint(pages, 'سندات الصرف'); window.showToast(`تم تجهيز ${ok.length} سند صرف (${pages.length} صفحة)`);
         };
-        // ---------- كشف الصرف ----------
+        // ---------- كشف الصرف: يتبع تصميم سند الصرف نفسه (الأسلوب والوضوح والخط واللون والحدود والحواف والنص الإضافي والترويسة والشريط والتواقيع والختم والورق الرسمي وموضع البداية)، وله خياره الخاص: أعمدة الجدول (IMP.opts.stmt.hidden) ----------
+        function impStmtColumns(ok) {   // الأعمدة المتاحة بحسب بيانات الملف: [المفتاح، العنوان، قيمة الصف، النمط، إلزامي]
+            const E = escapeHtml, hasG = ok.some(r => r.gross !== null), hasM = ok.some(r => r.month), hasIban = ok.some(r => r.iban), hasMeth = new Set(ok.map(r => r.method)).size > 1;
+            return [['n', 'م', r => r.n, 'width:28px;text-align:center'], ['name', 'الاسم', r => E(r.name), 'font-weight:800', true], ['id', 'الهوية / الجواز', r => `<bdi dir="ltr">${E(r.id)}</bdi>`, 'text-align:center'],
+                ...(hasG ? [['gross', 'المرتب', r => r.gross !== null ? `<bdi dir="ltr">${impMoney(r.gross)}</bdi>` : '', 'text-align:left'], ['ded', 'الخصم', r => r.deduction ? `<bdi dir="ltr">${impMoney(r.deduction)}</bdi>` : '—', 'text-align:left']] : []),
+                ['net', 'الصافي', r => `<bdi dir="ltr">${impMoney(r.amount)}</bdi>`, 'text-align:left;font-weight:900', true], ...(hasM ? [['month', 'الشهر', r => E(r.month), 'text-align:center']] : []), ...(hasIban ? [['iban', 'الآيبان', r => `<bdi dir="ltr">${E(r.iban)}</bdi>`, '']] : []), ...(hasMeth ? [['method', 'الطريقة', r => E(r.method), 'text-align:center']] : []), ['sign', 'التوقيع', () => '', 'width:70px']];
+        }
+        const impStmtHidden = () => { const h = IMP && IMP.opts.stmt && Array.isArray(IMP.opts.stmt.hidden) ? IMP.opts.stmt.hidden : []; return h.filter(k => typeof k === 'string'); };
+        window.impStmtColumnsForTest = impStmtColumns;
+        function impStatementPages(ok) {
+            const { comp, ACC, DK, INK, TINT, B, S } = impStyle(), o = IMP.opts, E = escapeHtml, D = impDesign(), R = D.radius, hide = D.hideBlocks, LY = (typeof docLayout === 'function' ? docLayout() : {}) || {}, bg = o.letter ? impLetterBg() : '', hasBg = !!bg;
+            const padTop = (o.top !== null && o.top !== undefined && o.top !== '' && Number.isFinite(Number(o.top))) ? Math.max(0, Math.min(120, Number(o.top))) : (hasBg ? (Number(LY.lhTop) || 45) : 12), padBot = hasBg ? (Number(LY.lhBottom) || 30) : 12;
+            const bgImg = bg ? `<img class="imp-bg" src="${E(bg)}" alt="" decoding="sync" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:fill;z-index:0;pointer-events:none;image-rendering:auto">` : '';
+            const hidden = new Set(impStmtHidden()), cols = impStmtColumns(ok).filter(c => c[4] || !hidden.has(c[0])), has = k => cols.some(c => c[0] === k);
+            const sum = k => ok.reduce((s, r) => s + (r[k] || 0), 0), total = sum('amount'), months = new Set(ok.map(r => r.month)), hasM = ok.some(r => r.month), firstNum = cols.findIndex(c => ['gross', 'ded', 'net'].includes(c[0]));
+            // تقسيم الصفحات: سعة الصفحة الكاملة والأخيرة (تحوي الإجمالي والمبلغ بالحروف والتواقيع والختم) من الارتفاع المتاح بعد الهوامش (والورق الرسمي)، وبحد أقصى 22 صفاً كما كان
+            const rowMm = 7 * S.scale, avail = 297 - padTop - padBot, ov = ((hasBg || hide.includes('head')) ? 0 : 24) + (hide.includes('band') ? 0 : 12) + 9;
+            const capFull = Math.max(4, Math.min(22, Math.floor((avail - ov) / rowMm))), capLast = Math.max(2, Math.min(capFull, Math.floor((avail - ov - 56) / rowMm))), chunks = []; let i = 0;
+            while (ok.length - i > capLast) { const rem = ok.length - i, take = rem > capFull ? capFull : rem - 1; chunks.push(ok.slice(i, i + take)); i += take; } chunks.push(ok.slice(i));
+            const T = impText(), sRow = { name: '', amount: total, purpose: '', date: o.date, month: months.size === 1 ? ok[0].month : '', id: '' }, textHtml = hide.includes('text') ? '' : impTextHtml(sRow, impRefBase(), S, R, { 'العدد': String(ok.length) }), textPage = T.pos === 'page' ? textHtml : '', textFlow = T.pos === 'page' ? '' : textHtml;
+            return chunks.map((chunk, p) => {
+                const last = p === chunks.length - 1, head = (hasBg || hide.includes('head')) ? '' : `<div style="border-bottom:3px solid ${ACC};padding-bottom:6px;margin-bottom:8px">${o.logo ? docHeaderHtml(comp, { maxH: 44, maxW: 140, fs: 10 }) : docHeaderHtml({ ...comp, logoBase64: '' }, { fs: 10 })}</div>`;
+                const band = hide.includes('band') ? '' : `<table style="width:100%;border-collapse:${R ? 'separate;border-spacing:0' : 'collapse'};margin-bottom:8px"><tr><td style="${S.band};padding:8px 10px;font-size:15px;font-weight:900;${R ? `border-radius:0 ${R}px ${R}px 0` : ''}">كشف صرف مستحقات${hasM && months.size === 1 ? ' — ' + E(ok[0].month) : ''}</td><td style="${S.band};padding:8px 10px;font-size:10px;font-weight:700;text-align:left;${R ? `border-radius:${R}px 0 0 ${R}px` : ''}">${E(impDateTxt(o.date))} · صفحة ${p + 1} من ${chunks.length}</td></tr></table>`;
+                const totalRow = last ? `<tr>${cols.map((c, ci) => ci === 0 ? `<td colspan="${Math.max(1, firstNum < 0 ? cols.length : firstNum)}" style="${S.cb};background:${S.labBg};padding:7px;font-weight:900">الإجمالي (${ok.length} مستفيد)</td>` : (firstNum < 0 || ci < firstNum) ? '' : `<td style="${S.cb};background:${S.labBg};padding:7px;text-align:left;font-weight:900">${c[0] === 'gross' ? `<bdi dir="ltr">${impMoney(sum('gross'))}</bdi>` : c[0] === 'ded' ? `<bdi dir="ltr">${impMoney(sum('deduction'))}</bdi>` : c[0] === 'net' ? `<bdi dir="ltr">${impMoney(total)}</bdi>` : ''}</td>`).join('')}</tr>` : '';
+                const table = `<table style="width:100%;border-collapse:collapse;font-size:10.5px"><thead><tr>${cols.map(c => `<th style="${S.cb};${S.lab};padding:6px 5px;font-weight:900">${c[1]}</th>`).join('')}</tr></thead><tbody>${chunk.map(r => `<tr style="height:26px">${cols.map(c => `<td style="${S.cb};padding:4px 6px;${c[3]}">${c[2](r)}</td>`).join('')}</tr>`).join('')}${totalRow}</tbody></table>`;
+                const words = last && o.words ? `<p style="font-size:11px;font-weight:800;margin-top:8px">${E(tafqeet(total))}</p>` : '', sign = last && !hide.includes('sign') ? impSigRow({ name: '' }, comp, DK, B, 44, 0, o.sigSize, 'stmt', { dy: o.sigDy, dx: o.sigDx }).replace('المستلم', 'أعدّه') : '', stamp = last && !hide.includes('stamp') ? impStampsHtml(comp, 70, o.stampCfg) : '', free = last && !hide.includes('stamp') ? impFreeStampHtml(comp, o.stamp, o.stampCfg, 70) : '';
+                return `<div class="cf-page imp-sheet" data-imp="statement" style="width:210mm;height:297mm;overflow:hidden;box-sizing:border-box;position:relative;padding:${padTop}mm 12mm ${padBot}mm;background:#fff;color:#111;direction:rtl;font-family:${S.ff};page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact">${bgImg}<div class="imp-fit" style="transform-origin:top right;position:relative;z-index:1">${textPage}<div style="zoom:${S.scale}">${head}${band}${textFlow}${table}${words}${sign}${stamp}</div></div>${free}</div>`;
+            });
+        }
+        window.impStatementPagesForTest = impStatementPages;
+        window.impStatementPreviewHtml = function (ok) { const pages = impStatementPages(ok); return { html: pages[pages.length - 1], n: pages.length }; };
         window.impPrintStatement = function () {
             if (!IMP) return; const ok = impRows().filter(r => r.amountOk); if (!ok.length) return window.showToast('لا توجد صفوف بمبلغ صالح', 'warning');
-            const { comp, ACC, DK, INK, TINT, B, S } = impStyle(), o = IMP.opts, E = escapeHtml, PER = 22, pagesN = Math.ceil(ok.length / PER), pages = [];
-            const hasG = ok.some(r => r.gross !== null), hasM = ok.some(r => r.month), hasIban = ok.some(r => r.iban), hasMeth = new Set(ok.map(r => r.method)).size > 1;
-            const cols = [['م', r => r.n, 'width:28px;text-align:center'], ['الاسم', r => E(r.name), 'font-weight:800'], ['الهوية / الجواز', r => `<bdi dir="ltr">${E(r.id)}</bdi>`, 'text-align:center'], ...(hasG ? [['المرتب', r => r.gross !== null ? `<bdi dir="ltr">${impMoney(r.gross)}</bdi>` : '', 'text-align:left'], ['الخصم', r => r.deduction ? `<bdi dir="ltr">${impMoney(r.deduction)}</bdi>` : '—', 'text-align:left']] : []), ['الصافي', r => `<bdi dir="ltr">${impMoney(r.amount)}</bdi>`, 'text-align:left;font-weight:900'], ...(hasM ? [['الشهر', r => E(r.month), 'text-align:center']] : []), ...(hasIban ? [['الآيبان', r => `<bdi dir="ltr">${E(r.iban)}</bdi>`, '']] : []), ...(hasMeth ? [['الطريقة', r => E(r.method), 'text-align:center']] : []), ['التوقيع', () => '', 'width:70px']];
-            const sum = k => ok.reduce((s, r) => s + (r[k] || 0), 0), total = sum('amount'), lab = cols.findIndex(c => c[0] === 'الصافي');
-            for (let p = 0; p < pagesN; p++) { const chunk = ok.slice(p * PER, (p + 1) * PER), last = p === pagesN - 1;
-                pages.push(`<div class="cf-page" data-imp="statement" style="width:210mm;min-height:297mm;box-sizing:border-box;position:relative;padding:12mm;background:#fff;color:#111;direction:rtl;font-family:${S.ff};page-break-after:always;-webkit-print-color-adjust:exact;print-color-adjust:exact"><div style="zoom:${S.scale}"><div style="border-bottom:3px solid ${ACC};padding-bottom:6px;margin-bottom:8px">${o.logo ? docHeaderHtml(comp, { maxH: 44, maxW: 140, fs: 10 }) : docHeaderHtml({ ...comp, logoBase64: '' }, { fs: 10 })}</div>
-                    <table style="width:100%;border-collapse:collapse;margin-bottom:8px"><tr><td style="${S.band};padding:8px 10px;font-size:15px;font-weight:900">كشف صرف مستحقات${hasM && new Set(ok.map(r => r.month)).size === 1 ? ' — ' + E(ok[0].month) : ''}</td><td style="${S.band};padding:8px 10px;font-size:10px;font-weight:700;text-align:left">${E(impDateTxt(o.date))} · صفحة ${p + 1} من ${pagesN}</td></tr></table>
-                    <table style="width:100%;border-collapse:collapse;font-size:10.5px"><thead><tr>${cols.map(c => `<th style="${S.cb};${S.lab};padding:6px 5px;font-weight:900">${c[0]}</th>`).join('')}</tr></thead><tbody>${chunk.map(r => `<tr style="height:26px">${cols.map(c => `<td style="${S.cb};padding:4px 6px;${c[2]}">${c[1](r)}</td>`).join('')}</tr>`).join('')}${last ? `<tr>${cols.map((c, i) => i === 0 ? `<td colspan="${cols.findIndex(x => x[0] === (hasG ? 'المرتب' : 'الصافي'))}" style="${S.cb};background:${S.labBg};padding:7px;font-weight:900">الإجمالي (${ok.length} مستفيد)</td>` : (i < (hasG ? cols.findIndex(x => x[0] === 'المرتب') : lab) ? '' : `<td style="${S.cb};background:${S.labBg};padding:7px;text-align:left;font-weight:900">${c[0] === 'المرتب' ? `<bdi dir="ltr">${impMoney(sum('gross'))}</bdi>` : c[0] === 'الخصم' ? `<bdi dir="ltr">${impMoney(sum('deduction'))}</bdi>` : c[0] === 'الصافي' ? `<bdi dir="ltr">${impMoney(total)}</bdi>` : ''}</td>`)).join('')}</tr>` : ''}</tbody></table>
-                    ${last && o.words ? `<p style="font-size:11px;font-weight:800;margin-top:8px">${E(tafqeet(total))}</p>` : ''}${last ? impSigRow({ name: '' }, comp, DK, B, 44, 0, o.sigSize, 'stmt', { dy: o.sigDy, dx: o.sigDx }).replace('المستلم', 'أعدّه') : ''}${last ? impStampsHtml(comp, 70, o.stampCfg) : ''}</div>${last ? impFreeStampHtml(comp, o.stamp, o.stampCfg, 70) : ''}</div>`); }
-            impOpenPrint(pages, 'كشف الصرف'); window.showToast(`تم تجهيز كشف صرف لـ ${ok.length} مستفيد`);
+            const pages = impStatementPages(ok); impOpenPrint(pages, 'كشف الصرف'); window.showToast(`تم تجهيز كشف صرف لـ ${ok.length} مستفيد (${pages.length} صفحة)`);
         };
         // ---------- تصدير Excel بدوال حيّة (الإجمالي = المرتب − الخصم) ----------
         window.impExportExcel = function () {
@@ -21146,11 +21167,11 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   window.hrImpPreviewHtml = function () {
     if (!IMP) return '';
     const o = IMP.opts, ok = impRows().filter(r => r.amountOk), ref = i => (ok[i] && ok[i].ref) ? ok[i].ref : impRefBase() + '-' + String(i + 1).padStart(4, '0');
-    if (o.layout === 'custom') return '<p class="imp-note">النموذج المخصص يُعاين من زر الطباعة.</p>';
+    if (o.layout === 'custom' && o.target !== 'stmt') return '<p class="imp-note">النموذج المخصص يُعاين من زر الطباعة.</p>';
     if (!ok.length) return '<p class="imp-note">اختر ملفاً بصفوف صالحة لتظهر المعاينة.</p>';
-    let html = ''; try { html = impVoucherHtml(ok[0], ref(0)); } catch (_) { return ''; }
+    let html = '', note = ''; try { if (o.target === 'stmt' && !IMP.designMode) { const sp = window.impStatementPreviewHtml(ok); html = sp.html; note = `<p class="imp-note" id="imp-stmt-note" style="margin-top:6px;max-width:${Math.round(793.7 * previewScale())}px">معاينة آخر صفحة من الكشف (${sp.n} ${sp.n === 1 ? 'صفحة' : 'صفحات'}، ${ok.length} مستفيد).</p>`; } else html = impVoucherHtml(ok[0], ref(0)); } catch (_) { return ''; }
     const S = previewScale();
-    return `<div id="imp-preview-box" aria-label="معاينة السند" style="direction:ltr;width:${Math.round(793.7 * S)}px;height:${Math.round(1122.5 * S)}px;overflow:hidden;position:relative;background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.25);border-radius:4px"><div style="width:210mm;height:297mm;transform:scale(${S});transform-origin:top left;position:absolute;top:0;left:0;pointer-events:none">${html}</div></div>`;
+    return `<div id="imp-preview-box" aria-label="معاينة السند" style="direction:ltr;width:${Math.round(793.7 * S)}px;height:${Math.round(1122.5 * S)}px;overflow:hidden;position:relative;background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.25);border-radius:4px"><div style="width:210mm;height:297mm;transform:scale(${S});transform-origin:top left;position:absolute;top:0;left:0;pointer-events:none">${html}</div></div>${note}`;
   };
   let saveTimer = null, pendingRun = null;
   function fitPreview() {
@@ -21165,11 +21186,11 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   function persist() {
     const sv = $('imp-top-save'); if (sv && !sv.checked) return; if (!IMP) return;
     // لقطة لحظة التعديل (لا لحظة الحفظ): لو أُغلقت النافذة قبل انتهاء المؤقّت يبقى المحفوظ سليماً
-    const o = IMP.opts, snapState = JSON.parse(JSON.stringify({ top: o.top === undefined ? null : o.top, style: o.style || {}, design: o.design || {}, text: o.text || {}, sigSize: o.sigSize || {}, sigDy: o.sigDy || {}, sigDx: o.sigDx || {}, stamp: o.stampCfg || {}, addYear: o.addYear, year: o.year || '', modelId: o.modelId || '' }));
+    const o = IMP.opts, snapState = JSON.parse(JSON.stringify({ top: o.top === undefined ? null : o.top, style: o.style || {}, design: o.design || {}, text: o.text || {}, sigSize: o.sigSize || {}, sigDy: o.sigDy || {}, sigDx: o.sigDx || {}, stmt: o.stmt || {}, stamp: o.stampCfg || {}, addYear: o.addYear, year: o.year || '', modelId: o.modelId || '' }));
     clearTimeout(saveTimer); pendingRun = async () => { try {
       const s = JSON.parse(JSON.stringify(policySettings || {})), iv = { ...(s.impVoucher || {}) }, z = snapState;
       if (z.top !== null && z.top !== undefined) iv.top = z.top; else delete iv.top;
-      ['style', 'design', 'text', 'sigSize', 'sigDy', 'sigDx', 'stamp'].forEach(k => { if (Object.keys(z[k]).length) iv[k] = z[k]; else delete iv[k]; });
+      ['style', 'design', 'text', 'sigSize', 'sigDy', 'sigDx', 'stmt', 'stamp'].forEach(k => { if (Object.keys(z[k]).length) iv[k] = z[k]; else delete iv[k]; });
       if (z.addYear === false) iv.addYear = false; else delete iv.addYear;
       if (z.year) iv.year = z.year; else delete iv.year;
       if (z.modelId) iv.modelId = z.modelId; else delete iv.modelId;
@@ -21209,7 +21230,7 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   };
   window.hrImpPosHtml = function () {
     const o = IMP.opts, full = o.layout === 'full', lh = impLetterBg();
-    return card('imp-pos-box', 'fa-arrows-up-down', 'موضع الجدول من أعلى الورقة', 'يُصلح تداخل الشعار أو الترويسة مع الجدول', `
+    return card('imp-pos-box', 'fa-arrows-up-down', 'موضع الجدول من أعلى الورقة', 'يُصلح تداخل الشعار أو الترويسة مع الجدول، ويسري على سند الصرف وكشف الصرف', `
       <div class="imp-seg" style="align-items:center"><button type="button" class="imp-btn" onclick="window.impTopStep(-3)" ${full ? '' : 'disabled'} aria-label="رفع الجدول 3 مليمتر"><i class="fas fa-arrow-up" aria-hidden="true"></i>أعلى</button>
         <label class="imp-slide" style="flex:1.2;justify-content:center"><input id="imp-top" type="number" min="0" max="120" step="0.5" value="${effTop()}" ${full ? '' : 'disabled'} onchange="window.impSetTop(this.value)" aria-label="بداية الجدول من أعلى الورقة بالمليمتر" class="imp-in" style="width:84px;text-align:center;font-weight:900"> مم</label>
         <button type="button" class="imp-btn" onclick="window.impTopStep(3)" ${full ? '' : 'disabled'} aria-label="خفض الجدول 3 مليمتر"><i class="fas fa-arrow-down" aria-hidden="true"></i>أسفل</button></div>
@@ -21282,7 +21303,7 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     bindSort('imp-blk-list', ks => { const nb = mergeOrder(curDesign().blocks, ks); clearPagePos(nb); putDesign('blocks', nb.join() === DEF_BLOCKS ? [] : nb); afterDesign(); });
   };
   function paintDesign() { const a = $('imp-design-box'); if (a) a.outerHTML = window.hrImpDesignHtml(); const b = $('imp-blocks-box'); if (b) b.outerHTML = window.hrImpBlocksHtml(); window.hrImpBindDesign(); }
-  function afterDesign() { refresh(); paintDesign(); repaintText(); repaintSig(); repaintStamp(); persist(); refreshModels(); }
+  function afterDesign() { refresh(); paintDesign(); repaintText(); repaintSig(); repaintStamp(); repaintStmt(); persist(); refreshModels(); }
   window.impDesignSet = function (k, v, live) {
     if (!IMP) return; putDesign(k, v);
     if (k === 'radius') { const o = $('imp-radius-out'); if (o) o.textContent = v ? v + ' px' : 'حادة'; }
@@ -21302,7 +21323,7 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
       <label class="imp-slide"><span class="nm">السنة</span><input id="imp-year" type="number" min="2000" max="2100" placeholder="تلقائي" value="${E(o.year || '')}" ${o.addYear === false ? 'disabled' : ''} onchange="window.impYearSet('year', this.value)" aria-label="السنة" class="imp-in" style="width:110px;text-align:center;font-weight:900"><span class="imp-note">فارغة = من تاريخ الصرف</span></label>`);
   };
   // ---------- النص الإضافي ----------
-  const TOKENS = ['الاسم', 'المبلغ', 'البيان', 'التاريخ', 'الشهر', 'الهوية', 'المرجع'];
+  const TOKENS = ['الاسم', 'المبلغ', 'البيان', 'التاريخ', 'الشهر', 'الهوية', 'المرجع', 'العدد'];
   function textPosNow() { const T = impText(); if (T.pos === 'page') return 'page'; const b = curDesign().blocks, i = b.indexOf('text'); if (b[i - 1] === 'head') return 'top'; if (i === b.length - 1) return 'bottom'; if (b[i - 1] === 'table') return 'mid'; return ''; }
   window.hrImpTextHtml = function () {
     const T = impText(), pos = textPosNow(), off = curDesign().hideBlocks.includes('text');
@@ -21327,6 +21348,29 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     if (p === 'page') t.pos = 'page'; else { delete t.pos; const b = curDesign().blocks.filter(k => k !== 'text'), i = p === 'top' ? b.indexOf('head') + 1 : p === 'bottom' ? b.length : b.indexOf('table') + 1, nb = [...b.slice(0, i), 'text', ...b.slice(i)]; putDesign('blocks', nb.join() === DEF_BLOCKS ? [] : nb); }
     IMP.opts.text = t; afterDesign();
   };
+  // ---------- المستند المعدَّل: سند الصرف أو كشف الصرف (التصميم المشترك يسري على الاثنين، وللكشف أعمدته وعناصره) ----------
+  const isStmt = () => !!(IMP && IMP.opts.target === 'stmt' && !IMP.designMode);
+  window.hrImpTargetHtml = function () {
+    const st = isStmt(), b = (k, ic, l, on) => `<button type="button" class="imp-btn${on ? ' on' : ''}" aria-pressed="${on}" onclick="window.impTarget('${k}')"><i class="fas ${ic}" aria-hidden="true"></i>${l}</button>`;
+    return `<div id="imp-target-box"><div class="imp-seg" role="group" aria-label="المستند المعروض في المعاينة والمعدَّل">${b('voucher', 'fa-file-invoice', 'سند الصرف', !st)}${b('stmt', 'fa-table-list', 'كشف الصرف', st)}</div><p class="imp-note" style="margin:6px 2px 10px">${st ? 'المعاينة: آخر صفحة من الكشف. اللون والخط والوضوح والحواف والترويسة والنص والتواقيع والختم والورق الرسمي وموضع البداية مشتركة مع سند الصرف، وأعمدة الكشف من تبويب «الجدول والحقول».' : 'التصميم المشترك يسري أيضاً على كشف الصرف؛ اختر «كشف الصرف» لمعاينته وتعديل أعمدته.'}</p></div>`;
+  };
+  window.impTarget = function (k) { if (!IMP || IMP.designMode) return; IMP.opts.target = k === 'stmt' ? 'stmt' : 'voucher'; window.impRender(); };
+  window.hrImpStmtColsHtml = function () {
+    const ok = impRows().filter(r => r.amountOk), cols = ok.length ? impStmtColumnsForTest(ok) : [], hidden = new Set(((IMP.opts.stmt && IMP.opts.stmt.hidden) || []).filter(k => typeof k === 'string'));
+    const rows = cols.map(c => `<label class="imp-row" style="cursor:${c[4] ? 'default' : 'pointer'}"><input type="checkbox" ${hidden.has(c[0]) && !c[4] ? '' : 'checked'} ${c[4] ? 'disabled' : ''} onchange="window.impStmtCol('${c[0]}', this.checked)" aria-label="عمود ${E(c[1])} في الكشف" style="width:18px;height:18px;accent-color:#0f172a"><span class="nm">${E(c[1])}${c[4] ? ' (أساسي)' : ''}</span></label>`).join('');
+    return card('imp-stmt-cols', 'fa-table-columns', 'أعمدة كشف الصرف', 'اختر الأعمدة التي تظهر في جدول الكشف (الاسم والصافي أساسيان)', `<div class="imp-list">${rows || '<p class="imp-note">اختر ملفاً بصفوف صالحة لتظهر الأعمدة.</p>'}</div><p class="imp-note">المرتب والخصم والشهر والآيبان والطريقة تظهر عند وجودها في الملف. تُحفظ الأعمدة المخفية مع التصميم.</p><button type="button" class="imp-btn" onclick="window.impStmtColsReset()">إظهار كل الأعمدة</button>`);
+  };
+  window.hrImpStmtBlocksHtml = function () {
+    const D = curDesign(), L = [['head', 'الترويسة (الشعار وبيانات المنشأة)'], ['band', 'الشريط الملوّن (عنوان الكشف)'], ['text', 'النص الإضافي'], ['sign', 'التواقيع'], ['stamp', 'الختم']];
+    const rows = L.map(([k, l]) => `<label class="imp-row" style="cursor:pointer"><input type="checkbox" ${D.hideBlocks.includes(k) ? '' : 'checked'} onchange="window.impBlkHide('${k}')" aria-label="${l} في الكشف" style="width:18px;height:18px;accent-color:#0f172a"><span class="nm">${l}</span></label>`).join('') + `<label class="imp-row" style="cursor:pointer"><input type="checkbox" ${IMP.opts.words ? 'checked' : ''} onchange="window.impOpt('words', this.checked)" aria-label="المبلغ بالحروف في الكشف" style="width:18px;height:18px;accent-color:#0f172a"><span class="nm">المبلغ بالحروف</span></label>`;
+    return card('imp-stmt-blocks', 'fa-layer-group', 'عناصر كشف الصرف', 'أظهر أو أخفِ عناصر الكشف (الإخفاء يسري على سند الصرف أيضاً لأن التصميم مشترك)', `<div class="imp-list">${rows}</div>`);
+  };
+  function repaintStmt() { const a = $('imp-stmt-cols'); if (a) a.outerHTML = window.hrImpStmtColsHtml(); const b = $('imp-stmt-blocks'); if (b) b.outerHTML = window.hrImpStmtBlocksHtml(); }
+  window.impStmtCol = function (key, on) {
+    if (!IMP || !/^[a-z]{1,12}$/.test(String(key))) return; const h = new Set(((IMP.opts.stmt && IMP.opts.stmt.hidden) || []).filter(k => typeof k === 'string'));
+    if (on) h.delete(key); else h.add(key); IMP.opts.stmt = h.size ? { hidden: [...h] } : {}; refresh(); repaintStmt(); persist(); refreshModels();
+  };
+  window.impStmtColsReset = function () { if (!IMP) return; IMP.opts.stmt = {}; refresh(); repaintStmt(); persist(); refreshModels(); };
   // ---------- الموقّعون: من يظهر في (كشف الصرف / سند الصرف / النماذج) + إضافة موقّعين عند الحاجة ----------
   const SURF = [['stmt', 'الكشف'], ['voucher', 'سند الصرف'], ['forms', 'النماذج']], SURF_FULL = { stmt: 'كشف الصرف', voucher: 'سند الصرف', forms: 'النماذج' };
   const sigCompany = () => getActiveCompany() || {};
@@ -21448,9 +21492,9 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   const MAX_MODELS = 20;
   const getModels = () => { const m = policySettings && policySettings.impVoucher && policySettings.impVoucher.models; return Array.isArray(m) ? m.filter(x => x && typeof x.id === 'string' && typeof x.name === 'string' && x.data && typeof x.data === 'object' && !Array.isArray(x.data)).slice(0, MAX_MODELS) : []; };
   const plain = v => (v && typeof v === 'object' && !Array.isArray(v)) ? JSON.parse(JSON.stringify(v)) : {};
-  function snap() { const o = IMP.opts; return JSON.parse(JSON.stringify({ top: o.top === undefined ? null : o.top, style: o.style || {}, design: o.design || {}, text: o.text || {}, sigSize: o.sigSize || {}, sigDy: o.sigDy || {}, sigDx: o.sigDx || {}, stamp: o.stampCfg || {}, flags: { logo: !!o.logo, stamp: !!o.stamp, sign: !!o.sign, sigimg: !!o.sigimg, words: !!o.words } })); }
+  function snap() { const o = IMP.opts; return JSON.parse(JSON.stringify({ top: o.top === undefined ? null : o.top, style: o.style || {}, design: o.design || {}, text: o.text || {}, sigSize: o.sigSize || {}, sigDy: o.sigDy || {}, sigDx: o.sigDx || {}, stmt: o.stmt || {}, stamp: o.stampCfg || {}, flags: { logo: !!o.logo, stamp: !!o.stamp, sign: !!o.sign, sigimg: !!o.sigimg, words: !!o.words } })); }
   const stable = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)) ? Object.fromEntries(Object.keys(x).sort().map(y => [y, x[y]])) : x);
-  function applySnap(d) { const o = IMP.opts; o.top = (d.top !== null && d.top !== undefined && Number.isFinite(Number(d.top))) ? clampTop(d.top) : null; o.style = plain(d.style); o.design = plain(d.design); o.text = plain(d.text); o.sigSize = plain(d.sigSize); o.sigDy = plain(d.sigDy); o.sigDx = plain(d.sigDx); o.stampCfg = plain(d.stamp); const f = (d.flags && typeof d.flags === 'object') ? d.flags : {}; ['logo', 'stamp', 'sign', 'sigimg', 'words'].forEach(k => { if (typeof f[k] === 'boolean') o[k] = f[k]; }); }
+  function applySnap(d) { const o = IMP.opts; o.top = (d.top !== null && d.top !== undefined && Number.isFinite(Number(d.top))) ? clampTop(d.top) : null; o.style = plain(d.style); o.design = plain(d.design); o.text = plain(d.text); o.sigSize = plain(d.sigSize); o.sigDy = plain(d.sigDy); o.sigDx = plain(d.sigDx); o.stmt = plain(d.stmt); o.stampCfg = plain(d.stamp); const f = (d.flags && typeof d.flags === 'object') ? d.flags : {}; ['logo', 'stamp', 'sign', 'sigimg', 'words'].forEach(k => { if (typeof f[k] === 'boolean') o[k] = f[k]; }); }
   async function writeIV(mut) { try { const s = JSON.parse(JSON.stringify(policySettings || {})), iv = { ...(s.impVoucher || {}) }; mut(iv); s.impVoucher = iv; applyPolicySettings(s); await persistPolicySettings(getActiveCompany(), s); return true; } catch (_) { toast('تعذر حفظ النماذج للمنشأة', 'warning'); return false; } }
   window.hrImpModelsHtml = function () {
     const ms = getModels(), cur = IMP.opts.modelId || '', sel = ms.find(m => m.id === cur), dirty = !!sel && stable(snap()) !== stable(sel.data);
@@ -21461,7 +21505,7 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
       <div class="imp-chips" style="flex-wrap:nowrap"><input id="imp-model-name" maxlength="40" placeholder="اسم النموذج الجديد (مثال: سند الرواتب الشهري)" aria-label="اسم النموذج الجديد" class="imp-in" style="flex:1;min-width:0"><button type="button" onclick="window.impModelSaveAs()" class="imp-btn pri">حفظ كنموذج جديد</button></div>`);
   };
   function refreshModels() { const b = $('imp-models-box'); if (!b || !IMP) return; const inp = $('imp-model-name'), v = inp ? inp.value : '', focus = document.activeElement === inp; b.outerHTML = window.hrImpModelsHtml(); const n = $('imp-model-name'); if (n) { n.value = v; if (focus) n.focus(); } }
-  window.hrImpRefresh = function () { refresh(); refreshModels(); repaintSig(); repaintStamp(); };
+  window.hrImpRefresh = function () { refresh(); refreshModels(); repaintSig(); repaintStamp(); repaintStmt(); };
   window.impModelSelect = function (id) {
     if (!IMP) return; if (!id) { IMP.opts.modelId = ''; persist(); return refreshModels(); }
     const m = getModels().find(x => x.id === id); if (!m) return; applySnap(m.data); IMP.opts.modelId = id; window.impRender(); persist(); toast(`طُبّق النموذج «${m.name}»`);
@@ -21531,10 +21575,11 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     opts = opts || {}; const H = studioH(opts); window.__studioH = H; const t = curTab, pane = (k, inner) => `<div id="imp-pane-${k}" class="imp-pane" role="tabpanel" aria-labelledby="imp-tab-${k}" data-pane="${k}" ${t === k ? '' : 'hidden'}>${inner}</div>`;
     return `<div id="imp-top-box" class="imp-studio" style="--studio-h:${opts.designer ? '100%' : H + 'px'}">
       <div id="imp-controls" class="imp-studio-ctl">
+        ${opts.designer ? '' : window.hrImpTargetHtml()}
         <div class="imp-tabs" role="tablist" aria-label="أقسام تحرير السند" onkeydown="window.impTabKey(event)">${TABS.map(([k, ic, l]) => `<button type="button" role="tab" id="imp-tab-${k}" class="imp-tab${t === k ? ' on' : ''}" data-tab="${k}" aria-selected="${t === k}" aria-controls="imp-pane-${k}" tabindex="${t === k ? 0 : -1}" onclick="window.impStudioTab('${k}')"><i class="fas ${ic}" aria-hidden="true"></i><span>${l}</span></button>`).join('')}</div>
         ${pane('t1', window.hrImpModelsHtml() + window.hrImpPosHtml() + window.hrImpPaperHtml() + window.hrImpYearHtml())}
-        ${pane('t2', window.hrImpDesignHtml())}
-        ${pane('t3', window.hrImpBlocksHtml() + window.hrImpTextHtml())}
+        ${pane('t2', isStmt() ? window.hrImpStmtColsHtml() : window.hrImpDesignHtml())}
+        ${pane('t3', (isStmt() ? window.hrImpStmtBlocksHtml() : window.hrImpBlocksHtml()) + window.hrImpTextHtml())}
         ${pane('t4', window.hrImpSignersHtml() + window.hrImpSigHtml() + window.hrImpStampHtml())}
         ${pane('t5', window.hrImpStyleHtml())}
         ${opts.designer ? '' : '<div class="imp-savebar"><label class="imp-slide"><input id="imp-top-save" type="checkbox" checked style="width:16px;height:16px"> احفظ الموضع والتنسيق للمنشأة (يبقيان في المرات القادمة)</label></div>'}
