@@ -1343,6 +1343,7 @@ if(typeof module!=='undefined') module.exports=HRIntegrity;
 .imp-sg-add{display:flex;gap:6px;flex-wrap:wrap}.imp-sg-add .imp-in{flex:1;min-width:9rem;width:auto}
 label.imp-btn input[type=file]{display:none}
 .imp-sg-mv{display:flex;gap:4px;justify-content:center}
+.imp-sg-img{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:10.5px;font-weight:800;color:#475569;margin-top:4px}.imp-sg-img label{display:inline-flex;gap:4px;align-items:center;cursor:pointer}.imp-sg-img input{width:16px;height:16px;accent-color:#0f172a}.imp-sg-img small,.imp-sg-noimg{font-weight:700;color:#64748b;font-size:10px;line-height:1.5;margin-top:2px}
 .imp-sg-set{border:1px solid #e2e8f0;border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:#fff}.imp-sg-set-t{font-size:11.5px;font-weight:900;color:#0f172a}.imp-sg-set .imp-slide .nm{width:72px}
 #imp-preview-box [data-imp-stamps]{pointer-events:auto!important;cursor:grab;outline:2px dashed #2563eb;outline-offset:3px;touch-action:none}#imp-preview-box [data-imp-stamps]:active{cursor:grabbing}
 </style>
@@ -10262,10 +10263,11 @@ window.verifyBackupFile=async function(input) {
         // قواعد ظهور كل موقّع في كل مستند: policySettings.signerRules = { <مفتاح>: { stmt: false, voucher: false, forms: false } }؛ الغائب = يظهر.
         // الأسطح: stmt = كشف الصرف (وكشف المستحقات)، voucher = سند الصرف، forms = النماذج (مستندات المستحقات والعهدة والعروض والعقود…).
         // المفاتيح: recv (المستلم/المُعِدّ)، hr، mgr، ثم معرّف كل موقّع إضافي.
-        const SIGNER_SURFACES = ['stmt', 'voucher', 'forms'];
+        const SIGNER_SURFACES = ['stmt', 'voucher', 'forms'], SIGNER_IMG_SURFACES = ['img_stmt', 'img_voucher', 'img_forms'];   // img_* = إظهار صورة التوقيع (إلغاؤه يترك المكان فارغاً للتوقيع اليدوي)
         const signerRules = () => (policySettings && policySettings.signerRules && typeof policySettings.signerRules === 'object') ? policySettings.signerRules : {};
         const signerOn = (key, surface) => { if (!surface) return true; const r = signerRules()[key]; return !r || r[surface] !== false; };
         const signerRecvOn = surface => signerOn('recv', surface);
+        const signerImgOn = (key, surface) => { const r = signerRules()[key]; return !r || r['img_' + surface] !== false; };
         function docSignersRaw(comp) {
             const base = [{ key: 'hr', label: comp.sign1Title || 'منسق الموارد البشرية', name: comp.sign1Name, img: comp.hrSignBase64 },
                           { key: 'mgr', label: comp.sign2Title || 'المشرف العام', name: comp.sign2Name, img: comp.mgrSignBase64 }];
@@ -10279,7 +10281,7 @@ window.verifyBackupFile=async function(input) {
             const seen = new Set(), out = []; [...st, ...def].forEach(k => { if (def.includes(k) && !seen.has(k)) { seen.add(k); out.push(k); } }); return out;
         }
         function signerSortBy(arr, keyFn) { const o = signerEffOrder(getActiveCompany() || {}), pos = k => { const i = o.indexOf(k); return i < 0 ? 999 : i; }; return arr.map((x, i) => [x, i]).sort((a, b) => pos(keyFn(a[0])) - pos(keyFn(b[0])) || a[1] - b[1]).map(p => p[0]); }
-        function docSigners(comp, surface) { const raw = docSignersRaw(comp), list = surface ? raw.filter(x => signerOn(x.key, surface)) : raw; return signerSortBy(list, x => x.key); }
+        function docSigners(comp, surface) { const raw = docSignersRaw(comp), list = surface ? raw.filter(x => signerOn(x.key, surface)).map(x => signerImgOn(x.key, surface) ? x : { ...x, img: '', imgHidden: true }) : raw; return signerSortBy(list, x => x.key); }
         const signerOrder = comp => signerDefaultKeys(comp);   // ترتيب ثابت يُستعمل لترجمة الأرقام القديمة لمفاتيح الأحجام
         // إزاحة توقيع داخل حقله (من إعدادات التصميم المحفوظة للمنشأة): sigDx أفقياً وsigDy رأسياً (موجب = رفع) بالبكسل
         function hrSigTransform(key) { const iv = (policySettings && policySettings.impVoucher) || {}, g = o => { const v = Number(o && o[key]); return Number.isFinite(v) ? Math.max(-60, Math.min(60, v)) : 0; }; return `translate(${g(iv.sigDx)}px,${-g(iv.sigDy)}px)`; }
@@ -10291,10 +10293,10 @@ window.verifyBackupFile=async function(input) {
             applyPolicySettings(s); clearTimeout(signersSaveT); signersSaveT = setTimeout(() => persistPolicySettings(getActiveCompany(), s), 500);
             try { if (window.hrImpSignersChanged) window.hrImpSignersChanged(); } catch (_) {} return true;
         };
-        window.hrSignerRecvOn = signerRecvOn; window.hrSignerOn = signerOn; window.hrSignerRules = signerRules; window.hrSignerOrder = signerOrder;
+        window.hrSignerRecvOn = signerRecvOn; window.hrSignerImgOn = signerImgOn; window.hrSignerOn = signerOn; window.hrSignerRules = signerRules; window.hrSignerOrder = signerOrder;
         window.docSignersRaw = docSignersRaw;
         window.hrSetSignerRule = function (key, surface, on) {
-            if (!/^[A-Za-z0-9_-]{1,40}$/.test(String(key)) || !SIGNER_SURFACES.includes(surface)) return false;
+            if (!/^[A-Za-z0-9_-]{1,40}$/.test(String(key)) || ![...SIGNER_SURFACES, ...SIGNER_IMG_SURFACES].includes(surface)) return false;
             const s = JSON.parse(JSON.stringify(policySettings || {})), rules = { ...(s.signerRules || {}) }, r = { ...(rules[key] || {}) };
             if (on) delete r[surface]; else r[surface] = false;
             if (Object.keys(r).length) rules[key] = r; else delete rules[key];
@@ -21378,14 +21380,16 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   window.hrImpSignersHtml = function () {
     const rows = signerRows(), counts = SURF.map(([k, l]) => [k, l, rows.filter(r => window.hrSignerOn(r.key, k)).length]), over = counts.filter(c => c[2] > 6 && c[0] !== 'stmt');
     const head = `<div class="imp-sg-row imp-sg-head"><span>الموقّع</span>${SURF.map(([k, l]) => `<span>${l}</span>`).join('')}<span>الترتيب</span></div>`;
+    const IMG_SURF = [['img_stmt', 'الكشف'], ['img_voucher', 'السند'], ['img_forms', 'النماذج']];
     const body = rows.map((r, ri) => {
+      const who = E(r.label || r.sub || 'الموقّع'), imgLine = r.kind === 'recv' ? '<small class="imp-sg-noimg">المكان جاهز للتوقيع اليدوي</small>' : (r.img ? `<div class="imp-sg-img" role="group" aria-label="إظهار صورة توقيع ${who}"><span>صورة التوقيع:</span>${IMG_SURF.map(([k, l]) => `<label><input type="checkbox" ${window.hrSignerImgOn(r.key, k.slice(4)) ? 'checked' : ''} onchange="window.hrSetSignerRule('${E(r.key)}','${k}',this.checked)" aria-label="صورة توقيع ${who} في ${SURF_FULL[k.slice(4)]}">${l}</label>`).join('')}<small>أزل التأشير لترك المكان فارغاً للتوقيع اليدوي</small></div>` : '<small class="imp-sg-noimg">بلا صورة توقيع — المكان جاهز للتوقيع اليدوي</small>');
       const nameCell = r.kind === 'extra'
         ? `<div class="imp-sg-edit"><input class="imp-in" value="${E(r.label)}" maxlength="60" placeholder="الصفة / المنصب" aria-label="صفة الموقّع" onchange="window.updateSignerItem(${r.ei}, 'title', this.value)"><input class="imp-in" list="emp-names-dl" value="${E(r.sub)}" maxlength="80" placeholder="الاسم" aria-label="اسم الموقّع" onchange="window.updateSignerItem(${r.ei}, 'name', this.value)">
-            <span class="imp-sg-tools">${r.img ? `<img src="${E(impSafeImg(r.img))}" alt="" class="imp-sg-thumb">` : ''}<label class="imp-btn sm" title="رفع صورة التوقيع (PNG شفاف)"><i class="fas fa-image" aria-hidden="true"></i>${r.img ? 'استبدال' : 'رفع التوقيع'}<input type="file" accept="image/png,image/jpeg,image/webp" hidden onchange="window.uploadSignerImage(${r.ei}, this)"></label><button type="button" class="imp-btn sm danger" onclick="window.removeSignerItem(${r.ei})" aria-label="حذف الموقّع ${E(r.label || r.sub)}"><i class="fas fa-trash-can" aria-hidden="true"></i></button></span></div>`
-        : `<div class="imp-sg-name"><b>${E(r.label || '—')}</b>${r.sub ? `<small>${E(r.sub)}</small>` : ''}</div>`;
+            <span class="imp-sg-tools">${r.img ? `<img src="${E(impSafeImg(r.img))}" alt="" class="imp-sg-thumb">` : ''}<label class="imp-btn sm" title="رفع صورة التوقيع (PNG شفاف)"><i class="fas fa-image" aria-hidden="true"></i>${r.img ? 'استبدال' : 'رفع التوقيع'}<input type="file" accept="image/png,image/jpeg,image/webp" hidden onchange="window.uploadSignerImage(${r.ei}, this)"></label><button type="button" class="imp-btn sm danger" onclick="window.removeSignerItem(${r.ei})" aria-label="حذف الموقّع ${E(r.label || r.sub)}"><i class="fas fa-trash-can" aria-hidden="true"></i></button></span>${imgLine}</div>`
+        : `<div class="imp-sg-name"><b>${E(r.label || '—')}</b>${r.sub ? `<small>${E(r.sub)}</small>` : ''}${imgLine}</div>`;
       return `<div class="imp-sg-row" data-sg-key="${E(r.key)}">${nameCell}${SURF.map(([k, l]) => `<label class="imp-sg-chk"><input type="checkbox" ${window.hrSignerOn(r.key, k) ? 'checked' : ''} onchange="window.hrSetSignerRule('${E(r.key)}','${k}',this.checked)" aria-label="${E(r.label || r.sub || 'الموقّع')} — يظهر في ${SURF_FULL[k]}"></label>`).join('')}<span class="imp-sg-mv"><button type="button" class="imp-btn sm" onclick="window.hrMoveSigner('${E(r.key)}', -1)" ${ri === 0 ? 'disabled' : ''} aria-label="تقديم ${E(r.label || r.sub || 'الموقّع')} (أقرب لليمين)"><i class="fas fa-chevron-up" aria-hidden="true"></i></button><button type="button" class="imp-btn sm" onclick="window.hrMoveSigner('${E(r.key)}', 1)" ${ri === rows.length - 1 ? 'disabled' : ''} aria-label="تأخير ${E(r.label || r.sub || 'الموقّع')} (أقرب لليسار)"><i class="fas fa-chevron-down" aria-hidden="true"></i></button></span></div>`;
     }).join('');
-    return card('imp-signers-box', 'fa-users-line', 'الموقّعون', 'حدّد بالتأشير من يظهر في كل مستند، وأضف موقّعين عند الحاجة', `
+    return card('imp-signers-box', 'fa-users-line', 'الموقّعون', 'حدّد بالتأشير من يظهر في كل مستند، وأضف موقّعين عند الحاجة، وأخفِ صورة أي توقيع ليبقى مكانه فارغاً للتوقيع اليدوي', `
       <div class="imp-sg-table" role="group" aria-label="من يظهر في كل مستند">${head}${body}</div>
       <p class="imp-note" id="imp-sg-count" aria-live="polite">الظاهرون: ${counts.map(c => `${c[1]} <b>${c[2]}</b>`).join(' · ')}${over.length ? ` — <span style="color:#b45309;font-weight:800">يُطبع أول 6 موقّعين فقط في ${over.map(c => SURF_FULL[c[0]]).join(' و')}</span>` : ''}</p>
       <div class="imp-sg-add"><input id="imp-sg-new-title" class="imp-in" maxlength="60" placeholder="الصفة (مثال: المدير المالي)" aria-label="صفة الموقّع الجديد"><input id="imp-sg-new-name" class="imp-in" list="emp-names-dl" maxlength="80" placeholder="الاسم (اختر من الموظفين أو اكتب)" aria-label="اسم الموقّع الجديد"><button type="button" class="imp-btn pri" onclick="window.hrImpAddSigner()"><i class="fas fa-plus" aria-hidden="true"></i>إضافة موقّع</button></div>
@@ -21420,11 +21424,11 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   const sliderRow = (id, label, min, max, step, v, pre, txt) => `<label class="imp-slide"><span class="nm">${label}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${v}" oninput="${pre}+this.value, true)" onchange="${pre}+this.value)" aria-label="${E(label)}"><output id="${id}">${txt}</output></label>`;
   window.hrImpSigHtml = function () {
     const o = IMP.opts, comp = sigCompany(), sz = o.sigSize || {}, dyM = o.sigDy || {}, dxM = o.sigDx || {}, order = window.hrSignerOrder(comp), off = !o.sign || curDesign().hideBlocks.includes('sign');
-    const list = window.hrSignerSortBy([...(window.hrSignerRecvOn('voucher') ? [{ key: 'recv', label: 'المستلم (مساحة التوقيع بخط اليد)' }] : []), ...docSigners(comp, 'voucher').map(x => ({ key: x.key, label: x.label || x.name || 'موقّع' }))], x => x.key).slice(0, 6);
+    const list = window.hrSignerSortBy([...(window.hrSignerRecvOn('voucher') ? [{ key: 'recv', label: 'المستلم (مساحة التوقيع بخط اليد)' }] : []), ...docSigners(comp, 'voucher').map(x => ({ key: x.key, label: (x.label || x.name || 'موقّع') + (x.img ? '' : ' (مساحة التوقيع بخط اليد)'), manual: !x.img }))], x => x.key).slice(0, 6);
     const adj = (m, k) => Math.max(-60, Math.min(60, Math.round(Number(m[k]) || 0)));
     const body = list.map(x => {
       const k = E(x.key), v = Math.max(50, Math.min(250, Number(sz[x.key] !== undefined ? sz[x.key] : sz[order.indexOf(x.key)]) || 100)), dy = adj(dyM, x.key), dx = adj(dxM, x.key);
-      return `<div class="imp-sg-set"><b class="imp-sg-set-t">${E(x.label)}</b>${sliderRow('imp-sig-out-' + k, 'الحجم', 50, 250, 10, v, `window.impSigSet('${k}', `, v + '%')}${x.key === 'recv' ? '' : sliderRow('imp-sig-dy-' + k, 'رفع / خفض', -60, 60, 2, dy, `window.impSigAdj('${k}', 'dy', `, fmtAdj(dy)) + sliderRow('imp-sig-dx-' + k, 'يمين / يسار', -60, 60, 2, dx, `window.impSigAdj('${k}', 'dx', `, fmtAdj(dx))}</div>`;
+      return `<div class="imp-sg-set"><b class="imp-sg-set-t">${E(x.label)}</b>${sliderRow('imp-sig-out-' + k, 'الحجم', 50, 250, 10, v, `window.impSigSet('${k}', `, v + '%')}${x.key === 'recv' || x.manual ? '' : sliderRow('imp-sig-dy-' + k, 'رفع / خفض', -60, 60, 2, dy, `window.impSigAdj('${k}', 'dy', `, fmtAdj(dy)) + sliderRow('imp-sig-dx-' + k, 'يمين / يسار', -60, 60, 2, dx, `window.impSigAdj('${k}', 'dx', `, fmtAdj(dx))}</div>`;
     }).join('');
     return card('imp-sig-box', 'fa-signature', 'حجم كل توقيع ومكانه داخل حقله', off ? 'التواقيع مخفية — فعّلها من «ترتيب أقسام السند»' : 'تكبر صورة التوقيع نفسها (لا الخانة)، وارفعها أو اخفضها وحرّكها يميناً ويساراً داخل حقلها', body + '<button type="button" class="imp-btn" onclick="window.impSigReset()">إعادة ضبط أحجام التواقيع ومواضعها</button>', off ? 'imp-dis' : '');
   };
