@@ -22153,12 +22153,14 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   const fmt = d => d ? new Date(d).toLocaleDateString('en-GB') : '';
   async function gate() { try { const r = await supabaseClient.rpc('my_subscription_gate'); return (r && r.data) || {}; } catch (_) { return {}; } }
   function remove() { const o = document.getElementById('hr-lock-overlay'); if (o) o.remove(); document.body.style.overflow = ''; }
-  function show(g, c) {
-    remove();
+  function show(g, c, opt) {
+    opt = opt || {}; remove();
     const canPay = g.pay_enabled && Array.isArray(g.plans) && g.plans.length && (c.role === 'owner' || c.role === 'admin');
-    const title = c.reason === 'manual' ? 'تم إيقاف الدخول إلى المنشأة' : 'انتهى اشتراك المنشأة';
-    const sub = c.reason === 'manual' ? (c.lock_reason ? E(c.lock_reason) : 'تواصل مع إدارة المنصة لإعادة التفعيل.') : ('انتهى الاشتراك بتاريخ ' + E(fmt(c.access_until)) + '. جدّد الاشتراك لمتابعة استخدام المنصة.');
-    const plans = canPay ? g.plans.map(p => `<button type="button" data-plan="${E(p.id)}" style="width:100%;padding:14px;margin-top:8px;border-radius:14px;border:2px solid #0b6b33;background:#fff;font-weight:800;font-size:15px;cursor:pointer;display:flex;justify-content:space-between"><span>${E(p.label)}</span><span dir="ltr">${E(p.price_sar)} SAR</span></button>`).join('')
+    const title = opt.renew ? 'تجديد الاشتراك' : (c.reason === 'manual' ? 'تم إيقاف الدخول إلى المنشأة' : 'انتهى اشتراك المنشأة');
+    const sub = opt.renew ? ('ينتهي اشتراك المنشأة بتاريخ ' + E(fmt(c.access_until)) + '. اختر باقة للتجديد.') : c.reason === 'manual' ? (c.lock_reason ? E(c.lock_reason) : 'تواصل مع إدارة المنصة لإعادة التفعيل.') : ('انتهى الاشتراك بتاريخ ' + E(fmt(c.access_until)) + '. جدّد الاشتراك لمتابعة استخدام المنصة.');
+    const ok = (g.plans || []).filter(p => p && p.label && p.months > 0 && p.price_sar > 0), pm = p => p.price_sar / p.months;
+    const best = ok.length > 1 ? ok.reduce((x, y) => pm(y) < pm(x) ? y : x) : null;
+    const plans = canPay ? ok.map(p => `<button type="button" data-plan="${E(p.id)}" style="display:block;width:100%;text-align:right;padding:12px 14px;margin-top:12px;border-radius:14px;border:2px solid #0b6b33;background:#fff;cursor:pointer;position:relative;font-family:inherit">${best && p === best && p.months > 1 ? '<span style="position:absolute;top:-10px;right:12px;background:#0b6b33;color:#fff;font-size:11px;font-weight:700;border-radius:10px;padding:1px 8px">الأكثر توفيراً</span>' : ''}<span style="display:flex;justify-content:space-between;align-items:baseline;font-weight:900;font-size:15px"><span>${E(p.label)}</span><span dir="ltr">${E(p.price_sar)} SAR</span></span><span style="display:block;color:#667;font-size:12px;margin-top:2px">${E(p.months)} ${p.months === 1 ? 'شهر' : 'أشهر'}${p.months > 1 ? ' — ≈ ' + pm(p).toFixed(1) + ' ر.س/شهر' : ''}</span>${p.desc ? '<span style="display:block;color:#667;font-size:12px;margin-top:2px">' + E(p.desc) + '</span>' : ''}</button>`).join('')
       : `<p style="margin-top:14px;font-weight:700;color:#555;font-size:13px">${g.pay_enabled ? 'السداد متاح لمالك المنشأة أو مديرها فقط.' : 'السداد الإلكتروني غير مفعّل حالياً، تواصل مع إدارة المنصة.'}</p>`;
     const o = document.createElement('div'); o.id = 'hr-lock-overlay';
     o.setAttribute('style', 'position:fixed;inset:0;z-index:2147483000;background:rgba(6,40,20,.96);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto');
@@ -22166,7 +22168,7 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
       <div style="font-size:42px">🔒</div><h2 style="font-size:19px;font-weight:900;margin:8px 0">${title}</h2>
       <p style="font-weight:800;margin:0 0 4px">${E(c.name || '')}</p><p style="font-size:13px;color:#555;margin:0">${sub}</p>${plans}
       <div id="hr-lock-msg" style="min-height:18px;color:#b3261e;font-size:12px;font-weight:700;margin-top:10px"></div>
-      <div style="display:flex;gap:8px;margin-top:8px"><button type="button" id="hr-lock-recheck" style="flex:1;padding:12px;border-radius:12px;border:1px solid #ccd;background:#f4f6f4;font-weight:800;cursor:pointer">تحقق من السداد</button><button type="button" id="hr-lock-out" style="flex:1;padding:12px;border-radius:12px;border:1px solid #ccd;background:#fff;font-weight:800;cursor:pointer">تسجيل الخروج</button></div></div>`;
+      <div style="display:flex;gap:8px;margin-top:8px"><button type="button" id="hr-lock-recheck" style="flex:1;padding:12px;border-radius:12px;border:1px solid #ccd;background:#f4f6f4;font-weight:800;cursor:pointer">تحقق من السداد</button><button type="button" id="hr-lock-out" style="flex:1;padding:12px;border-radius:12px;border:1px solid #ccd;background:#fff;font-weight:800;cursor:pointer">${opt.renew ? 'إغلاق' : 'تسجيل الخروج'}</button></div></div>`;
     document.body.appendChild(o); document.body.style.overflow = 'hidden';
     const msg = t => { const m = document.getElementById('hr-lock-msg'); if (m) m.textContent = t || ''; };
     o.querySelectorAll('[data-plan]').forEach(b => b.onclick = async () => {
@@ -22179,13 +22181,26 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
       b.disabled = false;
     });
     document.getElementById('hr-lock-recheck').onclick = async () => { msg('جاري التحقق…'); await check(); if (document.getElementById('hr-lock-msg')) msg('لم يُسجَّل السداد بعد، قد يستغرق دقيقة.'); };
-    document.getElementById('hr-lock-out').onclick = async () => { try { await supabaseClient.auth.signOut(); } catch (_) {} location.href = '/'; };
+    document.getElementById('hr-lock-out').onclick = async () => { if (opt.renew) { remove(); return; } try { await supabaseClient.auth.signOut(); } catch (_) {} location.href = '/'; };
+  }
+  function removeBar() { const b = document.getElementById('hr-renew-bar'); if (b) b.remove(); }
+  function bar(g, c, days) {
+    if (document.getElementById('hr-renew-bar')) return;
+    const b = document.createElement('div'); b.id = 'hr-renew-bar';
+    b.setAttribute('style', 'position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:2147482000;background:#16221a;color:#fff;border-radius:14px;padding:10px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.3);font-size:13px;font-weight:700;max-width:94vw');
+    b.innerHTML = `<span dir="rtl">ينتهي اشتراك المنشأة ${days === 0 ? 'اليوم' : 'خلال ' + days + ' يوم'}</span><button type="button" style="background:#2fb36b;color:#fff;border:0;border-radius:10px;padding:8px 14px;font-weight:800;cursor:pointer;font-family:inherit">تجديد الاشتراك</button><button type="button" aria-label="إخفاء" style="background:transparent;color:#fff;border:0;font-size:18px;cursor:pointer">×</button>`;
+    const [,r,x] = b.children; r.onclick = () => show(g, c, { renew: true }); x.onclick = () => b.remove();
+    document.body.appendChild(b);
   }
   async function check() {
     const g = await gate(); const list = g.companies || []; if (!list.length) { remove(); return; }
     let act = null; try { act = (getActiveCompany() || {}).id; } catch (_) {}
     const c = list.find(x => x.id === act) || (list.every(x => x.locked) ? list[0] : null);
-    if (c && c.locked) show(g, c); else remove();
+    if (c && c.locked) { removeBar(); show(g, c); return; }
+    remove();
+    const cur = list.find(x => x.id === act);
+    const days = cur && cur.access_until ? Math.ceil((new Date(cur.access_until) - Date.now()) / 864e5) : null;
+    if (cur && days !== null && days >= 0 && days <= 14 && (cur.role === 'owner' || cur.role === 'admin') && g.pay_enabled && (g.plans || []).length) bar(g, cur, days); else removeBar();
   }
   window.hrSubGate = check;
   function start() {
