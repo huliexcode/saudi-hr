@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>لوحة مشرف المنصة</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
+<style>
+:root{--g:#0b6b33;--gd:#064d24;--bg:#f4f6f4;--c:#fff;--t:#16221a;--m:#667;--b:#dfe5e0;--r:#c0392b;--o:#d98a00;--bl:#1a6fb5}
+@media(prefers-color-scheme:dark){:root{--bg:#101612;--c:#18211b;--t:#e8efe9;--m:#9aa89d;--b:#2a362d}}
+*{box-sizing:border-box}html,body{margin:0}
+body{font-family:"Segoe UI",Tahoma,Arial,sans-serif;background:var(--bg);color:var(--t);font-size:15px;padding:0 0 env(safe-area-inset-bottom)}
+button,input,select{font:inherit;color:inherit}
+.hide{display:none!important}
+#login{min-height:100vh;display:grid;place-items:center;padding:16px}
+.card{background:var(--c);border:1px solid var(--b);border-radius:14px;padding:18px}
+#login .card{width:100%;max-width:380px}
+h1{font-size:19px;margin:0 0 4px}h2{font-size:16px;margin:0 0 10px}
+.sub{color:var(--m);font-size:13px;margin:0 0 14px}
+label{display:block;font-size:13px;color:var(--m);margin:10px 0 4px}
+input,select{width:100%;padding:11px 12px;border:1px solid var(--b);border-radius:10px;background:var(--c);min-height:44px}
+input:focus,select:focus{outline:2px solid var(--g);outline-offset:0}
+.ltr{direction:ltr;text-align:left}
+.btn{border:0;border-radius:10px;padding:10px 14px;min-height:44px;background:var(--g);color:#fff;cursor:pointer;font-weight:600}
+.btn.sec{background:transparent;color:var(--t);border:1px solid var(--b)}
+.btn.red{background:var(--r)}.btn.org{background:var(--o)}.btn.blue{background:var(--bl)}
+.btn:disabled{opacity:.5}
+.btn.full{width:100%;margin-top:14px}
+.err{color:var(--r);font-size:13px;margin-top:10px;min-height:18px}
+header{position:sticky;top:0;z-index:5;background:var(--gd);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
+header b{flex:1;font-size:16px}header .em{font-size:12px;opacity:.8;direction:ltr}
+header button{background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:8px;padding:8px 12px;min-height:40px;cursor:pointer}
+nav{display:flex;gap:6px;padding:10px 12px;overflow-x:auto;background:var(--c);border-bottom:1px solid var(--b)}
+nav button{white-space:nowrap;border:1px solid var(--b);background:transparent;border-radius:20px;padding:8px 16px;min-height:40px;cursor:pointer}
+nav button.on{background:var(--g);color:#fff;border-color:var(--g)}
+main{padding:12px;max-width:1100px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:12px}
+.kpi .n{font-size:26px;font-weight:700;direction:ltr;text-align:right}.kpi .l{font-size:12px;color:var(--m)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.bar input{flex:1;min-width:180px}.bar select{width:auto;min-width:130px}
+.row{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:12px;margin-bottom:8px;cursor:pointer}
+.row:hover{border-color:var(--g)}
+.row .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.row .mail{font-weight:600;direction:ltr;text-align:left;word-break:break-all}
+.meta{font-size:12px;color:var(--m);margin-top:4px;display:flex;flex-wrap:wrap;gap:4px 12px}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--b);margin-inline-start:4px;white-space:nowrap}
+.tag.g{background:#d7efe0;color:#0b5a2b}.tag.r{background:#f7d9d5;color:#9b2c20}.tag.o{background:#fbe8c4;color:#8a5a00}.tag.b{background:#d6e8f7;color:#124a7a}
+@media(prefers-color-scheme:dark){.tag.g{background:#1d4a2e;color:#b9ebcb}.tag.r{background:#5a2420;color:#f6c8c2}.tag.o{background:#55420f;color:#f5dca0}.tag.b{background:#173d5c;color:#c0dcf3}}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--bg);width:100%;max-width:760px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:14px}
+@media(min-width:800px){.sheet-bg{align-items:center}.sheet{border-radius:18px}}
+.sheet .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:14px}dt{color:var(--m)}dd{margin:0;word-break:break-word}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.sec{margin-top:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--b)}
+.tw{overflow-x:auto}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:10px;z-index:50;max-width:90%}
+.empty{text-align:center;color:var(--m);padding:30px}
+</style>
+</head>
+<body>
+<div id="login">
+ <form class="card" id="lf" autocomplete="on">
+  <h1>لوحة مشرف المنصة</h1>
+  <p class="sub">دخول مخصّص لمشرفي المنصة فقط</p>
+  <label for="em">البريد الإلكتروني</label>
+  <input id="em" type="email" class="ltr" inputmode="email" autocomplete="username" required>
+  <label for="pw">كلمة المرور</label>
+  <input id="pw" type="password" class="ltr" autocomplete="current-password" required>
+  <button class="btn full" id="lb" type="submit">دخول</button>
+  <div class="err" id="le"></div>
+ </form>
+</div>
+<div id="app" class="hide">
+ <header><b>لوحة المشرف</b><span class="em" id="me"></span><button id="out">خروج</button></header>
+ <nav id="nav"></nav>
+ <main id="main"></main>
+</div>
+<div id="sh"></div>
+<script>
+const SB_URL='https://ejqawvzzgbwndwjcmvmi.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqcWF3dnp6Z2J3bmR3amNtdm1pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NDIxNTgsImV4cCI6MjEwNDUxODE1OH0.kg9Pzdp4-av5OywKfYY20JoOAHc46y7fO2TdUPFwNVo';
+const sb=supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:window.sessionStorage}});
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fd=d=>d?new Date(d).toLocaleString('en-GB',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const fday=d=>d?new Date(d).toLocaleDateString('en-GB'):'—';
+const ACT={education:'تعليم',academy:'أكاديمية',commerce:'تجاري'};
+const LBL={view_company:'عرض منشأة',view_employees:'عرض موظفي منشأة',ban_user:'إيقاف حساب',unban_user:'تفعيل حساب',confirm_email:'تأكيد بريد',extend_trial:'تمديد تجربة',convert_to_full:'تحويل لمنشأة فعلية',delete_account:'حذف حساب',send_password_reset:'إرسال رابط كلمة مرور'};
+let ACCS=[],tab='ov',filt='all',q='',IDLE=null;
+function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),3200)}
+async function rpc(n,a){const{data,error}=await sb.rpc(n,a||{});if(error)throw new Error(error.message);return data}
+function idle(){clearTimeout(IDLE);IDLE=setTimeout(()=>logout('انتهت الجلسة لعدم النشاط'),30*60*1000)}
+['click','keydown','touchstart'].forEach(e=>document.addEventListener(e,()=>{if(!$('app').classList.contains('hide'))idle()},{passive:true}));
+async function logout(msg){await sb.auth.signOut();$('app').classList.add('hide');$('login').classList.remove('hide');$('sh').innerHTML='';$('le').textContent=msg||'';$('pw').value=''}
+$('out').onclick=()=>logout();
+$('lf').onsubmit=async e=>{e.preventDefault();$('le').textContent='';$('lb').disabled=true;
+ try{const{error}=await sb.auth.signInWithPassword({email:$('em').value.trim(),password:$('pw').value});
+  if(error)throw new Error('بيانات الدخول غير صحيحة');
+  const w=await rpc('admin_whoami');
+  if(!w||!w.is_admin){await sb.auth.signOut();throw new Error('هذا الحساب غير مصرّح له بدخول لوحة المشرف')}
+  $('me').textContent=w.email;$('login').classList.add('hide');$('app').classList.remove('hide');idle();await boot();
+ }catch(x){$('le').textContent=x.message}finally{$('lb').disabled=false}};
+const TABS=[['ov','نظرة عامة'],['ac','الحسابات'],['co','المنشآت'],['lg','سجل التدقيق']];
+function nav(){$('nav').innerHTML=TABS.map(([k,l])=>`<button class="${tab===k?'on':''}" data-k="${k}">${l}</button>`).join('');
+ $('nav').querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.k;render()})}
+async function boot(){try{ACCS=await rpc('admin_accounts')}catch(e){toast(e.message)}render()}
+async function render(){nav();const m=$('main');m.innerHTML='<div class="empty">جاري التحميل…</div>';
+ try{if(tab==='ov')await vOv(m);else if(tab==='ac')vAc(m);else if(tab==='co')vCo(m);else await vLg(m)}catch(e){m.innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
+async function vOv(m){const o=await rpc('admin_overview');
+ const K=[['users_real','حسابات حقيقية'],['users_trial_guest','حسابات ضيف تجريبية'],['users_total','إجمالي الحسابات'],['users_new_30d','جديدة آخر 30 يوم'],['active_7d','نشطة آخر 7 أيام'],['active_30d','نشطة آخر 30 يوم'],['never_signed_in','لم تدخل قط'],['users_unconfirmed','بريد غير مؤكَّد'],['companies_paid_or_real','منشآت فعلية'],['companies_trial','منشآت تجريبية'],['companies_total','إجمالي المنشآت'],['employees_total','إجمالي الموظفين'],['employees_active','موظفون على رأس العمل'],['contracts','العقود'],['audit_events','أحداث التدقيق']];
+ m.innerHTML=`<div class="grid">${K.map(([k,l])=>`<div class="kpi"><div class="n">${esc(o[k])}</div><div class="l">${l}</div></div>`).join('')}</div>
+ <div class="card"><h2>تنبيهات</h2>${alerts()}</div>`}
+function alerts(){const a=[];const un=ACCS.filter(x=>!x.confirmed&&!x.is_guest);if(un.length)a.push(`${un.length} حساب حقيقي بريده غير مؤكَّد`);
+ const nl=ACCS.filter(x=>!x.last_sign_in_at&&!x.is_guest);if(nl.length)a.push(`${nl.length} حساب حقيقي لم يسجّل دخولاً قط`);
+ const exp=ACCS.flatMap(x=>x.companies).filter(c=>c.is_trial&&c.trial_ends_at&&new Date(c.trial_ends_at)<Date.now());if(exp.length)a.push(`${exp.length} منشأة تجريبية منتهية`);
+ const nc=ACCS.filter(x=>!x.is_guest&&!x.companies.length&&!x.member_of);if(nc.length)a.push(`${nc.length} حساب بلا أي منشأة`);
+ return a.length?'<ul>'+a.map(x=>`<li>${esc(x)}</li>`).join('')+'</ul>':'<div class="sub">لا توجد تنبيهات</div>'}
+function tags(a){let t='';if(a.is_admin)t+='<span class="tag b">مشرف</span>';if(a.is_guest)t+='<span class="tag o">ضيف تجريبي</span>';if(!a.confirmed)t+='<span class="tag r">غير مؤكَّد</span>';if(a.banned)t+='<span class="tag r">موقوف</span>';if(!a.last_sign_in_at)t+='<span class="tag">لم يدخل</span>';return t}
+function vAc(m){m.innerHTML=`<div class="bar"><input id="qs" placeholder="بحث بالبريد أو الجوال أو اسم المنشأة" value="${esc(q)}"><select id="fs">${[['all','الكل'],['real','حقيقية'],['guest','ضيف تجريبي'],['unconf','غير مؤكَّدة'],['banned','موقوفة'],['never','لم تدخل'],['noco','بلا منشأة']].map(([k,l])=>`<option value="${k}" ${filt===k?'selected':''}>${l}</option>`).join('')}</select><button class="btn sec" id="csv">تصدير CSV</button></div><div id="lst"></div>`;
+ const L=()=>{const s=q.toLowerCase();const r=ACCS.filter(a=>{if(filt==='real'&&a.is_guest)return false;if(filt==='guest'&&!a.is_guest)return false;if(filt==='unconf'&&a.confirmed)return false;if(filt==='banned'&&!a.banned)return false;if(filt==='never'&&a.last_sign_in_at)return false;if(filt==='noco'&&(a.companies.length||a.member_of||a.is_guest))return false;
+  return !s||(a.email||'').toLowerCase().includes(s)||(a.phone||'').includes(s)||a.companies.some(c=>(c.name||'').toLowerCase().includes(s))});
+  $('lst').innerHTML=r.length?`<div class="sub">${r.length} حساب</div>`+r.map(a=>`<div class="row" data-id="${esc(a.id)}"><div class="top"><div class="mail">${esc(a.email)}</div><div>${tags(a)}</div></div><div class="meta"><span>سجّل: ${fday(a.created_at)}</span><span>آخر دخول: ${fd(a.last_sign_in_at)}</span><span>المنشآت: ${a.companies.map(c=>esc(c.name)).join('، ')||'—'}</span><span>الموظفون: ${a.companies.reduce((s,c)=>s+Number(c.employees),0)}</span></div></div>`).join(''):'<div class="empty">لا نتائج</div>';
+  $('lst').querySelectorAll('.row').forEach(e=>e.onclick=()=>accSheet(e.dataset.id))};
+ $('qs').oninput=e=>{q=e.target.value;L()};$('fs').onchange=e=>{filt=e.target.value;L()};L();
+ $('csv').onclick=()=>{const h=['email','phone','created_at','last_sign_in_at','confirmed','banned','companies','employees'];const rows=ACCS.map(a=>[a.email,a.phone||'',a.created_at,a.last_sign_in_at||'',a.confirmed,a.banned,a.companies.map(c=>c.name).join(' | '),a.companies.reduce((s,c)=>s+Number(c.employees),0)]);
+  const cs=[h,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""').replace(/^([=+\-@])/,"'$1")+'"').join(',')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+cs],{type:'text/csv'}));a.download='accounts.csv';a.click()}}
+function vCo(m){const r=ACCS.flatMap(a=>a.companies.map(c=>({...c,owner:a.email,oid:a.id})));
+ m.innerHTML=`<div class="sub">${r.length} منشأة</div>`+r.map(c=>`<div class="row" data-id="${esc(c.id)}"><div class="top"><div class="mail" style="direction:rtl;text-align:right">${esc(c.name)}</div><div>${c.is_trial?'<span class="tag o">تجريبية</span>':'<span class="tag g">فعلية</span>'}</div></div><div class="meta"><span>المالك: <bdi>${esc(c.owner)}</bdi></span><span>النشاط: ${esc(ACT[c.activity]||c.activity||'—')}</span><span>الموظفون: ${esc(c.employees)}</span>${c.is_trial?`<span>تنتهي: ${fday(c.trial_ends_at)}</span>`:''}</div></div>`).join('')||'<div class="empty">لا منشآت</div>';
+ m.querySelectorAll('.row').forEach(e=>e.onclick=()=>coSheet(e.dataset.id))}
+async function vLg(m){const l=await rpc('admin_log_list',{p_limit:300});
+ m.innerHTML=`<div class="card tw"><table><thead><tr><th>الوقت</th><th>المشرف</th><th>الإجراء</th><th>الهدف</th></tr></thead><tbody>${l.map(x=>`<tr><td>${fd(x.created_at)}</td><td><bdi>${esc(x.admin_email)}</bdi></td><td>${esc(LBL[x.action]||x.action)}</td><td><bdi>${esc((x.details&&x.details.email)||x.target_id)}</bdi></td></tr>`).join('')||'<tr><td colspan=4>لا سجلات</td></tr>'}</tbody></table></div>`}
+function sheet(html){const s=$('sh');s.innerHTML=`<div class="sheet-bg"><div class="sheet">${html}</div></div>`;const bg=s.firstChild;bg.onclick=e=>{if(e.target===bg)s.innerHTML=''};const c=s.querySelector('[data-close]');if(c)c.onclick=()=>s.innerHTML=''}
+const hd=t=>`<div class="hd"><h2 style="margin:0">${t}</h2><button class="btn sec" data-close>إغلاق</button></div>`;
+async function act(fn,ok){try{await fn();toast(ok);ACCS=await rpc('admin_accounts');return true}catch(e){toast(e.message);return false}}
+function accSheet(id){const a=ACCS.find(x=>x.id===id);if(!a)return;
+ sheet(`${hd('تفاصيل الحساب')}<div class="card"><dl><dt>البريد</dt><dd class="ltr"><bdi>${esc(a.email)}</bdi></dd><dt>الجوال</dt><dd class="ltr"><bdi>${esc(a.phone||'—')}</bdi></dd><dt>طريقة الدخول</dt><dd>${esc(a.provider||'—')}</dd><dt>تاريخ التسجيل</dt><dd>${fd(a.created_at)}</dd><dt>آخر دخول</dt><dd>${fd(a.last_sign_in_at)}</dd><dt>الحالة</dt><dd>${tags(a)||'<span class="tag g">طبيعي</span>'}</dd><dt>معرّف الحساب</dt><dd class="ltr" style="font-size:11px"><bdi>${esc(a.id)}</bdi></dd><dt>عضو في منشآت</dt><dd>${esc(a.member_of)}</dd></dl>
+ <div class="acts">${!a.confirmed?'<button class="btn blue" id="a1">تأكيد البريد يدوياً</button>':''}<button class="btn sec" id="a2">إرسال رابط تعيين كلمة المرور</button>${a.is_admin?'':`<button class="btn ${a.banned?'':'org'}" id="a3">${a.banned?'إعادة تفعيل الحساب':'إيقاف الحساب'}</button><button class="btn red" id="a4">حذف الحساب</button>`}</div></div>
+ <div class="sec"><h2>منشآت الحساب (${a.companies.length})</h2>${a.companies.map(c=>`<div class="row" data-c="${esc(c.id)}"><div class="top"><div><b>${esc(c.name)}</b></div><div>${c.is_trial?'<span class="tag o">تجريبية</span>':'<span class="tag g">فعلية</span>'}</div></div><div class="meta"><span>الموظفون: ${esc(c.employees)}</span><span>النشاط: ${esc(ACT[c.activity]||c.activity||'—')}</span></div></div>`).join('')||'<div class="sub">لا توجد منشآت مملوكة</div>'}</div>`);
+ $('sh').querySelectorAll('[data-c]').forEach(e=>e.onclick=()=>coSheet(e.dataset.c));
+ const b=n=>$('sh').querySelector('#'+n);
+ if(b('a1'))b('a1').onclick=async()=>{if(await act(()=>rpc('admin_confirm_email',{p_user:id}),'تم تأكيد البريد'))accSheet(id)};
+ b('a2').onclick=async()=>{try{const{error}=await sb.auth.resetPasswordForEmail(a.email,{redirectTo:location.origin});if(error)throw error;await rpc('admin_note_action',{p_action:'send_password_reset',p_target:id,p_details:{email:a.email}});toast('أُرسل الرابط إلى بريد المستخدم')}catch(e){toast(e.message)}};
+ if(b('a3'))b('a3').onclick=async()=>{if(!confirm((a.banned?'إعادة تفعيل ':'إيقاف ')+a.email+'؟'))return;if(await act(()=>rpc('admin_set_user_ban',{p_user:id,p_ban:!a.banned}),'تم'))accSheet(id)};
+ if(b('a4'))b('a4').onclick=async()=>{const v=prompt('للتأكيد اكتب بريد الحساب بالكامل لحذفه نهائياً:\n'+a.email);if(v===null)return;if(await act(()=>rpc('admin_delete_account',{p_user:id,p_confirm_email:v}),'تم حذف الحساب')){$('sh').innerHTML='';render()}}}
+async function coSheet(id){sheet(hd('المنشأة')+'<div class="empty">جاري التحميل…</div>');
+ try{const d=await rpc('admin_company_detail',{p_company:id});const c=d.company,n=d.counts;
+ const CL={employees:'الموظفون',employees_active:'على رأس العمل',terminated:'مخالصات',archived:'مؤرشفون',portal_enabled:'بوابة موظف مفعّلة',offers_signed:'عروض موقّعة',departments:'الأقسام',members:'أعضاء الفريق',contracts:'العقود',payroll_runs:'مسيّرات الرواتب',communications:'المراسلات',audit_events:'أحداث التدقيق'};
+ sheet(`${hd(esc(c.name_ar))}<div class="card"><dl><dt>الاسم (إنجليزي)</dt><dd class="ltr"><bdi>${esc(c.name_en||'—')}</bdi></dd><dt>الرقم الموحّد</dt><dd class="ltr"><bdi>${esc(c.cr_number||'—')}</bdi></dd><dt>المالك</dt><dd class="ltr"><bdi>${esc(c.owner_email)}</bdi></dd><dt>النشاط</dt><dd>${esc(ACT[c.activity]||c.activity||'—')}</dd><dt>النوع</dt><dd>${c.is_trial?`<span class="tag o">تجريبية</span> تنتهي ${fday(c.trial_ends_at)}`:'<span class="tag g">فعلية</span>'}</dd><dt>أُنشئت</dt><dd>${fd(c.created_at)}</dd><dt>آخر تعديل</dt><dd>${fd(c.updated_at)}</dd><dt>الشعار / الختم / الورق الرسمي</dt><dd>${c.has_logo?'✓':'✗'} / ${c.has_stamp?'✓':'✗'} / ${c.has_letterhead?'✓':'✗'}</dd></dl>
+ <div class="acts">${c.is_trial?'<button class="btn org" id="t1">تمديد التجربة</button><button class="btn" id="t2">تحويل إلى منشأة فعلية</button>':''}<button class="btn blue" id="t3">عرض الموظفين (يُسجَّل)</button></div></div>
+ <div class="sec"><h2>البيانات المرتبطة</h2><div class="grid">${Object.keys(CL).map(k=>`<div class="kpi"><div class="n">${esc(n[k])}</div><div class="l">${CL[k]}</div></div>`).join('')}</div></div>
+ <div class="sec card"><h2>الأعضاء</h2><div class="tw"><table><tbody>${d.members.map(x=>`<tr><td><bdi>${esc(x.email)}</bdi></td><td>${esc(x.role)}</td><td>${x.joined?'منضمّ':'مدعو'}</td></tr>`).join('')||'<tr><td>لا أعضاء</td></tr>'}</tbody></table></div></div>
+ <div class="sec card"><h2>الأقسام</h2>${d.departments.map(x=>`<span class="tag">${esc(x.name)} (${esc(x.employees)})</span>`).join(' ')||'—'}</div>
+ <div class="sec card"><h2>آخر الأحداث</h2><div class="tw"><table><tbody>${d.recent_audit.map(x=>`<tr><td>${fd(x.occurred_at)}</td><td>${esc(x.table_name)}</td><td>${esc(x.action)}</td></tr>`).join('')||'<tr><td>—</td></tr>'}</tbody></table></div></div>
+ <div class="sec card" id="emps"></div>`);
+ const g=k=>$('sh').querySelector('#'+k);
+ if(g('t1'))g('t1').onclick=async()=>{const v=prompt('عدد أيام التمديد (1–365):','14');if(!v)return;if(await act(()=>rpc('admin_set_trial',{p_company:id,p_days:parseInt(v,10)}),'تم التمديد'))coSheet(id)};
+ if(g('t2'))g('t2').onclick=async()=>{if(!confirm('تحويل المنشأة إلى فعلية وإلغاء حدود التجربة؟'))return;if(await act(()=>rpc('admin_convert_company',{p_company:id}),'تم التحويل'))coSheet(id)};
+ g('t3').onclick=async()=>{try{const r=await rpc('admin_company_employees',{p_company:id});g('emps').innerHTML=`<h2>الموظفون (${r.length})</h2><div class="tw"><table><thead><tr><th>الاسم</th><th>المسمى</th><th>رقم</th><th>الهوية</th><th>الحالة</th></tr></thead><tbody>${r.map(e=>`<tr><td>${esc(e.name)}</td><td>${esc(e.job_title||'—')}</td><td>${esc(e.emp_number||'—')}</td><td class="ltr"><bdi>${esc(e.nid_masked||'—')}</bdi></td><td>${e.terminated?'مخالصة':e.archived?'مؤرشف':'على رأس العمل'}</td></tr>`).join('')||'<tr><td colspan=5>لا موظفين</td></tr>'}</tbody></table></div><div class="sub">الرواتب وبيانات البنك غير معروضة عمداً.</div>`}catch(e){toast(e.message)}}
+ }catch(e){sheet(hd('المنشأة')+`<div class="empty">${esc(e.message)}</div>`)}}
+(async()=>{const{data}=await sb.auth.getSession();if(data&&data.session){try{const w=await rpc('admin_whoami');if(w&&w.is_admin){$('me').textContent=w.email;$('login').classList.add('hide');$('app').classList.remove('hide');idle();boot()}else await sb.auth.signOut()}catch(_){await sb.auth.signOut()}}})();
+</script>
+</body>
+</html>
