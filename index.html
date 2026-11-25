@@ -1619,11 +1619,12 @@ label.imp-btn input[type=file]{display:none}
                         <option value="health">صحي (مستشفى / عيادة / صيدلية)</option>
                         <option value="food">مطاعم وضيافة وتموين</option>
                         <option value="general">عام (موارد بشرية وخدمات)</option>
+                        <option value="other">أخرى (نشاط آخر)</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">الرقم الموحد <span class="text-slate-400 font-semibold">(يبدأ بـ 700)</span></label>
-                    <input type="text" id="reg-unified-number" dir="ltr" inputmode="numeric" required maxlength="10" class="w-full border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-black font-bold text-left" placeholder="7001234567">
+                    <label class="block text-xs font-bold text-slate-700 mb-1">الرقم الموحد <span class="text-slate-400 font-semibold">(اختياري — يبدأ بـ 700)</span></label>
+                    <input type="text" id="reg-unified-number" dir="ltr" inputmode="numeric" maxlength="10" class="w-full border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-black font-bold text-left" placeholder="7001234567">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">البريد الإلكتروني</label>
@@ -4564,8 +4565,8 @@ window.verifyBackupFile=async function(input) {
             document.getElementById('register-error-box')?.classList.add('hidden');
 
             if (!companyName) return showRegisterError('يرجى إدخال اسم المنشأة');
-            if (!['education', 'academy', 'commerce', 'contracting', 'health', 'food', 'general'].includes(activity)) return showRegisterError('يرجى اختيار نوع النشاط');
-            if (!isValidUnifiedNumber(unifiedNumber)) return showRegisterError('الرقم الموحد يجب أن يبدأ بـ 700 ويتكون من 10 أرقام');
+            if (!['education', 'academy', 'commerce', 'contracting', 'health', 'food', 'general', 'other'].includes(activity)) return showRegisterError('يرجى اختيار نوع النشاط');
+            if (unifiedNumber && !isValidUnifiedNumber(unifiedNumber)) return showRegisterError('الرقم الموحد (إن أدخلته) يجب أن يبدأ بـ 700 ويتكون من 10 أرقام');
             if (!email) return showRegisterError('يرجى إدخال بريد إلكتروني صحيح');
             if (!isValidSaudiMobileStrict(mobile)) return showRegisterError('رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام');
             { const pwErr = window.hrPasswordProblem(password, email); if (!password || pwErr) return showRegisterError(pwErr || 'أدخل كلمة المرور'); }
@@ -4580,7 +4581,7 @@ window.verifyBackupFile=async function(input) {
                     const c = rc.data; dupRows = (c.email || c.mobile || c.unified) ? [{ contact_email: c.email ? email : null, mobile: c.mobile ? mobile : null, unified_number: c.unified ? unifiedNumber : null }] : [];
                 } else {
                     const r = await supabaseClient.from('companies').select('id, contact_email, mobile, unified_number')
-                        .or(`contact_email.eq.${email},mobile.eq.${mobile},unified_number.eq.${unifiedNumber}`);
+                        .or(`contact_email.eq.${email},mobile.eq.${mobile}${unifiedNumber ? `,unified_number.eq.${unifiedNumber}` : ''}`);
                     dupRows = r.data; dupErr = r.error;
                 }
                 if (dupErr && isMissingColumnError(dupErr)) {
@@ -4592,7 +4593,7 @@ window.verifyBackupFile=async function(input) {
                     const dup = dupRows[0];
                     if (dup.contact_email === email) return showRegisterError('هذا البريد الإلكتروني مسجّل مسبقاً');
                     if (dup.mobile === mobile) return showRegisterError('رقم الجوال هذا مسجّل مسبقاً');
-                    if (dup.unified_number === unifiedNumber) return showRegisterError('الرقم الموحد هذا مسجّل مسبقاً');
+                    if (unifiedNumber && dup.unified_number === unifiedNumber) return showRegisterError('الرقم الموحد هذا مسجّل مسبقاً');
                 }
 
                 pendingRegistration = { companyName, unifiedNumber, email, mobile, password, activity };
@@ -4828,7 +4829,7 @@ window.verifyBackupFile=async function(input) {
                 };
                 // أعمدة التسجيل الجديدة (تتطلب تنفيذ migration_registration.sql)
                 const fullRow = Object.assign({}, baseRow, {
-                    unified_number: unifiedNumber,
+                    unified_number: unifiedNumber || null,
                     contact_email: email,
                     mobile: mobile,
                     onboarding_complete: false
@@ -13576,7 +13577,8 @@ window.verifyBackupFile=async function(input) {
             contracting: { name: 'مقاولات وإنشاءات وصناعة', kw: /مقاول|إنشاء|انشاء|بناء|عمار|هندس|مشاريع|صيان|مصنع|صناع|تشغيل/, formCats: ['contracting'], depts: [...D_GEN, D_('المشاريع', 'PRJ'), D_('الهندسة', 'ENG'), D_('السلامة والجودة', 'HSE'), D_('المشتريات', 'PRC'), D_('المعدات والصيانة', 'EQP')] },
             health: { name: 'صحي (مستشفى / عيادة / صيدلية)', kw: /صح|طب|مستشف|عياد|صيدل|مختبر|تمريض|اسنان|أسنان/, formCats: ['health'], depts: [...D_GEN, D_('الأقسام الطبية', 'MED'), D_('التمريض', 'NUR'), D_('المختبر والأشعة', 'LAB'), D_('الصيدلية', 'PHR'), D_('الاستقبال', 'REC')] },
             food: { name: 'مطاعم وضيافة وتموين', kw: /مطعم|مطاعم|مقهى|كافيه|ضياف|فندق|تموين|أغذي|اغذي|وجبات|مخبز/, formCats: ['food'], depts: [...D_GEN, D_('المطبخ', 'KIT'), D_('الخدمة والصالة', 'SRV'), D_('المشتريات والمخزن', 'PRC'), D_('التسويق والتوصيل', 'MKT')] },
-            general: { name: 'عام (موارد بشرية وخدمات)', kw: null, formCats: [], depts: [...D_GEN, D_('تقنية المعلومات', 'IT'), D_('التسويق والمبيعات', 'MKT'), D_('خدمة العملاء', 'CS')] }
+            general: { name: 'عام (موارد بشرية وخدمات)', kw: null, formCats: [], depts: [...D_GEN, D_('تقنية المعلومات', 'IT'), D_('التسويق والمبيعات', 'MKT'), D_('خدمة العملاء', 'CS')] },
+            other: { name: 'أخرى (نشاط آخر)', kw: null, formCats: [], depts: [...D_GEN] }
         };
         const CF_CATS = { general: 'نماذج عامة', teachers: 'نماذج المعلمين', commerce: 'نماذج التجارة والمبيعات', contracting: 'نماذج المقاولات والمشاريع', health: 'نماذج القطاع الصحي', food: 'نماذج المطاعم والضيافة' };
         // الاستنتاج للحسابات القائمة: نص النشاط الرئيسي (وزن 3) + اسم المنشأة (2) + أسماء الأقسام (1)
