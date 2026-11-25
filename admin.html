@@ -82,7 +82,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:right;
 <div id="sh"></div>
 <script>
 const SB_URL='https://ejqawvzzgbwndwjcmvmi.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqcWF3dnp6Z2J3bmR3amNtdm1pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NDIxNTgsImV4cCI6MjEwNDUxODE1OH0.kg9Pzdp4-av5OywKfYY20JoOAHc46y7fO2TdUPFwNVo';
-const sb=supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:window.sessionStorage}});
+const sb=supabase.createClient(SB_URL,SB_KEY);
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fd=d=>d?new Date(d).toLocaleString('en-GB',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
@@ -94,7 +94,7 @@ function toast(m){const t=document.createElement('div');t.className='toast';t.te
 async function rpc(n,a){const{data,error}=await sb.rpc(n,a||{});if(error)throw new Error(error.message);return data}
 function idle(){clearTimeout(IDLE);IDLE=setTimeout(()=>logout('انتهت الجلسة لعدم النشاط'),30*60*1000)}
 ['click','keydown','touchstart'].forEach(e=>document.addEventListener(e,()=>{if(!$('app').classList.contains('hide'))idle()},{passive:true}));
-async function logout(msg){await sb.auth.signOut();$('app').classList.add('hide');$('login').classList.remove('hide');$('sh').innerHTML='';$('le').textContent=msg||'';$('pw').value=''}
+async function logout(msg){await sb.auth.signOut();if(!msg){location.replace('/');return}$('app').classList.add('hide');$('login').classList.remove('hide');$('sh').innerHTML='';$('le').textContent=msg||'';$('pw').value=''}
 $('out').onclick=()=>logout();
 $('lf').onsubmit=async e=>{e.preventDefault();$('le').textContent='';$('lb').disabled=true;
  try{const{error}=await sb.auth.signInWithPassword({email:$('em').value.trim(),password:$('pw').value});

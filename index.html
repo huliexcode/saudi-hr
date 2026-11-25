@@ -4427,6 +4427,8 @@ window.verifyBackupFile=async function(input) {
 
         async function bootstrapAfterLogin(user) {
             if (window.hrMfaGate && !(await window.hrMfaGate(user))) return;   // التحقق بخطوتين لمن فعّله
+            // حساب مشرف المنصة: يُحوَّل إلى لوحة إدارة الحسابات بدل واجهة الموارد البشرية (الصلاحية تُتحقق في قاعدة البيانات)
+            try { const w = await supabaseClient.rpc('admin_whoami'); if (w && w.data && w.data.is_admin) { location.replace('/admin'); return; } } catch (_) {}
             currentUser = user;
             document.getElementById('auth-screen')?.classList.add('hidden');
             const emailDisplay = document.getElementById('user-email-display');
