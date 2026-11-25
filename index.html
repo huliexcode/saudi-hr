@@ -22144,5 +22144,59 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
   window.hrAcademyForTest = { D, tokenValues, fillTokens, warnings, DEFAULT_CLAUSES, sync, render, enabled };
 })();
 </script>
+<script id="hr-subgate">
+/* بوابة الاشتراك: قفل الدخول عند انتهاء الاشتراك أو القفل اليدوي + السداد + تتبّع الزيارات.
+   التطبيق الفعلي للقفل في قاعدة البيانات (سياسات RLS)؛ هذه الواجهة تعرض الرسالة فقط. */
+(function () {
+  const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let timer = null, poll = null;
+  const fmt = d => d ? new Date(d).toLocaleDateString('en-GB') : '';
+  async function gate() { try { const r = await supabaseClient.rpc('my_subscription_gate'); return (r && r.data) || {}; } catch (_) { return {}; } }
+  function remove() { const o = document.getElementById('hr-lock-overlay'); if (o) o.remove(); document.body.style.overflow = ''; }
+  function show(g, c) {
+    remove();
+    const canPay = g.pay_enabled && Array.isArray(g.plans) && g.plans.length && (c.role === 'owner' || c.role === 'admin');
+    const title = c.reason === 'manual' ? 'تم إيقاف الدخول إلى المنشأة' : 'انتهى اشتراك المنشأة';
+    const sub = c.reason === 'manual' ? (c.lock_reason ? E(c.lock_reason) : 'تواصل مع إدارة المنصة لإعادة التفعيل.') : ('انتهى الاشتراك بتاريخ ' + E(fmt(c.access_until)) + '. جدّد الاشتراك لمتابعة استخدام المنصة.');
+    const plans = canPay ? g.plans.map(p => `<button type="button" data-plan="${E(p.id)}" style="width:100%;padding:14px;margin-top:8px;border-radius:14px;border:2px solid #0b6b33;background:#fff;font-weight:800;font-size:15px;cursor:pointer;display:flex;justify-content:space-between"><span>${E(p.label)}</span><span dir="ltr">${E(p.price_sar)} SAR</span></button>`).join('')
+      : `<p style="margin-top:14px;font-weight:700;color:#555;font-size:13px">${g.pay_enabled ? 'السداد متاح لمالك المنشأة أو مديرها فقط.' : 'السداد الإلكتروني غير مفعّل حالياً، تواصل مع إدارة المنصة.'}</p>`;
+    const o = document.createElement('div'); o.id = 'hr-lock-overlay';
+    o.setAttribute('style', 'position:fixed;inset:0;z-index:2147483000;background:rgba(6,40,20,.96);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto');
+    o.innerHTML = `<div dir="rtl" style="background:#fff;color:#16221a;border-radius:22px;max-width:420px;width:100%;padding:22px;text-align:center;font-family:inherit">
+      <div style="font-size:42px">🔒</div><h2 style="font-size:19px;font-weight:900;margin:8px 0">${title}</h2>
+      <p style="font-weight:800;margin:0 0 4px">${E(c.name || '')}</p><p style="font-size:13px;color:#555;margin:0">${sub}</p>${plans}
+      <div id="hr-lock-msg" style="min-height:18px;color:#b3261e;font-size:12px;font-weight:700;margin-top:10px"></div>
+      <div style="display:flex;gap:8px;margin-top:8px"><button type="button" id="hr-lock-recheck" style="flex:1;padding:12px;border-radius:12px;border:1px solid #ccd;background:#f4f6f4;font-weight:800;cursor:pointer">تحقق من السداد</button><button type="button" id="hr-lock-out" style="flex:1;padding:12px;border-radius:12px;border:1px solid #ccd;background:#fff;font-weight:800;cursor:pointer">تسجيل الخروج</button></div></div>`;
+    document.body.appendChild(o); document.body.style.overflow = 'hidden';
+    const msg = t => { const m = document.getElementById('hr-lock-msg'); if (m) m.textContent = t || ''; };
+    o.querySelectorAll('[data-plan]').forEach(b => b.onclick = async () => {
+      b.disabled = true; msg('جاري تجهيز صفحة السداد…');
+      try {
+        const r = await supabaseClient.functions.invoke('create-payment', { body: { company_id: c.id, plan_id: b.dataset.plan } });
+        if (r.data && r.data.url) { location.href = r.data.url; return; }
+        msg('تعذر فتح صفحة السداد، تواصل مع إدارة المنصة.');
+      } catch (_) { msg('تعذر فتح صفحة السداد، تواصل مع إدارة المنصة.'); }
+      b.disabled = false;
+    });
+    document.getElementById('hr-lock-recheck').onclick = async () => { msg('جاري التحقق…'); await check(); if (document.getElementById('hr-lock-msg')) msg('لم يُسجَّل السداد بعد، قد يستغرق دقيقة.'); };
+    document.getElementById('hr-lock-out').onclick = async () => { try { await supabaseClient.auth.signOut(); } catch (_) {} location.href = '/'; };
+  }
+  async function check() {
+    const g = await gate(); const list = g.companies || []; if (!list.length) { remove(); return; }
+    let act = null; try { act = (getActiveCompany() || {}).id; } catch (_) {}
+    const c = list.find(x => x.id === act) || (list.every(x => x.locked) ? list[0] : null);
+    if (c && c.locked) show(g, c); else remove();
+  }
+  window.hrSubGate = check;
+  function start() {
+    clearInterval(timer); timer = setInterval(check, 60000);
+    try { if (!sessionStorage.getItem('hr_visit')) { sessionStorage.setItem('hr_visit', '1'); supabaseClient.rpc('track_visit'); } } catch (_) {}
+    check();
+    if (/[?&]paid=1/.test(location.search)) { let n = 0; clearInterval(poll); poll = setInterval(() => { check(); if (++n > 30) clearInterval(poll); }, 4000); }
+  }
+  const base = bootstrapAfterLogin;
+  bootstrapAfterLogin = async function (user) { const r = await base.apply(this, arguments); try { start(); } catch (_) {} return r; };
+})();
+</script>
 </body>
 </html>
