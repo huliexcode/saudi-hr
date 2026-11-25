@@ -1613,6 +1613,7 @@ label.imp-btn input[type=file]{display:none}
                     <select id="reg-activity" required class="w-full border border-slate-200 p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-black font-bold bg-white">
                         <option value="">اختر نوع النشاط</option>
                         <option value="education">تعليمي (مدارس / معاهد / حضانات)</option>
+                        <option value="academy">أكاديمية (تعليم وأنشطة حركية ورياضية)</option>
                         <option value="commerce">تجاري / تجزئة / مبيعات</option>
                         <option value="contracting">مقاولات وإنشاءات وصناعة</option>
                         <option value="health">صحي (مستشفى / عيادة / صيدلية)</option>
@@ -4563,7 +4564,7 @@ window.verifyBackupFile=async function(input) {
             document.getElementById('register-error-box')?.classList.add('hidden');
 
             if (!companyName) return showRegisterError('يرجى إدخال اسم المنشأة');
-            if (!['education', 'commerce', 'contracting', 'health', 'food', 'general'].includes(activity)) return showRegisterError('يرجى اختيار نوع النشاط');
+            if (!['education', 'academy', 'commerce', 'contracting', 'health', 'food', 'general'].includes(activity)) return showRegisterError('يرجى اختيار نوع النشاط');
             if (!isValidUnifiedNumber(unifiedNumber)) return showRegisterError('الرقم الموحد يجب أن يبدأ بـ 700 ويتكون من 10 أرقام');
             if (!email) return showRegisterError('يرجى إدخال بريد إلكتروني صحيح');
             if (!isValidSaudiMobileStrict(mobile)) return showRegisterError('رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام');
@@ -13569,7 +13570,8 @@ window.verifyBackupFile=async function(input) {
         // ====================================================================
         const D_ = (n, c) => ({ name: n, codePrefix: c }), D_GEN = [D_('الإدارة العامة', 'GEN'), D_('الموارد البشرية', 'HR'), D_('الشؤون المالية', 'FIN')];
         const ACTIVITIES = {
-            education: { name: 'تعليمي (مدارس / معاهد / حضانات)', kw: /تعليم|مدرس|معهد|حضان|اكاديم|أكاديم|جامع|روض|تدريب|تربو|طلاب/, formCats: ['teachers'], depts: [...D_GEN, D_('الشؤون التعليمية', 'EDU'), D_('الإشراف التربوي', 'SUP'), D_('شؤون الطلاب', 'STD'), D_('الأنشطة والفعاليات', 'ACT'), D_('شؤون المعلمين', 'TCH')] },
+            education: { name: 'تعليمي (مدارس / معاهد / حضانات)', kw: /تعليم|مدرس|معهد|حضان|جامع|روض|تربو|طلاب/, formCats: ['teachers'], depts: [...D_GEN, D_('الشؤون التعليمية', 'EDU'), D_('الإشراف التربوي', 'SUP'), D_('شؤون الطلاب', 'STD'), D_('الأنشطة والفعاليات', 'ACT'), D_('شؤون المعلمين', 'TCH')] },
+            academy: { name: 'أكاديمية (تعليم وأنشطة حركية ورياضية)', kw: /اكاديم|أكاديم|نادي|رياض(?:ة|ي)|حركي|لياق|سباح|جمباز|كشاف|تدريب/, formCats: ['teachers'], depts: [...D_GEN, D_('الشؤون الأكاديمية', 'EDU'), D_('الأنشطة الحركية والرياضية', 'ACT'), D_('شؤون الطلاب', 'STD'), D_('الإشراف والسلامة', 'SAF')] },
             commerce: { name: 'تجاري / تجزئة / مبيعات', kw: /تجار|متجر|تجزئ|مبيعات|ذهب|مجوهر|معرض|محل|سوبر|بقال|جمل|مخزون|توزيع/, formCats: ['commerce'], depts: [...D_GEN, D_('المبيعات', 'SLS'), D_('المستودعات', 'WHS'), D_('خدمة العملاء', 'CS'), D_('المشتريات', 'PRC'), D_('التسويق', 'MKT')] },
             contracting: { name: 'مقاولات وإنشاءات وصناعة', kw: /مقاول|إنشاء|انشاء|بناء|عمار|هندس|مشاريع|صيان|مصنع|صناع|تشغيل/, formCats: ['contracting'], depts: [...D_GEN, D_('المشاريع', 'PRJ'), D_('الهندسة', 'ENG'), D_('السلامة والجودة', 'HSE'), D_('المشتريات', 'PRC'), D_('المعدات والصيانة', 'EQP')] },
             health: { name: 'صحي (مستشفى / عيادة / صيدلية)', kw: /صح|طب|مستشف|عياد|صيدل|مختبر|تمريض|اسنان|أسنان/, formCats: ['health'], depts: [...D_GEN, D_('الأقسام الطبية', 'MED'), D_('التمريض', 'NUR'), D_('المختبر والأشعة', 'LAB'), D_('الصيدلية', 'PHR'), D_('الاستقبال', 'REC')] },
@@ -21963,7 +21965,7 @@ window.hrIsTeacher = function (emp) { const j = String((emp && (emp.jobTitle || 
     { id: 'c11', title: 'الإنهاء والإشعار', body: 'يجوز لأي من الطرفين إنهاء العقد بإشعار كتابي مدته {{مدة_الإشعار}}، وتُسوّى مستحقات المتعاقد عند الإنهاء وفق ما يقرره هذا العقد وسياسة الأكاديمية والأنظمة المرعية.', on: true },
     { id: 'c12', title: 'أحكام عامة', body: 'هذا عقد داخلي تحكمه لوائح الأكاديمية وسياساتها المعتمدة، وفيما لم يرد فيه نص تُطبَّق الأنظمة المرعية. حُرِّر هذا العقد من نسختين بيد كل طرف نسخة منه.', on: true }
   ];
-  const D = () => { const a = (typeof policySettings !== 'undefined' && policySettings && policySettings.academy) || {}; return { enabled: !!a.enabled, staff: a.staff || {}, loads: a.loads || [], activities: a.activities || [], contracts: a.contracts || {}, clauses: Array.isArray(a.clauses) && a.clauses.length ? a.clauses : DEFAULT_CLAUSES.map(c => ({ ...c })), maxWeekly: Number(a.maxWeekly) || 24 }; };
+  const D = () => { const a = (typeof policySettings !== 'undefined' && policySettings && policySettings.academy) || {}; return { enabled: a.enabled !== undefined ? !!a.enabled : !!(policySettings && policySettings.activity && policySettings.activity.key === 'academy'), staff: a.staff || {}, loads: a.loads || [], activities: a.activities || [], contracts: a.contracts || {}, clauses: Array.isArray(a.clauses) && a.clauses.length ? a.clauses : DEFAULT_CLAUSES.map(c => ({ ...c })), maxWeekly: Number(a.maxWeekly) || 24 }; };
   const enabled = () => D().enabled;
   const uid = () => 'a' + Math.random().toString(36).slice(2, 9);
   const emps = () => (typeof employees !== 'undefined' ? employees : []).filter(e => !e.isTerminated);
